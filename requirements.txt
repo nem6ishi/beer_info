@@ -4,3 +4,5 @@ lxml
 httpx
 supabase
 requests
+google-genai
+python-dotenv
