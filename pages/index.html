@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Craft Beer Watch Japan</title>
+    <meta name="description" content="Discover premium craft beers collected from the best Japanese shops.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="pagination.css">
+</head>
+
+<body>
+    <div class="background-globes">
+        <div class="globe globe-1"></div>
+        <div class="globe globe-2"></div>
+    </div>
+
+    <header class="glass-header">
+        <div class="container header-content">
+            <h1>Craft Beer Watch Japan</h1>
+            <div class="search-bar">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Search beers..."
+                    aria-label="Search for beers by name or brewery">
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="controls-bar">
+            <div class="sort-container">
+                <label for="sortSelect" class="sort-label">Sort by:</label>
+                <div class="select-wrapper">
+                    <select id="sortSelect" class="sort-select">
+                        <option value="newest">Newest Arrival</option>
+                        <option value="price_asc">Price: Low to High</option>
+                        <option value="price_desc">Price: High to Low</option>
+                        <option value="abv_desc">ABV: High to Low</option>
+                        <option value="rating_desc">Untappd Rating: High to Low</option>
+                        <option value="name_asc">Name: A to Z</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div id="statusMessage" class="status-message">Loading collection...</div>
+        <div class="table-container">
+            <table class="beer-table">
+                <thead>
+                    <tr>
+                        <th class="col-img">Image</th>
+                        <th class="col-name">Beer Info</th>
+                        <th class="col-style">Style / Stats</th>
+                        <th class="col-price">Price</th>
+                        <th class="col-untappd">Untappd</th>
+                        <th class="col-shop">Shop</th>
+                        <th class="col-registered">Available Since</th>
+                    </tr>
+                </thead>
+                <tbody id="beerTableBody">
+                    <!-- Rows will be injected here -->
+                </tbody>
+            </table>
+        </div>
+        <div id="pagination"></div>
+    </main>
+
+    <footer class="glass-footer">
+        <div class="container">
+            <p>&copy; 2025 Craft Beer Watch Japan. Data sourced from Beervolta & Chouseiya.</p>
+        </div>
+    </footer>
+
+    <script type="module" src="app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,32 @@
+# Deployment files
+.vercel
+.env
+.env.local
+.env*.local
+
+# Dependencies
+node_modules
+
+# Next.js
+.next
+out
+
+# Python
+__pycache__
+*.pyc
+.venv
+.venv_mac
+
+# Local data (no longer needed in cloud)
+data/beers.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+# IDE
+.vscode
+.idea
