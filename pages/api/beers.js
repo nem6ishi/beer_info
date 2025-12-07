@@ -30,7 +30,9 @@ export default async function handler(req, res) {
         // Sorting
         switch (sort) {
             case 'newest':
-                query = query.order('available_since', { ascending: false, nullsFirst: false })
+                query = query
+                    .order('scrape_timestamp', { ascending: false })
+                    .order('scrape_order', { ascending: true })
                 break
             case 'price_asc':
                 // Note: price is stored as text, so this might need custom handling
@@ -49,7 +51,9 @@ export default async function handler(req, res) {
                 query = query.order('name', { ascending: true })
                 break
             default:
-                query = query.order('available_since', { ascending: false, nullsFirst: false })
+                query = query
+                    .order('scrape_timestamp', { ascending: false })
+                    .order('scrape_order', { ascending: true })
         }
 
         // Pagination

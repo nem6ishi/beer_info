@@ -1,8 +1,10 @@
-# Deployment files
-.vercel
+# Environment variables (CRITICAL - DO NOT COMMIT)
 .env
 .env.local
 .env*.local
+
+# Deployment files
+.vercel
 
 # Dependencies
 node_modules
@@ -16,9 +18,13 @@ __pycache__
 *.pyc
 .venv
 .venv_mac
+venv/
 
 # Local data (no longer needed in cloud)
 data/beers.json
+
+# Debug files
+debug/
 
 # Logs
 *.log
