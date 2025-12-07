@@ -18,18 +18,18 @@ class GeminiExtractor:
         else:
             self.client = genai.Client(api_key=api_key)
         
-        # Rate Limiting Configuration for Gemini 2.5 Flash Lite
-        # - 15 RPM (Requests Per Minute) = 4 seconds per request minimum
-        # - 250,000 TPM (Tokens Per Minute) = handled by API
-        # - 1,000 RPD (Requests Per Day) = daily limit
+        # Rate Limiting Configuration
+        # Based on actual API quotas (as of 2025-12-07):
+        # gemini-2.5-flash-lite: 10 RPM, 250K TPM, 20 RPD
+        # gemini-2.5-flash: 5 RPM, 250K TPM, 20 RPD
         
-        self.request_interval = 4.0  # 15 RPM = 60s / 15 = 4s per request
         self.last_request_time = 0
         self.daily_request_count = 0
-        self.daily_limit = 1000  # 1,000 RPD
         
-        # Model Configuration
+        # Model Configuration (start with flash-lite)
         self.model_id = "gemini-2.5-flash-lite"
+        self.request_interval = 6.0  # 10 RPM = 60s / 10 = 6s per request
+        self.daily_limit = 20  # 20 RPD (shared across both models)
 
     async def extract_info(self, product_name: str, known_brewery: Optional[str] = None) -> Dict[str, Optional[str]]:
         """
@@ -118,6 +118,7 @@ class GeminiExtractor:
                 if self.model_id == "gemini-2.5-flash-lite":
                     print(f"[Gemini] Switching to gemini-2.5-flash...")
                     self.model_id = "gemini-2.5-flash"
+                    self.request_interval = 12.0  # 5 RPM = 60s / 5 = 12s per request
                     
                     # Retry with new model
                     try:

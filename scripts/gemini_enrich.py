@@ -27,12 +27,18 @@ if not GEMINI_API_KEY:
     sys.exit(1)
 
 
-async def gemini_enrich(limit: int = 50):
-    """Enrich beers with Gemini API (brewery and beer name extraction)"""
+async def gemini_enrich(limit: int = 15):
+    """
+    Enrich beers with Gemini API (brewery and beer name extraction)
+    
+    Note: Gemini API has a daily limit of 20 requests (shared between both models).
+    Default limit is set to 15 to leave buffer for retries and fallback.
+    """
     print("=" * 70)
     print("🤖 Gemini Enrichment (Supabase)")
     print("=" * 70)
     print(f"Target: First {limit} beers without Gemini data")
+    print(f"⚠️  Daily API limit: 20 requests (both models combined)")
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Create Supabase client
@@ -135,7 +141,8 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='Enrich beer data with Gemini API')
-    parser.add_argument('--limit', type=int, default=50, help='Number of beers to process')
+    parser.add_argument('--limit', type=int, default=15, 
+                       help='Number of beers to process (default: 15, max recommended: 18 due to 20 RPD limit)')
     
     args = parser.parse_args()
     
