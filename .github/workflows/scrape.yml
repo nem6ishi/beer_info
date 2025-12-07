@@ -2,10 +2,8 @@ name: Scrape Beer Data
 
 on:
   schedule:
-    # Runs at 0:00, 4:00, 8:00, 12:00, 16:00, 20:00 JST (Japan Standard Time)
-    # JST = UTC+9, so we subtract 9 hours to get UTC times
-    - cron: '0 15,19,23 * * *'  # 0:00, 4:00, 8:00 JST (previous day 15:00, 19:00, 23:00 UTC)
-    - cron: '0 3,7,11 * * *'    # 12:00, 16:00, 20:00 JST (3:00, 7:00, 11:00 UTC)
+    # Runs every hour at minute 0
+    - cron: '0 * * * *'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
