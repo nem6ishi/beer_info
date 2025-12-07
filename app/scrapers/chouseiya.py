@@ -1,17 +1,23 @@
 import asyncio
+import os
 import httpx
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 import re
 from datetime import datetime
 
+# Threshold for consecutive sold-out items before stopping
+SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '10'))
+
 async def scrape_chouseiya(limit: int = None) -> List[Dict[str, Optional[str]]]:
     """
     Scrapes product information from Chouseiya using httpx and BeautifulSoup.
     Handles EUC-JP encoding manually.
+    Stops early if too many consecutive sold-out items are found.
     """
     base_url = "https://beer-chouseiya.shop/shopbrand/all_items/page{}/order/"
     all_items = []
+    consecutive_sold_out = 0
     
     async with httpx.AsyncClient() as client:
         for page_num in range(1, 50): # Increased to 50 pages to get all 1407 items
@@ -92,6 +98,11 @@ async def scrape_chouseiya(limit: int = None) -> List[Dict[str, Optional[str]]]:
                                 qty_text = quantity_tag.get_text(strip=True)
                                 if "売り切れ" in qty_text or "0個" in qty_text:
                                     stock_status = "Sold Out"
+                                    consecutive_sold_out += 1
+                                else:
+                                    consecutive_sold_out = 0
+                            else:
+                                consecutive_sold_out = 0
                         
                         all_items.append({
                             "name": name,
@@ -103,6 +114,11 @@ async def scrape_chouseiya(limit: int = None) -> List[Dict[str, Optional[str]]]:
                         
                         page_item_count += 1
                         
+                        # Check if we've hit the consecutive sold-out threshold
+                        if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                            print(f"[Chouseiya] ⚠️  Early stop: {consecutive_sold_out} consecutive sold-out items detected.")
+                            break
+                        
                         # Check Limit
                         if limit and len(all_items) >= limit:
                             break
@@ -112,6 +128,11 @@ async def scrape_chouseiya(limit: int = None) -> List[Dict[str, Optional[str]]]:
                         continue
                 
                 print(f"[Chouseiya] Found {page_item_count} items on page {page_num}")
+                
+                # Check if early stop was triggered
+                if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                    print(f"[Chouseiya] Stopping pagination due to consecutive sold-out items.")
+                    break
                 
                 # If no items found on this page, stop
                 if page_item_count == 0:

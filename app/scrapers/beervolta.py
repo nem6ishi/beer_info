@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 import random
 from typing import List, Dict, Optional
@@ -11,14 +12,19 @@ CATEGORY_BASES = [
     "https://beervolta.com/?mode=cate&cbid=2830081&csid=0&sort=n"   # ミード・シードル
 ]
 
+# Threshold for consecutive sold-out items before stopping
+SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '10'))
+
 async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
     """
     Scrapes product data from Beervolta (Beer and Mead/Cider categories).
     Uses pagination to get all products.
     Includes anti-bot protection measures.
+    Stops early if too many consecutive sold-out items are found.
     Returns a list of dictionaries containing product details.
     """
     all_products = []
+    consecutive_sold_out = 0
     
     async with async_playwright() as p:
         # Launch browser with stealth settings
@@ -150,8 +156,12 @@ async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
                         upper_text = text_content.upper()
                         if '売切' in text_content or 'SOLD OUT' in upper_text:
                             stock_status = "Sold Out"
+                            consecutive_sold_out += 1
                         elif '入荷予定' in text_content: 
                              stock_status = "Pre-order/Upcoming"
+                             consecutive_sold_out = 0
+                        else:
+                            consecutive_sold_out = 0
 
                         if img_url: 
                             all_products.append({
@@ -163,12 +173,22 @@ async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
                                 "shop": "BEER VOLTA"
                             })
                             page_products += 1
+                            
+                            # Check if we've hit the consecutive sold-out threshold
+                            if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                                print(f"[Beervolta] ⚠️  Early stop: {consecutive_sold_out} consecutive sold-out items detected.")
+                                break
 
                     except Exception as e:
                         print(f"[Beervolta] Error parsing item: {e}")
                         continue
                 
                 print(f"[Beervolta] Extracted {page_products} products from page {page_num}")
+                
+                # Check if early stop was triggered
+                if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                    print(f"[Beervolta] Stopping pagination due to consecutive sold-out items.")
+                    break
                 
                 # If no products found on this page, we've reached the end
                 if page_products == 0:

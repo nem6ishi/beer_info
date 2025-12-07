@@ -1,16 +1,22 @@
 import asyncio
+import os
 import httpx
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 import time
 
+# Threshold for consecutive sold-out items before stopping
+SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '10'))
+
 async def scrape_ichigo_ichie(limit: int = None) -> List[Dict[str, Optional[str]]]:
     """
     Scrapes product information from Ichigo Ichie (https://151l.shop/).
     Now supports pagination to get all beers.
+    Stops early if too many consecutive sold-out items are found.
     """
     base_url = "https://151l.shop/?mode=grp&gid=1978037&sort=n&page={}"  # 全てのビール一覧
     products = []
+    consecutive_sold_out = 0
     
     async with httpx.AsyncClient() as client:
         for page_num in range(1, 800):  # Safety limit 800 pages (actual is 770)
@@ -83,6 +89,9 @@ async def scrape_ichigo_ichie(limit: int = None) -> List[Dict[str, Optional[str]
                         stock_status = "In Stock"
                         if "SOLD OUT" in item.get_text().upper():
                              stock_status = "Sold Out"
+                             consecutive_sold_out += 1
+                        else:
+                            consecutive_sold_out = 0
                         
                         products.append({
                             "name": name,
@@ -95,6 +104,11 @@ async def scrape_ichigo_ichie(limit: int = None) -> List[Dict[str, Optional[str]
                         
                         page_item_count += 1
                         
+                        # Check if we've hit the consecutive sold-out threshold
+                        if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                            print(f"[Ichigo Ichie] ⚠️  Early stop: {consecutive_sold_out} consecutive sold-out items detected.")
+                            break
+                        
                         # Check Limit
                         if limit and len(products) >= limit:
                             break
@@ -104,6 +118,11 @@ async def scrape_ichigo_ichie(limit: int = None) -> List[Dict[str, Optional[str]
                         continue
                 
                 print(f"[Ichigo Ichie] Found {page_item_count} items on page {page_num}")
+                
+                # Check if early stop was triggered
+                if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                    print(f"[Ichigo Ichie] Stopping pagination due to consecutive sold-out items.")
+                    break
                 
                 # If no items found on this page, stop
                 if page_item_count == 0:
