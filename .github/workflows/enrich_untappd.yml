@@ -7,7 +7,7 @@ on:
     - cron: '30 15 * * *'  # 0:30 JST (previous day 15:30 UTC)
     - cron: '30 3 * * *'   # 12:30 JST (3:30 UTC)
   workflow_run:
-    workflows: ["Scrape Beer Data"]
+    workflows: ["Enrich with Gemini"]
     types:
       - completed
   workflow_dispatch:  # Allow manual trigger

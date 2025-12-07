@@ -92,7 +92,18 @@ async def gemini_enrich(limit: int = 50):
             else:
                 print(f"  ⚠️  No Gemini data")
         except Exception as e:
-            print(f"  ❌ Gemini error: {e}")
+            error_msg = str(e)
+            # Check for rate limit exhaustion (after fallback)
+            if 'RATE_LIMIT_EXHAUSTED' in error_msg:
+                print(f"\n{'='*70}")
+                print("🛑 RATE LIMIT EXHAUSTED - Stopping enrichment")
+                print(f"  Both Gemini models have hit rate limits")
+                print(f"  Processed: {processed_count}/{len(beers)}")
+                print(f"  Enriched: {enriched_count}")
+                print(f"{'='*70}")
+                break  # Exit the loop immediately
+            else:
+                print(f"  ❌ Gemini error: {e}")
         
         # Update database
         if updates:

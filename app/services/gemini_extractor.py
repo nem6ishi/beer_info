@@ -144,9 +144,17 @@ class GeminiExtractor:
                                 "beer_name_en": data.get("beer_name_en")
                             }
                     except Exception as retry_error:
-                        print(f"[Gemini] Error with {self.model_id}: {retry_error}")
+                        retry_error_str = str(retry_error)
+                        # If fallback model also hits rate limit, raise exception
+                        if "429" in retry_error_str and "RESOURCE_EXHAUSTED" in retry_error_str:
+                            print(f"[Gemini] ❌ Rate limit hit on fallback model {self.model_id}")
+                            raise Exception(f"RATE_LIMIT_EXHAUSTED: Both models hit rate limit")
+                        else:
+                            print(f"[Gemini] Error with {self.model_id}: {retry_error}")
                 else:
-                    print(f"[Gemini] Already using {self.model_id}, cannot switch further")
+                    # Already using fallback model and hit rate limit again
+                    print(f"[Gemini] ❌ Already using {self.model_id}, rate limit exhausted")
+                    raise Exception(f"RATE_LIMIT_EXHAUSTED: {self.model_id} hit rate limit")
             else:
                 print(f"[Gemini] Error extracting info: {e}")
             
