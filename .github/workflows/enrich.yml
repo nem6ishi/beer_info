@@ -27,7 +27,7 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python scripts/enrich_supabase.py --limit 50
+          python -m app.cli enrich --limit 50
       
       - name: Report status
         if: always()

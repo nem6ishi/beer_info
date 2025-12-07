@@ -29,7 +29,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
-          python scripts/scrape_to_supabase.py
+          python -m app.cli scrape
       
       - name: Report status
         if: always()
