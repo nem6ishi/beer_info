@@ -93,14 +93,30 @@ export default function Home() {
         });
     }
 
+    const formatSimpleDate = (isoString) => {
+        if (!isoString) return '-';
+        const date = new Date(isoString);
+        return date.toLocaleDateString('ja-JP', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            timeZone: 'Asia/Tokyo'
+        });
+    }
+
     return (
         <>
             <Head>
                 <meta charSet="UTF-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                <title>Craft Beer Watch Japan</title>
+                <title>Craft Beer Alert Japan</title>
                 <meta name="description" content="Discover premium craft beers collected from the best Japanese shops." />
             </Head>
+
+            <div className="background-globes">
+                <div className="globe globe-1"></div>
+                <div className="globe globe-2"></div>
+            </div>
 
             <header className="glass-header">
                 <div className="container header-content">
@@ -170,12 +186,12 @@ export default function Home() {
                                 <thead>
                                     <tr>
                                         <th className="col-img">Image</th>
-                                        <th className="col-name">Beer Info</th>
-                                        <th className="col-style">Style / Stats</th>
+                                        <th className="col-name">Info</th>
+                                        <th className="col-beer-style">Style</th>
+                                        <th className="col-style">ABV / IBU</th>
+                                        <th className="col-rating">Rating</th>
                                         <th className="col-price">Price</th>
-                                        <th className="col-untappd">Untappd</th>
                                         <th className="col-shop">Shop</th>
-                                        <th className="col-registered">Available Since</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -196,10 +212,17 @@ export default function Home() {
                                                     {(beer.untappd_brewery_name || beer.untappd_beer_name || beer.brewery_name_en || beer.brewery_name_jp || beer.beer_name_en || beer.beer_name_jp) ? (
                                                         <>
                                                             <div className="brewery-name">
-                                                                {beer.untappd_brewery_name || beer.brewery_name_en || beer.brewery_name_jp || 'Unknown Brewery'}
+                                                                {beer.untappd_brewery_name || beer.brewery_name_en || beer.brewery_name_jp || ''}
                                                             </div>
                                                             <div className="beer-name">
-                                                                {beer.untappd_beer_name || beer.beer_name_en || beer.beer_name_jp || beer.name}
+                                                                {beer.untappd_url ? (
+                                                                    <a href={beer.untappd_url} target="_blank" rel="noopener noreferrer" className="untappd-link">
+                                                                        {beer.untappd_beer_name || beer.beer_name_jp || beer.beer_name_en || beer.name}
+                                                                        <span className="external-icon"> ↗</span>
+                                                                    </a>
+                                                                ) : (
+                                                                    beer.untappd_beer_name || beer.beer_name_jp || beer.beer_name_en || beer.name
+                                                                )}
                                                             </div>
                                                         </>
                                                     ) : beer.name === 'Unknown' ? (
@@ -209,48 +232,61 @@ export default function Home() {
                                                     ) : (
                                                         <div className="beer-name">{beer.name}</div>
                                                     )}
-                                                    {beer.stock_status && (
-                                                        <span className={`stock-badge ${beer.stock_status.toLowerCase().includes('out') ? 'out-of-stock' : 'in-stock'}`}>
-                                                            {beer.stock_status}
-                                                        </span>
-                                                    )}
                                                 </div>
                                             </td>
+                                            <td className="col-beer-style">
+                                                <span className="beer-style-text">{beer.untappd_style || 'N/A'}</span>
+                                            </td>
                                             <td className="col-style">
-                                                <div className="style-stats">
-                                                    {beer.untappd_style && <div className="beer-style">{beer.untappd_style}</div>}
-                                                    <div className="stats-row">
-                                                        {beer.untappd_abv && <span className="stat-pill abv">ABV {beer.untappd_abv}%</span>}
-                                                        {beer.untappd_ibu && beer.untappd_ibu > 0 && <span className="stat-pill ibu">IBU {beer.untappd_ibu}</span>}
+                                                <div className="stats-stack">
+                                                    <div className="stat-item">
+                                                        {beer.untappd_abv ? `${beer.untappd_abv} ABV` : 'N/A ABV'}
                                                     </div>
+                                                    <div className="stat-item">
+                                                        {beer.untappd_ibu ? `${beer.untappd_ibu} IBU` : 'N/A IBU'}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="col-rating">
+                                                <div className="rating-box">
+                                                    {beer.untappd_rating ? (
+                                                        <>
+                                                            {beer.untappd_url ? (
+                                                                <a href={beer.untappd_url} target="_blank" rel="noopener noreferrer" className="rating-link-group">
+                                                                    <div className="rating-score-row">
+                                                                        <span className="rating-score">{Number(beer.untappd_rating).toFixed(2)}</span>
+                                                                        <span className="untappd-label">Untappd ↗</span>
+                                                                    </div>
+                                                                </a>
+                                                            ) : (
+                                                                <span className="rating-score">{Number(beer.untappd_rating).toFixed(2)}</span>
+                                                            )}
+                                                            <span className="rating-count">({beer.untappd_rating_count || 0})</span>
+                                                            {beer.untappd_fetched_at && (
+                                                                <span className="fetched-date">Updated: {formatSimpleDate(beer.untappd_fetched_at)}</span>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <span className="na-text">N/A</span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="col-price">
                                                 <span className="price-tag">{formatPrice(beer.price)}</span>
                                             </td>
-                                            <td className="col-untappd">
-                                                {beer.untappd_rating ? (
-                                                    <div className="rating-box">
-                                                        <span className="rating-score">★ {Number(beer.untappd_rating).toFixed(2)}</span>
-                                                        <span className="rating-count">({beer.untappd_rating_count})</span>
-                                                    </div>
-                                                ) : <span className="no-rating">-</span>}
-                                                {beer.untappd_url && (
-                                                    <a href={beer.untappd_url} target="_blank" rel="noopener noreferrer" className="untappd-link">
-                                                        View on Untappd
-                                                    </a>
-                                                )}
-                                            </td>
                                             <td className="col-shop">
-                                                <a href={beer.url} target="_blank" rel="noopener noreferrer" className="shop-btn">
-                                                    {beer.shop} ↗
-                                                </a>
-                                            </td>
-                                            <td className="col-registered">
-                                                <div className="date-display">
-                                                    {formatDate(beer.available_since || beer.first_seen).split(' ').map((line, i) => (
-                                                        <span key={i} className="date-line">{line}</span>
-                                                    ))}
+                                                <div className="shop-info-group">
+                                                    <a href={beer.url} target="_blank" rel="noopener noreferrer" className="shop-btn">
+                                                        {beer.shop} ↗
+                                                    </a>
+                                                    {beer.stock_status && (
+                                                        <span className={`stock-badge ${beer.stock_status.toLowerCase().includes('out') ? 'out-of-stock' : 'in-stock'}`}>
+                                                            {beer.stock_status}
+                                                        </span>
+                                                    )}
+                                                    <div className="date-display">
+                                                        Checked: {formatDate(beer.available_since || beer.first_seen)}
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
