@@ -126,7 +126,11 @@ def scrape_beer_details(url: str) -> Dict[str, str]:
             
         raters_tag = soup.select_one('.details .raters')
         if raters_tag:
-            details['untappd_rating_count'] = raters_tag.get_text(strip=True).replace(' Ratings', '')
+            # Remove both "Rating" and "Ratings", and clean up parentheses
+            count_text = raters_tag.get_text(strip=True)
+            count_text = count_text.replace(' Ratings', '').replace(' Rating', '')
+            count_text = count_text.strip('()')
+            details['untappd_rating_count'] = count_text
 
         # Add timestamp
         details['untappd_fetched_at'] = datetime.now().isoformat()
