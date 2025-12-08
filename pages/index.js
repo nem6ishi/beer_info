@@ -193,10 +193,14 @@ export default function Home() {
                                             </td>
                                             <td className="col-name">
                                                 <div className="beer-name-group">
-                                                    {(beer.brewery_name_en || beer.brewery_name_jp || beer.beer_name_en || beer.beer_name_jp) ? (
+                                                    {(beer.untappd_brewery_name || beer.untappd_beer_name || beer.brewery_name_en || beer.brewery_name_jp || beer.beer_name_en || beer.beer_name_jp) ? (
                                                         <>
-                                                            <div className="brewery-name">{beer.brewery_name_en || beer.brewery_name_jp || 'Unknown Brewery'}</div>
-                                                            <div className="beer-name">{beer.beer_name_en || beer.beer_name_jp || beer.name}</div>
+                                                            <div className="brewery-name">
+                                                                {beer.untappd_brewery_name || beer.brewery_name_en || beer.brewery_name_jp || 'Unknown Brewery'}
+                                                            </div>
+                                                            <div className="beer-name">
+                                                                {beer.untappd_beer_name || beer.beer_name_en || beer.beer_name_jp || beer.name}
+                                                            </div>
                                                         </>
                                                     ) : beer.name === 'Unknown' ? (
                                                         <div className="beer-name" style={{ color: '#999', fontStyle: 'italic' }}>
