@@ -6,11 +6,6 @@ import os
 # Add scripts directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts'))
 
-from scripts.scrape import scrape_to_supabase
-from scripts.enrich import enrich_supabase
-from scripts.enrich_gemini import enrich_gemini
-from scripts.enrich_untappd import enrich_untappd
-
 def main():
     parser = argparse.ArgumentParser(description="Beer Info CLI")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
@@ -34,13 +29,17 @@ def main():
     args = parser.parse_args()
 
     if args.command == "scrape":
+        from scripts.scrape import scrape_to_supabase
         asyncio.run(scrape_to_supabase(limit=args.limit))
     elif args.command == "enrich":
+        from scripts.enrich import enrich_supabase
         # Backwards compatibility: run old combined enrichment
         asyncio.run(enrich_supabase(limit=args.limit))
     elif args.command == "enrich-gemini":
+        from scripts.enrich_gemini import enrich_gemini
         asyncio.run(enrich_gemini(limit=args.limit))
     elif args.command == "enrich-untappd":
+        from scripts.enrich_untappd import enrich_untappd
         asyncio.run(enrich_untappd(limit=args.limit))
     else:
         parser.print_help()
