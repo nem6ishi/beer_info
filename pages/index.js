@@ -197,6 +197,10 @@ export default function Home() {
                                                             <div className="brewery-name">{beer.brewery_name_en || beer.brewery_name_jp || 'Unknown Brewery'}</div>
                                                             <div className="beer-name">{beer.beer_name_en || beer.beer_name_jp || beer.name}</div>
                                                         </>
+                                                    ) : beer.name === 'Unknown' ? (
+                                                        <div className="beer-name" style={{ color: '#999', fontStyle: 'italic' }}>
+                                                            商品情報取得中... <a href={beer.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8em' }}>詳細を見る</a>
+                                                        </div>
                                                     ) : (
                                                         <div className="beer-name">{beer.name}</div>
                                                     )}
