@@ -142,10 +142,19 @@ async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
                         stock_status = "In Stock"
                         
                         # Simple heuristic for Price
-                        for part in parts:
-                            if '円' in part:
-                                price = part
-                                break
+                        # Look for tax-included price (税込) or the last price if multiple exist
+                        prices_found = [part for part in parts if '円' in part]
+                        if prices_found:
+                            # Try to extract tax-included price from pattern like "1,088円(税込1,197円)"
+                            for price_str in prices_found:
+                                # Match pattern: (税込XXX円) or （税込XXX円）
+                                tax_match = re.search(r'[（(]税込([0-9,]+円)[）)]', price_str)
+                                if tax_match:
+                                    price = tax_match.group(1)
+                                    break
+                            else:
+                                # If no tax-included pattern found, take the last price
+                                price = prices_found[-1]
                         
                         # Simple heuristic for Name
                         # Exclude status text like SOLD OUT, 売切, etc.

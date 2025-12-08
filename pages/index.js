@@ -99,19 +99,11 @@ export default function Home() {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
                 <title>Craft Beer Watch Japan</title>
                 <meta name="description" content="Discover premium craft beers collected from the best Japanese shops." />
-                <link rel="preconnect" href="https://fonts.googleapis.com" />
-                <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-                <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet" />
             </Head>
-
-            <div className="background-globes">
-                <div className="globe globe-1"></div>
-                <div className="globe globe-2"></div>
-            </div>
 
             <header className="glass-header">
                 <div className="container header-content">
-                    <h1>Craft Beer Watch Japan</h1>
+                    <h1>Craft Beer Alert Japan</h1>
                     <div className="search-bar">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                             strokeLinecap="round" strokeLinejoin="round">
