@@ -30,7 +30,12 @@ def clear_database():
     supabase: Client = create_client(supabase_url, supabase_key)
     
     print("⚠️  This will delete ALL data from the 'beers' table.")
-    confirm = input("Are you sure? (Type 'yes' to confirm): ")
+    
+    confirm = "no"
+    if "--force" in sys.argv:
+        confirm = "yes"
+    else:
+        confirm = input("Are you sure? (Type 'yes' to confirm): ")
     
     if confirm.lower() != 'yes':
         print("Operation cancelled.")

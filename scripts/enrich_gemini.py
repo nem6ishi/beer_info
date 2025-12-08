@@ -16,6 +16,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.services.gemini_extractor import GeminiExtractor
 from app.services.brewery_manager import BreweryManager
+try:
+    from scripts.enrich_untappd import process_beer
+except ImportError:
+    # If running directly from scripts dir
+    from enrich_untappd import process_beer
 
 # Load environment variables
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
@@ -62,6 +67,8 @@ async def enrich_gemini(limit: int = 50):
     total_enriched = 0
     total_errors = 0
     
+    
+    while True:
         if total_processed >= limit:
             print(f"\n✋ Reached limit of {limit} items. Stopping.")
             break
@@ -76,7 +83,7 @@ async def enrich_gemini(limit: int = 50):
             .select('*') \
             .is_('brewery_name_en', None) \
             .is_('brewery_name_jp', None) \
-            .order('last_seen', desc=True) \
+            .order('first_seen', desc=True) \
             .limit(current_batch_size) \
             .execute()
         
@@ -132,6 +139,12 @@ async def enrich_gemini(limit: int = 50):
                 try:
                     supabase.table('beers').update(updates).eq('id', beer['id']).execute()
                     print(f"  💾 Updated database")
+                    
+                    # Sequential: Trigger Untappd enrichment immediately
+                    print(f"  🔗 Triggering Untappd enrichment...")
+                    beer.update(updates) # Keep local object in sync
+                    await process_beer(beer, supabase, brewery_manager)
+                    
                 except Exception as e:
                     print(f"  ❌ Database update error: {e}")
                     total_errors += 1

@@ -47,22 +47,18 @@ def parse_timestamp(ts_str):
         return None
 
 
-async def scrape_to_supabase(limit: int = None, reverse: bool = False, smart: bool = False):
+async def scrape_to_supabase(limit: int = None, smart: bool = False):
     """
     Scrape and write directly to Supabase.
     
     Args:
         limit (int, optional): Limit the number of items to scrape per store. Defaults to None.
-        reverse (bool, optional): Scrape in reverse order (Last Page -> First Page). Defaults to False.
         smart (bool, optional): Smart scrape: Detect new items and scrape in reverse order. Defaults to False.
     """
     print("=" * 60)
     print("🍺 Cloud Scraper (writing to Supabase)")
     if smart:
-        print("🧠 Smart Mode ENABLED: Scanning for new items first, then scraping in reverse.")
-    elif reverse:
-        print("🔄 Reverse Order: SCRAPING FROM LAST PAGE TO FIRST")
-        print("ℹ️  Sold-out threshold stops are DISABLED in reverse mode")
+        print("🧠 Smart Mode ENABLED: Scanning for new items first.")
     print("=" * 60)
     
     # Create Supabase client
@@ -75,43 +71,27 @@ async def scrape_to_supabase(limit: int = None, reverse: bool = False, smart: bo
     existing_urls = set(existing_data.keys())
     print(f"  Loaded {len(existing_data)} existing beers")
     
-    # Fetch existing metadata to use as hints
     scraper_names = ['beervolta', 'chouseiya', 'ichigo_ichie']
     display_names = ['BeerVolta', 'Chouseiya', 'Ichigo Ichie']
-    
-    stored_metadata = {}
-    try:
-        meta_response = supabase.table('scraper_metadata').select('*').execute()
-        stored_metadata = {row['store_name']: row['last_page'] for row in meta_response.data}
-        print("ℹ️  Loaded scraper metadata hints.")
-    except Exception as e:
-        print(f"⚠️  Could not load scraper_metadata (Table might not exist yet): {e}")
 
     # Run scrapers in parallel
     print("\n🔍 Running scrapers in parallel...")
     results = await asyncio.gather(
-        beervolta.scrape_beervolta(limit=limit, reverse=reverse, start_page_hint=stored_metadata.get('beervolta'), existing_urls=existing_urls if smart else None),
-        chouseiya.scrape_chouseiya(limit=limit, reverse=reverse, start_page_hint=stored_metadata.get('chouseiya'), existing_urls=existing_urls if smart else None),
-        ichigo_ichie.scrape_ichigo_ichie(limit=limit, reverse=reverse, start_page_hint=stored_metadata.get('ichigo_ichie'), existing_urls=existing_urls if smart else None),
+        beervolta.scrape_beervolta(limit=limit, existing_urls=existing_urls if smart else None),
+        chouseiya.scrape_chouseiya(limit=limit, existing_urls=existing_urls if smart else None),
+        ichigo_ichie.scrape_ichigo_ichie(limit=limit, existing_urls=existing_urls if smart else None),
         return_exceptions=True
     )
     
     # Process each scraper result separately to maintain per-store order
     scraper_results = []
-    scraper_metadata_updates = {} # Store updates: {store_name: max_page}
-
+    
     for i, res in enumerate(results):
-        store_key = scraper_names[i]
         display_name = display_names[i]
         
         items = []
-        max_page = None
         
-        if isinstance(res, tuple):
-            items = res[0]
-            max_page = res[1]
-        elif isinstance(res, list):
-            # Backward compatibility or if I missed updating one scraper
+        if isinstance(res, list):
             items = res
         elif isinstance(res, Exception):
             print(f"  ❌ {display_name}: Error - {res}")
@@ -120,33 +100,6 @@ async def scrape_to_supabase(limit: int = None, reverse: bool = False, smart: bo
             
         print(f"  ✅ {display_name}: {len(items)} items")
         scraper_results.append(items)
-        
-        if max_page is not None:
-            prev_max = stored_metadata.get(store_key)
-            if prev_max is not None:
-                if max_page != prev_max:
-                    print(f"  🔄 {display_name}: Last page changed from {prev_max} to {max_page}")
-                else:
-                    print(f"  ℹ️  {display_name}: Last page unchanged ({max_page})")
-            else:
-                print(f"  🆕 {display_name}: Computed last page: {max_page}")
-            
-            scraper_metadata_updates[store_key] = max_page
-
-    # Update metadata in DB
-    if scraper_metadata_updates:
-        print("\n📝 Updating scraper metadata...")
-        for store_name, last_page in scraper_metadata_updates.items():
-            try:
-                data = {
-                    'store_name': store_name,
-                    'last_page': last_page,
-                    'updated_at': datetime.now(timezone.utc).isoformat()
-                }
-                supabase.table('scraper_metadata').upsert(data).execute()
-                print(f"  Saved metadata for {store_name}: query_last_page={last_page}")
-            except Exception as e:
-                print(f"  ⚠️  Failed to update metadata for {store_name}: {e}")
 
     # Flatten all results for total count
     new_scraped_items = []
@@ -157,59 +110,29 @@ async def scrape_to_supabase(limit: int = None, reverse: bool = False, smart: bo
     
     # Process and upsert
     current_time = datetime.now(timezone.utc)
-    current_time_str = current_time.strftime('%Y/%m/%d %H:%M:%S')
     current_time_iso = current_time.isoformat()
     
     new_count = 0
     updated_count = 0
     
-    # Calculate global totals
-    total_items = len(new_scraped_items)
-    
     beers_to_upsert = []
     
-    # Process each store's results separately
+    # Process each store's results
+    # Standard scrape (Page 1 -> N) usually returns Newest -> Oldest (if site is sorted by date desc).
+    # To assign increasing timestamps (Oldest -> Newest) so Newest gets latest time, we should reverse.
+    
     global_index = 0
-    
-    # Calculate a base time that is slightly in the past so the newest item ends up at roughly "now"
-    # But effectively it doesn't matter as long as relative order is preserved.
-    # Let's start from current_time and add 1 second per item to ensure uniqueness and order.
-    # Actually, if we just use current_time for the *first* item processed (Oldest), and add 1s, 
-    # the *last* item processed (Newest) will have the latest time.
-    
     base_time = datetime.now(timezone.utc)
     
     for store_items in scraper_results:
         if not store_items:
             continue
             
-        # In Smart Mode, we bufffered Page 1 -> N (Newest -> Oldest).
-        # We want to insert Oldest -> Newest so that the Newest gets the LATEST timestamp.
-        # So we reverse the list.
-        # Ideally we should do this for all modes if the scraper returns Newest->Oldest.
-        # Standard scrape (Page 1->N) also returns Newest->Oldest.
-        # Reverse scrape (Page N->1) returns Oldest->Newest.
-        
-        # Scrapers now return:
-        # Smart: Page 1->N (Newest -> Oldest)
-        # Standard: Page 1->N (Newest -> Oldest)
-        # Reverse: Page N->1 (Oldest -> Newest) (Already reversed in scraper for Chouseiya/Ichigo? Check.)
-        
-        # Chouseiya Reverse: `page_items.reverse()` then append. Page N->1. So [Oldest(N)...Newest(1)]. (Correct)
-        # Beervolta Reverse: `page_products.reverse()` then append. Page N->1. So [Oldest(N)...Newest(1)]. (Correct)
-        # Ichigo Reverse: `page_products.reverse()` then append. Page N->1. So [Oldest(N)...Newest(1)]. (Correct)
-        
-        # So in Reverse Mode, items are ALREADY Oldest->Newest.
-        # In Smart/Standard Mode, items are Newest->Oldest.
-        
-        items_to_process = store_items
-        if not reverse:
-             # Smart or Standard: Newest -> Oldest. 
-             # We want to process Oldest -> Newest (to assign increasing timestamps).
-             items_to_process = list(reversed(store_items))
-        else:
-             # Reverse Mode: Already Oldest -> Newest.
-             items_to_process = store_items
+        # Items are likely Newest -> Oldest (Page 1 top -> Page N bottom)
+        # We want to process Oldest -> Newest.
+        # Smart Mode buffer returns Newest -> Oldest (Page 1 -> N).
+        # So we almost ALWAYS want to reverse the list to assign timestamps Oldest -> Newest.
+        items_to_process = list(reversed(store_items))
 
         for new_item in items_to_process:
             url = new_item.get('url')
@@ -231,7 +154,6 @@ async def scrape_to_supabase(limit: int = None, reverse: bool = False, smart: bo
                     print(f"  🔄 Restock: {new_item.get('name', 'Unknown')[:50]}")
 
             # Assign increasing timestamp
-            # We add global_index seconds to base_time
             item_time = base_time + timedelta(seconds=global_index)
             item_time_iso = item_time.isoformat()
             global_index += 1
@@ -289,9 +211,8 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Scrape beer data to Supabase')
     parser.add_argument('--limit', type=int, help='Limit items per scraper')
-    parser.add_argument('--reverse', action='store_true', help='Scrape in reverse order')
     parser.add_argument('--smart', action='store_true', help='Smart scrape')
     
     args = parser.parse_args()
     
-    asyncio.run(scrape_to_supabase(limit=args.limit, reverse=args.reverse, smart=args.smart))
+    asyncio.run(scrape_to_supabase(limit=args.limit, smart=args.smart))

@@ -28,6 +28,87 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     sys.exit(1)
 
 
+async def process_beer(beer, supabase, brewery_manager=None):
+    """
+    Process a single beer: search Untappd, scrape details, update DB, and optionally update brewery manager.
+    """
+    updates = {}
+    
+    # Extract brewery and beer names
+    brewery = beer.get('brewery_name_en') or beer.get('brewery_name_jp')
+    beer_name = beer.get('beer_name_en') or beer.get('beer_name_jp')
+    
+    if not brewery or not beer_name:
+        print(f"  ⚠️  Missing brewery or beer name - skipping")
+        return None
+    
+    try:
+        untappd_url = beer.get('untappd_url')
+        
+        # Use existing URL if valid, otherwise search
+        if untappd_url and "untappd.com" in untappd_url:
+            print(f"  🔗 Using existing URL: {untappd_url}")
+        else:
+            print(f"  🔍 Searching Untappd for: {brewery} - {beer_name}")
+            untappd_url = get_untappd_url(brewery, beer_name)
+        
+        if untappd_url:
+            updates['untappd_url'] = untappd_url
+            print(f"  ✅ Found URL: {untappd_url}")
+            
+            # If it's a direct beer page, scrape details
+            if "untappd.com/b/" in untappd_url:
+                await asyncio.sleep(2)  # Rate limiting
+                print(f"  🔄 Scraping beer details...")
+                
+                try:
+                    details = scrape_beer_details(untappd_url)
+                    if details:
+                        updates.update(details)
+                        updates['untappd_fetched_at'] = datetime.now(timezone.utc).isoformat()
+                        print(f"  ✅ Details scraped:")
+                        print(f"     Style: {details.get('untappd_style', 'N/A')}")
+                        print(f"     ABV: {details.get('untappd_abv', 'N/A')}, IBU: {details.get('untappd_ibu', 'N/A')}")
+                        print(f"     Rating: {details.get('untappd_rating', 'N/A')} ({details.get('untappd_rating_count', 'N/A')})")
+                    else:
+                        print(f"  ⚠️  Could not scrape details from page")
+                except Exception as detail_error:
+                    print(f"  ⚠️  Error scraping details: {detail_error}")
+        else:
+            print(f"  ❌ Untappd URL not found")
+            updates['untappd_url'] = "NOT_FOUND" 
+    
+    except Exception as e:
+        print(f"  ❌ Untappd search error: {e}")
+        return None
+    
+    # Update database
+    if updates:
+        try:
+            supabase.table('beers').update(updates).eq('id', beer['id']).execute()
+            print(f"  💾 Updated database")
+            
+            # Immediate brewery update if manager is provided
+            if brewery_manager:
+                # Create a temporary beer dict with updates applied to extract brewery info
+                enriched_beer = beer.copy()
+                enriched_beer.update(updates)
+                
+                # We need ensure untappd_brewery_name is present if we scraped it
+                # It comes from 'details' which is merged into updates.
+                
+                new_count = brewery_manager.extract_breweries_from_beers([enriched_beer])
+                if new_count > 0:
+                    brewery_manager.save_breweries()
+                    print(f"  🏭 Saved new brewery info")
+                    
+        except Exception as e:
+            print(f"  ❌ Database update error: {e}")
+            return None
+            
+    return updates
+
+
 async def enrich_untappd(limit: int = 50):
     """Enrich beers with Untappd data only. Loops until all processed."""
     print("=" * 70)
@@ -38,6 +119,9 @@ async def enrich_untappd(limit: int = 50):
     
     # Create Supabase client
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    # Initialize Brewery Manager for batch updates
+    brewery_manager = BreweryManager()
     
     total_processed = 0
     total_untappd_found = 0
@@ -52,8 +136,8 @@ async def enrich_untappd(limit: int = 50):
         response = supabase.table('beers') \
             .select('*') \
             .not_.is_('brewery_name_en', None) \
-            .is_('untappd_url', None) \
-            .order('last_seen', desc=True) \
+            .is_('untappd_rating', None) \
+            .order('first_seen', desc=True) \
             .limit(batch_size) \
             .execute()
         
@@ -62,8 +146,8 @@ async def enrich_untappd(limit: int = 50):
             response2 = supabase.table('beers') \
                 .select('*') \
                 .not_.is_('brewery_name_jp', None) \
-                .is_('untappd_url', None) \
-                .order('last_seen', desc=True) \
+                .is_('untappd_rating', None) \
+                .order('first_seen', desc=True) \
                 .limit(batch_size - len(response.data)) \
                 .execute()
             
@@ -86,71 +170,20 @@ async def enrich_untappd(limit: int = 50):
             print(f"[Batch {i}/{len(beers)} | Total {total_processed + i}] Processing: {beer.get('name', 'Unknown')[:60]}")
             print(f"{'='*70}")
             
-            # Extract brewery and beer names
-            brewery = beer.get('brewery_name_en') or beer.get('brewery_name_jp')
-            beer_name = beer.get('beer_name_en') or beer.get('beer_name_jp')
+            updates = await process_beer(beer, supabase, brewery_manager)
             
-            if not brewery or not beer_name:
-                print(f"  ⚠️  Missing brewery or beer name - skipping")
-                continue
-            
-            updates = {}
-            
-            try:
-                print(f"  🔍 Searching Untappd for: {brewery} - {beer_name}")
-                untappd_url = get_untappd_url(brewery, beer_name)
-                
-                if untappd_url:
-                    updates['untappd_url'] = untappd_url
-                    print(f"  ✅ Found URL: {untappd_url}")
-                    total_untappd_found += 1
-                    
-                    # If it's a direct beer page, scrape details
-                    if "untappd.com/b/" in untappd_url:
-                        await asyncio.sleep(2)  # Rate limiting
-                        print(f"  🔄 Scraping beer details...")
-                        
-                        try:
-                            details = scrape_beer_details(untappd_url)
-                            if details:
-                                updates.update(details)
-                                updates['untappd_fetched_at'] = datetime.now(timezone.utc).isoformat()
-                                print(f"  ✅ Details scraped:")
-                                print(f"     Style: {details.get('untappd_style', 'N/A')}")
-                                print(f"     ABV: {details.get('untappd_abv', 'N/A')}, IBU: {details.get('untappd_ibu', 'N/A')}")
-                                print(f"     Rating: {details.get('untappd_rating', 'N/A')} ({details.get('untappd_rating_count', 'N/A')})")
-                                total_details_scraped += 1
-                            else:
-                                print(f"  ⚠️  Could not scrape details from page")
-                        except Exception as detail_error:
-                            print(f"  ⚠️  Error scraping details: {detail_error}")
-                else:
-                    print(f"  ❌ Untappd URL not found")
-                    # Should we mark it as 'not found' to avoid infinite search?
-                    # Schema doesn't have a flag. We could set untappd_url to "NOT_FOUND" or similar?
-                    # For now, we risk infinite loops on retry if we don't handle this.
-                    # But since we are looping based on 'untappd_url' IS NULL, skipping update keeps it null.
-                    # This IS an issue for full automation.
-                    # Valid Fix: Update untappd_fetched_at even if URL not found? 
-                    # But query checks 'untappd_url' IS NULL.
-                    # We should probably set untappd_url to 'NOT_FOUND' if nothing found to prevent re-query.
-                    updates['untappd_url'] = "NOT_FOUND" 
-                
-                await asyncio.sleep(1)  # Rate limiting between searches
-            
-            except Exception as e:
-                print(f"  ❌ Untappd search error: {e}")
-                total_errors += 1
-            
-            # Update database
             if updates:
-                try:
-                    supabase.table('beers').update(updates).eq('id', beer['id']).execute()
-                    print(f"  💾 Updated database")
-                except Exception as e:
-                    print(f"  ❌ Database update error: {e}")
-                    total_errors += 1
-                    
+                if 'untappd_url' in updates and updates['untappd_url'] != "NOT_FOUND":
+                    total_untappd_found += 1
+                if 'untappd_style' in updates:
+                    total_details_scraped += 1
+            else:
+                # If None returned, it's an error or skip. 
+                # Could be error (update failed) or skip (missing names).
+                pass
+                
+            await asyncio.sleep(1)  # Rate limiting between searches
+            
         total_processed += len(beers)
 
     # Final stats
