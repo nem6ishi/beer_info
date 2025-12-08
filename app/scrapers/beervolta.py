@@ -5,6 +5,7 @@ import random
 from typing import List, Dict, Optional
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
+import html
 
 # BeerVolta category base URLs (without page parameter)
 CATEGORY_BASES = [
@@ -13,14 +14,14 @@ CATEGORY_BASES = [
 ]
 
 # Threshold for consecutive sold-out items before stopping
-SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '10'))
+SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '50'))
 
-async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
+async def scrape_beervolta(limit: int = None, reverse: bool = False, start_page_hint: int = None) -> List[Dict[str, Optional[str]]]:
     """
     Scrapes product data from Beervolta (Beer and Mead/Cider categories).
     Uses pagination to get all products.
     Includes anti-bot protection measures.
-    Stops early if too many consecutive sold-out items are found.
+    Stops early if too many consecutive sold-out items are found (DISABLED if reverse=True).
     Returns a list of dictionaries containing product details.
     """
     all_products = []
@@ -56,29 +57,115 @@ async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
             window.chrome = { runtime: {} };
         """)
         
-        for category_base in CATEGORY_BASES:
+        primary_max_page = None
+        
+        for i, category_base in enumerate(CATEGORY_BASES):
             # Check if we've reached the limit
             if limit and len(all_products) >= limit:
                 break
             
             print(f"\n[Beervolta] Processing category: {category_base}")
             
-            # Start with page 1 to determine total pages
-            page_num = 1
-            max_pages = 100  # Safety limit
+            start_page = 1
+            max_pages = 100
+            step = 1
+            end_page_limit = 1 # Default stop for reverse scan (exclusive? < limit)
             
-            while page_num <= max_pages:
+            if reverse:
+                print("[Beervolta] Reverse mode: Finding last page...")
+                
+                # Optimization: Check if hint+1 exists first (Only for first category)
+                skip_scan = False
+                if i == 0 and start_page_hint and start_page_hint > 0:
+                    print(f"[Beervolta] checking hint+1 ({start_page_hint + 1})")
+                    try:
+                        probe_url = f"{category_base}&page={start_page_hint + 1}"
+                        # Use raw request for speed if possible, or just page.goto since we have browser open
+                        await page.goto(probe_url, wait_until='domcontentloaded', timeout=15000)
+                        content = await page.content()
+                        soup_probe = BeautifulSoup(content, 'lxml')
+                        items_probe = soup_probe.find_all('a', href=re.compile(r'\?pid='))
+                        
+                        if not items_probe:
+                             print(f"[Beervolta] No items on page {start_page_hint + 1}. Keeping max page as {start_page_hint}.")
+                             max_page_found = start_page_hint
+                             start_page = start_page_hint
+                             skip_scan = True
+                             # Ensure loop doesn't run excessively
+                             max_pages = 0
+                             step = -1
+                             # Also set end_page_limit for the loop below
+                             end_page_limit = start_page_hint
+                        else:
+                             print(f"[Beervolta] Found items on {start_page_hint + 1}. Rescanning from Page 1.")
+                    except Exception as e:
+                        print(f"[Beervolta] Probe failed: {e}. Proceeding with full scan.")
+
+                if not skip_scan:
+                    try:
+                        # Goto page 1
+                        await page.goto(category_base, wait_until='domcontentloaded', timeout=30000)
+                        
+                        # Look for pagination links
+                        # Typically looks like <div class="pager">... <a href="...">X</a> </div>
+                        # We can use regex on hrefs or just scan the numbers
+                        content = await page.content()
+                        soup = BeautifulSoup(content, 'lxml')
+                        max_page_found = 1
+                        
+                        # Beervolta uses query params &page=X
+                        links = soup.find_all('a', href=re.compile(r'page=\d+'))
+                        for link in links:
+                            match = re.search(r'page=(\d+)', link.get('href', ''))
+                            if match:
+                                p_num = int(match.group(1))
+                                if p_num > max_page_found:
+                                    max_page_found = p_num
+                        
+                        print(f"[Beervolta] Detected last page: {max_page_found}")
+                        if i == 0:
+                            primary_max_page = max_page_found
+                        start_page = max_page_found
+                        max_pages = 0 # Loop until < 1, handled by range
+                        step = -1
+                        
+                        if start_page_hint and start_page_hint > 0:
+                            # Scrape down to hint. 
+                            end_page_limit = start_page_hint
+                            print(f"[Beervolta] Incremental mode: Scraping from {start_page} down to {start_page_hint}...")
+                        else:
+                            end_page_limit = 1
+                        
+                    except Exception as e:
+                         print(f"[Beervolta] Error finding last page: {e}. Defaulting to normal.")
+                         reverse = False
+                         start_page = 1
+                         max_pages = 100
+                         step = 1
+                         end_page_limit = 1
+            
+            # Determine loop range. If reverse, we cant easily use while loop structure same way without counter
+            # Easier to use 'current_page' variable
+            current_page = start_page
+            
+            while True:
+                # Loop condition
+                if not reverse:
+                    if current_page > max_pages: break
+                else:
+                    if current_page < end_page_limit: break
+
                 # Check limit
                 if limit and len(all_products) >= limit:
                     break
                 
                 # Build URL with page parameter
-                if page_num == 1:
+                if current_page == 1:
                     url = category_base
                 else:
-                    url = f"{category_base}&page={page_num}"
+                    url = f"{category_base}&page={current_page}"
                 
-                print(f"[Beervolta] Scraping page {page_num}: {url}")
+                print(f"[Beervolta] Scraping page {current_page}: {url}")
                 
                 # Random delay before navigation
                 await asyncio.sleep(random.uniform(1.0, 2.0))
@@ -88,8 +175,12 @@ async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
                     await asyncio.sleep(random.uniform(1.0, 2.0))
                     
                 except Exception as e:
-                    print(f"[Beervolta] Error navigating to page {page_num}: {e}")
-                    break
+                    print(f"[Beervolta] Error navigating to page {current_page}: {e}")
+                    if reverse:
+                        current_page += step
+                        continue
+                    else:
+                        break
                 
                 # Get page content
                 content = await page.content()
@@ -99,82 +190,58 @@ async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
                 items = soup.find_all('a', href=re.compile(r'\?pid='))
                 
                 if not items:
-                    print(f"[Beervolta] No products found on page {page_num}. Stopping.")
-                    break
+                    if not reverse:
+                        print(f"[Beervolta] No products found on page {current_page}. Stopping.")
+                        break
+                    else:
+                         # In reverse, maybe gaps? or end of list? 
+                         print(f"[Beervolta] No products on page {current_page}.")
                 
-                print(f"[Beervolta] Found {len(items)} potential product links on page {page_num}")
+                print(f"[Beervolta] Found {len(items)} potential product links on page {current_page}")
                 
                 seen_urls = set()
-                page_products = 0
+                page_products = []
                 
                 for item in items:
                     try:
-                        # Check limit
-                        if limit and len(all_products) >= limit:
-                            break
-                        
                         href = item.get('href', '')
-                        if not href:
-                            continue
+                        if not href: continue
+                        if href.startswith('/'): link = f"https://beervolta.com{href}"
+                        elif href.startswith('http'): link = href
+                        else: link = f"https://beervolta.com/{href}"
                         
-                        # Normalize URL
-                        if href.startswith('/'):
-                            link = f"https://beervolta.com{href}"
-                        elif href.startswith('http'):
-                            link = href
-                        else:
-                            link = f"https://beervolta.com/{href}"
-                        
-                        if link in seen_urls:
-                            continue
+                        if link in seen_urls: continue
                         seen_urls.add(link)
 
-                        # Extract Image and Name from alt attribute
                         img_tag = item.find('img')
                         img_url = img_tag.get('src') if img_tag else None
-                        
-                        # Get product name from image alt (most reliable)
                         name = img_tag.get('alt', 'Unknown').strip() if img_tag else 'Unknown'
-                        # Remove status indicators from name
+                        name = html.unescape(name)
                         for indicator in ['≪12/10入荷予定≫', '≪入荷予定≫', '≪予約≫', '売切', 'SOLD OUT']:
                             name = name.replace(indicator, '').strip()
                         
-                        # Extract Text Content for price and status
                         text_content = item.get_text(strip=True, separator='|')
                         parts = text_content.split('|')
-                        
                         price = "Unknown"
-                        stock_status = "In Stock"
-                        
-                        # Simple heuristic for Price
-                        # Look for tax-included price (税込) or the last price if multiple exist
                         prices_found = [part for part in parts if '円' in part]
                         if prices_found:
-                            # Try to extract tax-included price from pattern like "1,088円(税込1,197円)"
                             for price_str in prices_found:
-                                # Match pattern: (税込XXX円) or （税込XXX円）
                                 tax_match = re.search(r'[（(]税込([0-9,]+円)[）)]', price_str)
                                 if tax_match:
                                     price = tax_match.group(1)
                                     break
                             else:
-                                # If no tax-included pattern found, take the last price
                                 price = prices_found[-1]
-                        
 
-                        # Check Stock
+                        stock_status = "In Stock"
                         upper_text = text_content.upper()
                         if '売切' in text_content or 'SOLD OUT' in upper_text:
                             stock_status = "Sold Out"
-                            consecutive_sold_out += 1
                         elif '入荷予定' in text_content: 
                              stock_status = "Pre-order/Upcoming"
-                             consecutive_sold_out = 0
-                        else:
-                            consecutive_sold_out = 0
 
                         if img_url: 
-                            all_products.append({
+                            page_products.append({
                                 "name": name,
                                 "price": price,
                                 "url": link,
@@ -182,36 +249,50 @@ async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
                                 "stock_status": stock_status,
                                 "shop": "BEER VOLTA"
                             })
-                            page_products += 1
-                            
-                            # Check if we've hit the consecutive sold-out threshold
-                            if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
-                                print(f"[Beervolta] ⚠️  Early stop: {consecutive_sold_out} consecutive sold-out items detected.")
-                                break
 
                     except Exception as e:
                         print(f"[Beervolta] Error parsing item: {e}")
                         continue
                 
-                print(f"[Beervolta] Extracted {page_products} products from page {page_num}")
+                # Reverse items if needed
+                if reverse:
+                    page_products.reverse()
                 
-                # Check if early stop was triggered
-                if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                for p in page_products:
+                    # Sold out logic ONLY if not reverse
+                    if not reverse:
+                        if p['stock_status'] == "Sold Out":
+                            consecutive_sold_out += 1
+                        else:
+                            consecutive_sold_out = 0
+                        
+                        if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                             print(f"[Beervolta] ⚠️  Early stop: {consecutive_sold_out} consecutive sold-out items detected.")
+                             # break? pass?
+                             pass
+                    
+                    all_products.append(p)
+                    if limit and len(all_products) >= limit: break
+                
+                if limit and len(all_products) >= limit: break
+                
+                if not reverse and consecutive_sold_out >= SOLD_OUT_THRESHOLD:
                     print(f"[Beervolta] Stopping pagination due to consecutive sold-out items.")
                     break
                 
-                # If no products found on this page, we've reached the end
-                if page_products == 0:
-                    print(f"[Beervolta] No products extracted from page {page_num}. Stopping.")
+                print(f"[Beervolta] Extracted {len(page_products)} products from page {current_page}")
+
+                if not reverse and not page_products:
+                    print(f"[Beervolta] No products extracted from page {current_page}. Stopping.")
                     break
                 
-                page_num += 1
+                current_page += step
         
         await context.close()
         await browser.close()
 
     print(f"\n[Beervolta] Total extracted: {len(all_products)} products from all categories.")
-    return all_products
+    return all_products, primary_max_page
 
 if __name__ == "__main__":
     # For testing purposes

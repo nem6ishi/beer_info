@@ -31,10 +31,12 @@ export default function Home() {
             if (!res.ok) throw new Error('Failed to load beers')
             const data = await res.json()
 
+            console.log('Fetched beers:', data.beers?.length, data.pagination);
             setBeers(data.beers || [])
             setTotalPages(data.pagination.totalPages)
             setTotalItems(data.pagination.total)
         } catch (err) {
+            console.error('Fetch error:', err);
             setError(err.message)
             console.error(err)
         } finally {
@@ -89,7 +91,6 @@ export default function Home() {
             day: '2-digit',
             hour: '2-digit',
             minute: '2-digit',
-            timeZone: 'Asia/Tokyo'
         });
     }
 
@@ -100,7 +101,6 @@ export default function Home() {
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
-            timeZone: 'Asia/Tokyo'
         });
     }
 
@@ -120,7 +120,7 @@ export default function Home() {
 
             <header className="glass-header">
                 <div className="container header-content">
-                    <h1>Craft Beer Alert Japan</h1>
+                    <h1>Craft Beer Alert Japan (v2)</h1>
                     <div className="search-bar">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                             strokeLinecap="round" strokeLinejoin="round">
@@ -285,7 +285,7 @@ export default function Home() {
                                                         </span>
                                                     )}
                                                     <div className="date-display">
-                                                        Checked: {formatDate(beer.available_since || beer.first_seen)}
+                                                        Checked: {formatDate(beer.first_seen)}
                                                     </div>
                                                 </div>
                                             </td>

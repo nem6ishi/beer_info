@@ -8,6 +8,9 @@ import os
 import datetime
 from typing import List, Dict
 
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from app.scrapers import beervolta, chouseiya, ichigo_ichie
 
 # app/services/scraper_service.py -> app/services -> app -> root

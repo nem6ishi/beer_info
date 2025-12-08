@@ -8,11 +8,12 @@ from supabase import create_client
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+load_dotenv(env_path)
 
 def main():
     # Get Supabase credentials
-    supabase_url = os.getenv('SUPABASE_URL')
+    supabase_url = os.getenv('SUPABASE_URL') or os.getenv('NEXT_PUBLIC_SUPABASE_URL')
     supabase_key = os.getenv('SUPABASE_SERVICE_KEY')
     
     if not supabase_url or not supabase_key:
@@ -43,9 +44,9 @@ def main():
             result = supabase.table('beers').select('id', count='exact').eq('shop', shop).execute()
             print(f"  {shop}: {result.count:,}")
         
-        # Beers with display_timestamp
-        with_ts = supabase.table('beers').select('id', count='exact').not_.is_('display_timestamp', 'null').execute()
-        print(f"\nBeers with display_timestamp: {with_ts.count:,}")
+        # Beers with first_seen
+        with_ts = supabase.table('beers').select('id', count='exact').not_.is_('first_seen', 'null').execute()
+        print(f"\nBeers with first_seen: {with_ts.count:,}")
         
         # Beers with Untappd data
         with_untappd = supabase.table('beers').select('id', count='exact').not_.is_('untappd_rating', 'null').execute()
@@ -54,14 +55,14 @@ def main():
     elif command == 'recent':
         # Show recent beers
         limit = int(sys.argv[2]) if len(sys.argv) > 2 else 10
-        print(f"\n🆕 Most Recent {limit} Beers (by display_timestamp)\n" + "="*50)
+        print(f"\n🆕 Most Recent {limit} Beers (by first_seen)\n" + "="*50)
         
-        result = supabase.table('beers').select('name, shop, price, display_timestamp').not_.is_('display_timestamp', 'null').order('display_timestamp', desc=True).limit(limit).execute()
+        result = supabase.table('beers').select('name, shop, price, first_seen').not_.is_('first_seen', 'null').order('first_seen', desc=True).limit(limit).execute()
         
         for i, beer in enumerate(result.data, 1):
             print(f"\n{i}. [{beer['shop']}] {beer['name'][:60]}")
             print(f"   Price: {beer['price']}")
-            print(f"   Timestamp: {beer['display_timestamp']}")
+            print(f"   Timestamp: {beer['first_seen']}")
     
     elif command == 'shop':
         # Show beers from specific shop
@@ -75,14 +76,14 @@ def main():
         
         print(f"\n🏪 {shop_name} - First {limit} Beers\n" + "="*50)
         
-        result = supabase.table('beers').select('name, price, stock_status, display_timestamp').eq('shop', shop_name).order('display_timestamp', desc=True).limit(limit).execute()
+        result = supabase.table('beers').select('name, price, stock_status, first_seen').eq('shop', shop_name).order('first_seen', desc=True).limit(limit).execute()
         
         for i, beer in enumerate(result.data, 1):
             print(f"\n{i}. {beer['name'][:60]}")
             print(f"   Price: {beer['price']}")
             print(f"   Status: {beer['stock_status']}")
-            if beer['display_timestamp']:
-                print(f"   Timestamp: {beer['display_timestamp']}")
+            if beer['first_seen']:
+                print(f"   Timestamp: {beer['first_seen']}")
     
     elif command == 'search':
         # Search beers

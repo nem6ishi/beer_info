@@ -10,8 +10,8 @@ def get_untappd_url(brewery_name: str, beer_name: str) -> Optional[str]:
     Searches for an Untappd beer page using direct scraping of Untappd.com.
     
     Args:
-        brewery_name (str): Name of the brewery.
-        beer_name (str): Name of the beer.
+        brewery_name (str): Name of the brewery (prefer English).
+        beer_name (str): Name of the beer (prefer English).
         
     Returns:
         Optional[str]: A direct beer page URL (e.g. https://untappd.com/b/...) if found,
@@ -20,49 +20,62 @@ def get_untappd_url(brewery_name: str, beer_name: str) -> Optional[str]:
     if not brewery_name and not beer_name:
         return None
 
-    # Construct search query from available parts
+    def search_untappd(query: str) -> Optional[str]:
+        """Helper to perform a single search attempt."""
+        encoded_query = urllib.parse.quote(query)
+        url = f"https://untappd.com/search?q={encoded_query}"
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'lxml')
+                results = soup.select('.beer-item')
+                
+                if results:
+                    first_res = results[0]
+                    name_tag = first_res.select_one('.name a')
+                    
+                    if name_tag:
+                        href = name_tag.get('href')
+                        if href and "/b/" in href:
+                            full_url = f"https://untappd.com{href}"
+                            return full_url
+        except Exception as e:
+            print(f"[Untappd] Search error: {e}")
+        
+        return None
+
+    # Primary Search: beer_name + brewery_name (prefer English)
     parts = []
-    if brewery_name: parts.append(brewery_name)
     if beer_name: parts.append(beer_name)
+    if brewery_name: parts.append(brewery_name)
     
     search_query = " ".join(parts)
     print(f"[Untappd] Searching: {search_query}")
     
+    result = search_untappd(search_query)
+    if result:
+        print(f"[Untappd] Found direct link: {result}")
+        return result
+    
+    # Fallback Search: beer_name only
+    if beer_name and brewery_name:
+        print(f"[Untappd] Fallback search: {beer_name}")
+        result = search_untappd(beer_name)
+        if result:
+            print(f"[Untappd] Found direct link (fallback): {result}")
+            return result
+    
+    # Final Fallback: Return search URL
     encoded_query = urllib.parse.quote(search_query)
-    url = f"https://untappd.com/search?q={encoded_query}"
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    
-    try:
-        # Request Untappd Search Page directly
-        resp = requests.get(url, headers=headers, timeout=10)
-        
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, 'lxml')
-            
-            # Untappd search results are usually in .beer-item
-            results = soup.select('.beer-item')
-            
-            if results:
-                # Take the first result
-                first_res = results[0]
-                name_tag = first_res.select_one('.name a')
-                
-                if name_tag:
-                    href = name_tag.get('href')
-                    if href and "/b/" in href:
-                        full_url = f"https://untappd.com{href}"
-                        print(f"[Untappd] Found direct link: {full_url}")
-                        return full_url
-
-    except Exception as e:
-        print(f"[Untappd] Search error: {e}")
-    
-    # Fallback: Return the search URL
-    print("[Untappd] No direct link found (or error). Returning search URL.")
-    return url
+    fallback_url = f"https://untappd.com/search?q={encoded_query}"
+    print("[Untappd] No direct link found. Returning search URL.")
+    return fallback_url
 
 def scrape_beer_details(url: str) -> Dict[str, str]:
     """

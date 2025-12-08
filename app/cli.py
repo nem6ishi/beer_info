@@ -7,12 +7,13 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scripts'))
 
 def main():
-    parser = argparse.ArgumentParser(description="Beer Info CLI")
+    parser = argparse.ArgumentParser(description="Beer Info CLI (Supabase Operations)")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # Scrape command
     scrape_parser = subparsers.add_parser("scrape", help="Run scrapers and save to Supabase")
     scrape_parser.add_argument("--limit", type=int, help="Limit number of items to scrape", default=None)
+    scrape_parser.add_argument("--reverse", action="store_true", help="Scrape in reverse order (Last page to First page)")
 
     # Enrich command (backwards compatibility - runs both Gemini + Untappd)
     enrich_parser = subparsers.add_parser("enrich", help="Run full enrichment (Gemini + Untappd) and save to Supabase")
@@ -26,11 +27,17 @@ def main():
     enrich_untappd_parser = subparsers.add_parser("enrich-untappd", help="Run Untappd enrichment only")
     enrich_untappd_parser.add_argument("--limit", type=int, help="Limit number of items to enrich", default=50)
 
+    # Sync command
+    subparsers.add_parser("sync", help="Download Supabase data to local JSON")
+
+    # Clear command
+    subparsers.add_parser("clear", help="Clear all data from the database")
+
     args = parser.parse_args()
 
     if args.command == "scrape":
         from scripts.scrape import scrape_to_supabase
-        asyncio.run(scrape_to_supabase(limit=args.limit))
+        asyncio.run(scrape_to_supabase(limit=args.limit, reverse=args.reverse))
     elif args.command == "enrich":
         from scripts.enrich import enrich_supabase
         # Backwards compatibility: run old combined enrichment
@@ -41,6 +48,12 @@ def main():
     elif args.command == "enrich-untappd":
         from scripts.enrich_untappd import enrich_untappd
         asyncio.run(enrich_untappd(limit=args.limit))
+    elif args.command == "sync":
+        from scripts.sync_local import sync_from_supabase
+        sync_from_supabase()
+    elif args.command == "clear":
+        from scripts.clear_db import clear_database
+        clear_database()
     else:
         parser.print_help()
         sys.exit(1)

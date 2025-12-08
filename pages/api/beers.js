@@ -36,11 +36,9 @@ export default async function handler(req, res) {
         // Sorting
         switch (sort) {
             case 'newest':
-                // Sort by display_timestamp first (newest = most recent timestamp)
-                // For beers without display_timestamp, use scrape_order as fallback
+                // Sort by first_seen (newest = most recently seen/added)
                 query = query
-                    .order('display_timestamp', { ascending: false, nullsLast: true })
-                    .order('scrape_order', { ascending: false, nullsLast: true })
+                    .order('first_seen', { ascending: false, nullsLast: true })
                 break
             case 'price_asc':
                 // Note: price is stored as text, so this might need custom handling
@@ -59,10 +57,9 @@ export default async function handler(req, res) {
                 query = query.order('name', { ascending: true })
                 break
             default:
-                // Default: newest first (display_timestamp, then scrape_order)
+                // Default: newest first (first_seen)
                 query = query
-                    .order('display_timestamp', { ascending: false, nullsLast: true })
-                    .order('scrape_order', { ascending: false, nullsLast: true })
+                    .order('first_seen', { ascending: false, nullsLast: true })
         }
 
         // Pagination

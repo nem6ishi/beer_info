@@ -3,9 +3,10 @@ import os
 import asyncio
 
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from app.scrapers.runner import run_scrapers
+from scripts.legacy.runner import run_scrapers
 
 
 if __name__ == "__main__":

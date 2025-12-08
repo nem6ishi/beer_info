@@ -1,5 +1,11 @@
 
 import asyncio
+import sys
+import os
+
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from app.services.gemini_extractor import GeminiExtractor
 
 async def verify_priority():

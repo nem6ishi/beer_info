@@ -5,11 +5,14 @@ import datetime
 import time
 from typing import List, Dict, Optional
 
-from . import beervolta
-from . import chouseiya
-from . import ichigo_ichie
-from ..services.gemini_extractor import GeminiExtractor
-from ..services.untappd_searcher import get_untappd_url, scrape_beer_details
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from app.scrapers import beervolta
+from app.scrapers import chouseiya
+from app.scrapers import ichigo_ichie
+from app.services.gemini_extractor import GeminiExtractor
+from app.services.untappd_searcher import get_untappd_url, scrape_beer_details
 
 # Define paths relative to this file or project root
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

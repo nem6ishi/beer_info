@@ -17,10 +17,6 @@ CREATE TABLE IF NOT EXISTS beers (
   -- Timestamps
   first_seen TIMESTAMPTZ NOT NULL,
   last_seen TIMESTAMPTZ NOT NULL,
-  available_since TIMESTAMPTZ,
-  restocked_at TIMESTAMPTZ,
-  scrape_timestamp TIMESTAMPTZ,
-  scrape_order INTEGER,
   
   -- Gemini extracted data
   brewery_name_jp TEXT,
@@ -37,11 +33,7 @@ CREATE TABLE IF NOT EXISTS beers (
   untappd_ibu TEXT,
   untappd_rating TEXT,
   untappd_rating_count TEXT,
-  untappd_fetched_at TIMESTAMPTZ,
-  
-  -- Metadata
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  untappd_fetched_at TIMESTAMPTZ
 );
 
 -- Breweries table
@@ -58,6 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_beers_shop ON beers(shop);
 CREATE INDEX IF NOT EXISTS idx_beers_last_seen ON beers(last_seen DESC);
 CREATE INDEX IF NOT EXISTS idx_beers_first_seen ON beers(first_seen DESC);
 CREATE INDEX IF NOT EXISTS idx_beers_available_since ON beers(available_since DESC);
+CREATE INDEX IF NOT EXISTS idx_beers_display_timestamp ON beers(display_timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_beers_url ON beers(url);
 CREATE INDEX IF NOT EXISTS idx_beers_name ON beers USING gin(to_tsvector('english', name));
 CREATE INDEX IF NOT EXISTS idx_beers_brewery_name ON beers(untappd_brewery_name);
@@ -73,21 +66,6 @@ CREATE INDEX IF NOT EXISTS idx_beers_search ON beers USING gin(
     COALESCE(untappd_brewery_name, '')
   )
 );
-
--- Updated_at trigger function
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger to auto-update updated_at
-CREATE TRIGGER update_beers_updated_at
-  BEFORE UPDATE ON beers
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
 
 -- Row Level Security (RLS) policies
 -- Enable RLS
@@ -129,7 +107,7 @@ BEGIN
     'total_shops', COUNT(DISTINCT shop),
     'beers_with_untappd', COUNT(*) FILTER (WHERE untappd_url IS NOT NULL),
     'beers_with_gemini', COUNT(*) FILTER (WHERE brewery_name_en IS NOT NULL OR brewery_name_jp IS NOT NULL),
-    'last_scrape', MAX(scrape_timestamp),
+    'last_scrape', MAX(last_seen),
     'shops', json_agg(DISTINCT shop)
   )
   INTO result
@@ -145,4 +123,4 @@ COMMENT ON TABLE breweries IS 'Reference table for known breweries to improve ex
 COMMENT ON COLUMN beers.first_seen IS 'First time this beer was discovered';
 COMMENT ON COLUMN beers.last_seen IS 'Last time this beer was confirmed available';
 COMMENT ON COLUMN beers.available_since IS 'When this beer became available (resets on restock)';
-COMMENT ON COLUMN beers.restocked_at IS 'Last time this beer was restocked after being sold out';
+COMMENT ON COLUMN beers.display_timestamp IS 'Artificial timestamp for maintaining store display order. First scraped item has oldest timestamp.';
