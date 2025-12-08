@@ -192,8 +192,14 @@ export default function Home() {
                                             </td>
                                             <td className="col-name">
                                                 <div className="beer-name-group">
-                                                    <div className="brewery-name">{beer.brewery_name_en || beer.brewery_name_jp || 'Unknown Brewery'}</div>
-                                                    <div className="beer-name">{beer.beer_name_en || beer.beer_name_jp || beer.name}</div>
+                                                    {(beer.brewery_name_en || beer.brewery_name_jp || beer.beer_name_en || beer.beer_name_jp) ? (
+                                                        <>
+                                                            <div className="brewery-name">{beer.brewery_name_en || beer.brewery_name_jp || 'Unknown Brewery'}</div>
+                                                            <div className="beer-name">{beer.beer_name_en || beer.beer_name_jp || beer.name}</div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="beer-name">{beer.name}</div>
+                                                    )}
                                                     {beer.stock_status && (
                                                         <span className={`stock-badge ${beer.stock_status.toLowerCase().includes('out') ? 'out-of-stock' : 'in-stock'}`}>
                                                             {beer.stock_status}
