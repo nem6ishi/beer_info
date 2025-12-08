@@ -5,7 +5,7 @@ Cloud scraper that writes directly to Supabase
 import asyncio
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from supabase import create_client, Client
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -56,14 +56,21 @@ async def scrape_to_supabase(limit: int = None):
         return_exceptions=True
     )
     
-    new_scraped_items = []
+    # Process each scraper result separately to maintain per-store order
+    scraper_results = []
     for i, res in enumerate(results):
         scraper_names = ['BeerVolta', 'Chouseiya', 'Ichigo Ichie']
         if isinstance(res, list):
             print(f"  ✅ {scraper_names[i]}: {len(res)} items")
-            new_scraped_items.extend(res)
+            scraper_results.append(res)
         elif isinstance(res, Exception):
             print(f"  ❌ {scraper_names[i]}: Error - {res}")
+            scraper_results.append([])
+    
+    # Flatten all results for total count
+    new_scraped_items = []
+    for res in scraper_results:
+        new_scraped_items.extend(res)
     
     print(f"\n📊 Total scraped: {len(new_scraped_items)} items")
     
@@ -81,59 +88,78 @@ async def scrape_to_supabase(limit: int = None):
     
     beers_to_upsert = []
     
-    for global_index, new_item in enumerate(new_scraped_items):
-        url = new_item.get('url')
-        if not url:
+    # Assign display_timestamp PER STORE to maintain each store's display order
+    # Process each store's results separately
+    global_index = 0
+    for store_items in scraper_results:
+        if not store_items:
             continue
         
-        existing = existing_data.get(url)
+        # For each store, assign display_timestamp in order
+        # First item in store gets newest timestamp for that store
+        store_base_time = current_time - timedelta(seconds=global_index * 0.001)
         
-        # Global reverse scrape_order: first item across all shops gets highest number
-        # This ensures scrape order = store display order across all shops
-        reverse_order = total_items - global_index - 1
-        
-        beer_data = {
-            'url': url,
-            'name': new_item.get('name'),
-            'price': new_item.get('price'),
-            'image': new_item.get('image'),
-            'stock_status': new_item.get('stock_status'),
-            'shop': new_item.get('shop'),
-            'scrape_order': reverse_order,  # Global reverse-indexed order
-            'scrape_timestamp': current_time_iso,
-            'last_seen': current_time_iso,
-        }
-        
-        if existing:
-            # Update existing beer
-            beer_data['first_seen'] = existing.get('first_seen')
-            beer_data['brewery_name_en'] = existing.get('brewery_name_en')
-            beer_data['brewery_name_jp'] = existing.get('brewery_name_jp')
-            beer_data['untappd_url'] = existing.get('untappd_url')
-            beer_data['untappd_fetched_at'] = existing.get('untappd_fetched_at')
+        for store_index, new_item in enumerate(store_items):
+            url = new_item.get('url')
+            if not url:
+                continue
             
-            # Restock detection
-            prev_stock = (existing.get('stock_status') or '').lower()
-            new_stock = (new_item.get('stock_status') or '').lower()
+            existing = existing_data.get(url)
             
-            was_sold_out = 'sold' in prev_stock or 'out' in prev_stock
-            is_now_available = not ('sold' in new_stock or 'out' in new_stock)
+            # Global reverse scrape_order: first item across all shops gets highest number
+            reverse_order = total_items - global_index - 1
             
-            if was_sold_out and is_now_available:
-                beer_data['restocked_at'] = current_time_iso
-                beer_data['available_since'] = current_time_iso
-                print(f"  🔄 Restock: {new_item.get('name', 'Unknown')[:50]}")
+            # Calculate display_timestamp for this store
+            # First item in store (store_index=0) gets NEWEST timestamp for this store
+            # Last item in store gets OLDEST timestamp for this store
+            # Result: ORDER BY display_timestamp DESC shows items in store order
+            display_time_offset = store_index
+            display_timestamp = store_base_time - timedelta(milliseconds=display_time_offset)
+            
+            beer_data = {
+                'url': url,
+                'name': new_item.get('name'),
+                'price': new_item.get('price'),
+                'image': new_item.get('image'),
+                'stock_status': new_item.get('stock_status'),
+                'shop': new_item.get('shop'),
+                'scrape_order': reverse_order,  # Global reverse-indexed order (kept for compatibility)
+                'scrape_timestamp': current_time_iso,  # Actual scrape time (same for all)
+                'display_timestamp': display_timestamp.isoformat(),  # Per-store timestamp for display
+                'last_seen': current_time_iso,
+            }
+            
+            if existing:
+                # Update existing beer
+                beer_data['first_seen'] = existing.get('first_seen')
+                beer_data['brewery_name_en'] = existing.get('brewery_name_en')
+                beer_data['brewery_name_jp'] = existing.get('brewery_name_jp')
+                beer_data['untappd_url'] = existing.get('untappd_url')
+                beer_data['untappd_fetched_at'] = existing.get('untappd_fetched_at')
+                
+                # Restock detection
+                prev_stock = (existing.get('stock_status') or '').lower()
+                new_stock = (new_item.get('stock_status') or '').lower()
+                
+                was_sold_out = 'sold' in prev_stock or 'out' in prev_stock
+                is_now_available = not ('sold' in new_stock or 'out' in new_stock)
+                
+                if was_sold_out and is_now_available:
+                    beer_data['restocked_at'] = current_time_iso
+                    beer_data['available_since'] = current_time_iso
+                    print(f"  🔄 Restock: {new_item.get('name', 'Unknown')[:50]}")
+                else:
+                    beer_data['available_since'] = existing.get('available_since') or existing.get('first_seen')
+                
+                updated_count += 1
             else:
-                beer_data['available_since'] = existing.get('available_since') or existing.get('first_seen')
+                # New beer
+                beer_data['first_seen'] = current_time_iso
+                beer_data['available_since'] = current_time_iso
+                new_count += 1
             
-            updated_count += 1
-        else:
-            # New beer
-            beer_data['first_seen'] = current_time_iso
-            beer_data['available_since'] = current_time_iso
-            new_count += 1
-        
-        beers_to_upsert.append(beer_data)
+            beers_to_upsert.append(beer_data)
+            global_index += 1
     
     # Batch upsert
     if beers_to_upsert:
