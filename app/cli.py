@@ -14,6 +14,7 @@ def main():
     scrape_parser = subparsers.add_parser("scrape", help="Run scrapers and save to Supabase")
     scrape_parser.add_argument("--limit", type=int, help="Limit number of items to scrape", default=None)
     scrape_parser.add_argument("--reverse", action="store_true", help="Scrape in reverse order (Last page to First page)")
+    scrape_parser.add_argument("--smart", action="store_true", help="Smart scrape: Detect new items and scrape in reverse order")
 
     # Enrich command (backwards compatibility - runs both Gemini + Untappd)
     enrich_parser = subparsers.add_parser("enrich", help="Run full enrichment (Gemini + Untappd) and save to Supabase")
@@ -37,7 +38,7 @@ def main():
 
     if args.command == "scrape":
         from scripts.scrape import scrape_to_supabase
-        asyncio.run(scrape_to_supabase(limit=args.limit, reverse=args.reverse))
+        asyncio.run(scrape_to_supabase(limit=args.limit, reverse=args.reverse, smart=args.smart))
     elif args.command == "enrich":
         from scripts.enrich import enrich_supabase
         # Backwards compatibility: run old combined enrichment

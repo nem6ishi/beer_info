@@ -62,17 +62,22 @@ async def enrich_gemini(limit: int = 50):
     total_enriched = 0
     total_errors = 0
     
-    batch_size = 1000 if limit > 1000 else limit
-    
-    while True:
+        if total_processed >= limit:
+            print(f"\n✋ Reached limit of {limit} items. Stopping.")
+            break
+
+        # Calculate remaining items to process
+        remaining = limit - total_processed
+        current_batch_size = min(1000, remaining)
+        
         # Get beers that need Gemini enrichment
-        print(f"\n📂 Loading batch of beers from Supabase (Limit: {batch_size})...")
+        print(f"\n📂 Loading batch of beers from Supabase (Batch Target: {current_batch_size})...")
         response = supabase.table('beers') \
             .select('*') \
             .is_('brewery_name_en', None) \
             .is_('brewery_name_jp', None) \
             .order('last_seen', desc=True) \
-            .limit(batch_limit if 'batch_limit' in locals() else batch_size) \
+            .limit(current_batch_size) \
             .execute()
         
         beers = response.data
@@ -85,7 +90,7 @@ async def enrich_gemini(limit: int = 50):
         # Process batch
         for i, beer in enumerate(beers, 1):
             print(f"\n{'='*70}")
-            print(f"[Batch {i}/{len(beers)} | Total {total_processed + i}] Processing: {beer.get('name', 'Unknown')[:60]}")
+            print(f"[Batch Item {i}/{len(beers)} | Total {total_processed + i}/{limit}] Processing: {beer.get('name', 'Unknown')[:60]}")
             print(f"{'='*70}")
             
             updates = {}

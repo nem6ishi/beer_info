@@ -16,7 +16,7 @@ CATEGORY_BASES = [
 # Threshold for consecutive sold-out items before stopping
 SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '50'))
 
-async def scrape_beervolta(limit: int = None, reverse: bool = False, start_page_hint: int = None) -> List[Dict[str, Optional[str]]]:
+async def scrape_beervolta(limit: int = None, reverse: bool = False, start_page_hint: int = None, existing_urls: set = None) -> List[Dict[str, Optional[str]]]:
     """
     Scrapes product data from Beervolta (Beer and Mead/Cider categories).
     Uses pagination to get all products.
@@ -66,7 +66,112 @@ async def scrape_beervolta(limit: int = None, reverse: bool = False, start_page_
             
             print(f"\n[Beervolta] Processing category: {category_base}")
             
-            start_page = 1
+            if existing_urls is not None:
+                # Phase 1: Forward Scrape & Buffer
+                print(f"[Beervolta] Smart Mode: Forward Scrape & Buffer...")
+                
+                scan_page = 1
+                consecutive_existing = 0
+                stop_scan = False
+                
+                while not stop_scan:
+                    url = f"{category_base}&page={scan_page}" if scan_page > 1 else category_base
+                    print(f"[Beervolta] Smart Scrape {scan_page}: {url}")
+                    
+                    try:
+                        await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+                        await asyncio.sleep(random.uniform(0.3, 0.7))
+                        
+                        content = await page.content()
+                        soup = BeautifulSoup(content, 'lxml')
+                        items = soup.find_all('a', href=re.compile(r'\?pid='))
+                        
+                        if not items:
+                            break
+                            
+                        seen_urls_page = set()
+                        
+                        for item in items:
+                            href = item.get('href', '')
+                            if not href: continue
+                            if href.startswith('/'): link = f"https://beervolta.com{href}"
+                            elif href.startswith('http'): link = href
+                            else: link = f"https://beervolta.com/{href}"
+                            
+                            if link in seen_urls_page: continue
+                            seen_urls_page.add(link)
+                            
+                            if link in existing_urls:
+                                consecutive_existing += 1
+                            else:
+                                consecutive_existing = 0
+                                
+                            # Parse Item Details
+                            try:
+                                img_tag = item.find('img')
+                                img_url = img_tag.get('src') if img_tag else None
+                                name = img_tag.get('alt', 'Unknown').strip() if img_tag else 'Unknown'
+                                name = html.unescape(name)
+                                for indicator in ['≪12/10入荷予定≫', '≪入荷予定≫', '≪予約≫', '売切', 'SOLD OUT']:
+                                    name = name.replace(indicator, '').strip()
+                                
+                                text_content = item.get_text(strip=True, separator='|')
+                                parts = text_content.split('|')
+                                price = "Unknown"
+                                prices_found = [part for part in parts if '円' in part]
+                                if prices_found:
+                                    for price_str in prices_found:
+                                        tax_match = re.search(r'[（(]税込([0-9,]+円)[）)]', price_str)
+                                        if tax_match:
+                                            price = tax_match.group(1)
+                                            break
+                                    else:
+                                        price = prices_found[-1]
+
+                                stock_status = "In Stock"
+                                upper_text = text_content.upper()
+                                if '売切' in text_content or 'SOLD OUT' in upper_text:
+                                    stock_status = "Sold Out"
+                                elif '入荷予定' in text_content: 
+                                    stock_status = "Pre-order/Upcoming"
+                                    
+                                p_item = {
+                                    "name": name,
+                                    "price": price,
+                                    "url": link,
+                                    "image": img_url,
+                                    "stock_status": stock_status,
+                                    "shop": "BEER VOLTA"
+                                }
+                                
+                                all_products.append(p_item)
+                                
+                                if limit and len(all_products) >= limit:
+                                    print(f"[Beervolta] Limit reached ({limit}). Stopping scan.")
+                                    stop_scan = True
+                                    break
+                                
+                                if consecutive_existing >= 10:
+                                    print(f"[Beervolta] Found 10 consecutive existing items. Stopping scan.")
+                                    stop_scan = True
+                                    break
+                                    
+                            except Exception as e:
+                                print(f"[Beervolta] Error parsing item: {e}")
+                                continue
+                        
+                        if not stop_scan:
+                            scan_page += 1
+                            if scan_page > 50: 
+                                print("[Beervolta] Scan limit reached (50 pages). Stopping probe.")
+                                break
+                                
+                    except Exception as e:
+                        print(f"[Beervolta] Error scanning page {scan_page}: {e}")
+                        break
+                        
+                continue # Move to next category (loop over categories)
+
             max_pages = 100
             step = 1
             end_page_limit = 1 # Default stop for reverse scan (exclusive? < limit)
@@ -168,11 +273,11 @@ async def scrape_beervolta(limit: int = None, reverse: bool = False, start_page_
                 print(f"[Beervolta] Scraping page {current_page}: {url}")
                 
                 # Random delay before navigation
-                await asyncio.sleep(random.uniform(1.0, 2.0))
+                await asyncio.sleep(random.uniform(0.5, 1.0))
                 
                 try:
                     await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-                    await asyncio.sleep(random.uniform(1.0, 2.0))
+                    await asyncio.sleep(random.uniform(0.2, 0.5))
                     
                 except Exception as e:
                     print(f"[Beervolta] Error navigating to page {current_page}: {e}")
@@ -287,6 +392,7 @@ async def scrape_beervolta(limit: int = None, reverse: bool = False, start_page_
                     break
                 
                 current_page += step
+
         
         await context.close()
         await browser.close()

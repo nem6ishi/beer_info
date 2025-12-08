@@ -1,15 +1,15 @@
 name: Enrich with Gemini
 
 on:
-  schedule:
-    # Runs at 0:00, 6:00, 12:00, 18:00 JST (Japan Standard Time)
-    # JST = UTC+9, so we subtract 9 hours to get UTC times
-    - cron: '0 15,21 * * *'  # 0:00, 6:00 JST (previous day 15:00, 21:00 UTC)
-    - cron: '0 3,9 * * *'    # 12:00, 18:00 JST (3:00, 9:00 UTC)
-  workflow_run:
-    workflows: ["Scrape Beer Data"]
-    types:
-      - completed
+  # schedule:
+  #   # Runs at 0:00, 6:00, 12:00, 18:00 JST (Japan Standard Time)
+  #   # JST = UTC+9, so we subtract 9 hours to get UTC times
+  #   - cron: '0 15,21 * * *'  # 0:00, 6:00 JST (previous day 15:00, 21:00 UTC)
+  #   - cron: '0 3,9 * * *'    # 12:00, 18:00 JST (3:00, 9:00 UTC)
+  # workflow_run:
+  #   workflows: ["Scrape Beer Data"]
+  #   types:
+  #     - completed
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python -m app.cli enrich-gemini --limit 15
+          python -m app.cli enrich-gemini --limit 500
       
       - name: Report status
         if: always()
