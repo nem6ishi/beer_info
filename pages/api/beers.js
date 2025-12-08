@@ -10,7 +10,8 @@ export default async function handler(req, res) {
             search = '',
             sort = 'newest',
             page = '1',
-            limit = '100'
+            limit = '100',
+            shop = ''
         } = req.query
 
         const pageNum = parseInt(page, 10)
@@ -21,6 +22,11 @@ export default async function handler(req, res) {
         let query = supabase
             .from('beers')
             .select('*', { count: 'exact' })
+
+        // Apply shop filter if provided
+        if (shop) {
+            query = query.eq('shop', shop)
+        }
 
         // Apply search filter if provided
         if (search) {

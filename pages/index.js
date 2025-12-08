@@ -8,6 +8,7 @@ export default function Home() {
     const [error, setError] = useState(null)
     const [search, setSearch] = useState('')
     const [sort, setSort] = useState('newest')
+    const [shop, setShop] = useState('')
     const [page, setPage] = useState(1)
     const [totalPages, setTotalPages] = useState(0)
     const [totalItems, setTotalItems] = useState(0)
@@ -23,6 +24,9 @@ export default function Home() {
                 search,
                 sort
             })
+            if (shop) {
+                params.append('shop', shop)
+            }
             const res = await fetch(`/api/beers?${params}`)
             if (!res.ok) throw new Error('Failed to load beers')
             const data = await res.json()
@@ -36,7 +40,7 @@ export default function Home() {
         } finally {
             setLoading(false)
         }
-    }, [page, search, sort])
+    }, [page, search, sort, shop])
 
     // Effects
     useEffect(() => {
@@ -51,6 +55,11 @@ export default function Home() {
 
     const handleSort = (e) => {
         setSort(e.target.value)
+        setPage(1)
+    }
+
+    const handleShopFilter = (e) => {
+        setShop(e.target.value)
         setPage(1)
     }
 
@@ -122,6 +131,22 @@ export default function Home() {
 
             <main className="container">
                 <div className="controls-bar">
+                    <div className="sort-container">
+                        <label htmlFor="shopFilter" className="sort-label">Store:</label>
+                        <div className="select-wrapper">
+                            <select
+                                id="shopFilter"
+                                className="sort-select"
+                                value={shop}
+                                onChange={handleShopFilter}
+                            >
+                                <option value="">All Stores</option>
+                                <option value="BEER VOLTA">BEER VOLTA</option>
+                                <option value="ちょうせいや">ちょうせいや</option>
+                                <option value="一期一会～る">一期一会～る</option>
+                            </select>
+                        </div>
+                    </div>
                     <div className="sort-container">
                         <label htmlFor="sortSelect" className="sort-label">Sort by:</label>
                         <div className="select-wrapper">
