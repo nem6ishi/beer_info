@@ -129,15 +129,20 @@ async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
                             continue
                         seen_urls.add(link)
 
-                        # Extract Image
+                        # Extract Image and Name from alt attribute
                         img_tag = item.find('img')
                         img_url = img_tag.get('src') if img_tag else None
                         
-                        # Extract Text Content
+                        # Get product name from image alt (most reliable)
+                        name = img_tag.get('alt', 'Unknown').strip() if img_tag else 'Unknown'
+                        # Remove status indicators from name
+                        for indicator in ['≪12/10入荷予定≫', '≪入荷予定≫', '≪予約≫', '売切', 'SOLD OUT']:
+                            name = name.replace(indicator, '').strip()
+                        
+                        # Extract Text Content for price and status
                         text_content = item.get_text(strip=True, separator='|')
                         parts = text_content.split('|')
                         
-                        name = "Unknown"
                         price = "Unknown"
                         stock_status = "In Stock"
                         
@@ -156,19 +161,7 @@ async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
                                 # If no tax-included pattern found, take the last price
                                 price = prices_found[-1]
                         
-                        # Simple heuristic for Name
-                        # Exclude status text like SOLD OUT, 売切, etc.
-                        potential_names = [
-                            p for p in parts 
-                            if '円' not in p 
-                            and len(p) > 2
-                            and 'SOLD OUT' not in p.upper()
-                            and '売切' not in p
-                            and '入荷予定' not in p
-                        ]
-                        if potential_names:
-                            name = potential_names[0]
-                            
+
                         # Check Stock
                         upper_text = text_content.upper()
                         if '売切' in text_content or 'SOLD OUT' in upper_text:
