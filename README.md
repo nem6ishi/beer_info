@@ -87,8 +87,9 @@ This is the cloud-deployed version of the Craft Beer Watch Japan service, using:
 2. **Enable GitHub Actions** in your repository settings
 
 3. **Workflows will run automatically**:
-   - Scraping: Every 2 hours
-   - Enrichment: Every 6 hours
+   - **Scraping**: Every hour (triggers Gemini enrichment on completion)
+   - **Gemini Enrichment**: After scraping + 4x daily (0:00, 6:00, 12:00, 18:00 JST)
+   - **Untappd Enrichment**: After Gemini enrichment + 2x daily (0:30, 12:30 JST)
 
 You can also trigger workflows manually from the Actions tab.
 
@@ -98,15 +99,16 @@ You can also trigger workflows manually from the Actions tab.
 
 ```bash
 # Scrape to Supabase
-python scripts/scrape_to_supabase.py
+python -m app.cli scrape [--limit N]
 
-# Enrich data in Supabase
-python scripts/enrich_supabase.py --limit 50
+# Enrich with Gemini only (extract brewery/beer names)
+python -m app.cli enrich-gemini [--limit 50]
 
-# Original local-file based CLI (deprecated)
-python -m app.cli serve
-python -m app.cli scrape
-python -m app.cli enrich
+# Enrich with Untappd only (for beers that have Gemini data)
+python -m app.cli enrich-untappd [--limit 50]
+
+# Full enrichment (Gemini + Untappd combined - for backwards compatibility)
+python -m app.cli enrich [--limit 50]
 ```
 
 ### Project Structure

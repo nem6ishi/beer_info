@@ -75,57 +75,73 @@ async def scrape_to_supabase(limit: int = None):
     new_count = 0
     updated_count = 0
     
+    # Group items by shop to maintain shop-specific ordering
+    items_by_shop = {}
+    for item in new_scraped_items:
+        shop = item.get('shop', 'Unknown')
+        if shop not in items_by_shop:
+            items_by_shop[shop] = []
+        items_by_shop[shop].append(item)
+    
     beers_to_upsert = []
     
-    for index, new_item in enumerate(new_scraped_items):
-        url = new_item.get('url')
-        if not url:
-            continue
+    # Process each shop's items with shop-specific scrape_order (reverse-indexed)
+    for shop, items in items_by_shop.items():
+        shop_items_count = len(items)
         
-        existing = existing_data.get(url)
-        
-        beer_data = {
-            'url': url,
-            'name': new_item.get('name'),
-            'price': new_item.get('price'),
-            'image': new_item.get('image'),
-            'stock_status': new_item.get('stock_status'),
-            'shop': new_item.get('shop'),
-            'scrape_order': index,
-            'scrape_timestamp': current_time_iso,
-            'last_seen': current_time_iso,
-        }
-        
-        if existing:
-            # Update existing beer
-            beer_data['first_seen'] = existing.get('first_seen')
-            beer_data['brewery_name_en'] = existing.get('brewery_name_en')
-            beer_data['brewery_name_jp'] = existing.get('brewery_name_jp')
-            beer_data['untappd_url'] = existing.get('untappd_url')
-            beer_data['untappd_fetched_at'] = existing.get('untappd_fetched_at')
+        for shop_index, new_item in enumerate(items):
+            url = new_item.get('url')
+            if not url:
+                continue
             
-            # Restock detection
-            prev_stock = (existing.get('stock_status') or '').lower()
-            new_stock = (new_item.get('stock_status') or '').lower()
+            existing = existing_data.get(url)
             
-            was_sold_out = 'sold' in prev_stock or 'out' in prev_stock
-            is_now_available = not ('sold' in new_stock or 'out' in new_stock)
+            # Reverse scrape_order: first item (newest in store) gets highest number
+            # This ensures that sorting by scrape_order DESC matches store display order
+            reverse_order = shop_items_count - shop_index - 1
             
-            if was_sold_out and is_now_available:
-                beer_data['restocked_at'] = current_time_iso
-                beer_data['available_since'] = current_time_iso
-                print(f"  🔄 Restock: {new_item.get('name', 'Unknown')[:50]}")
+            beer_data = {
+                'url': url,
+                'name': new_item.get('name'),
+                'price': new_item.get('price'),
+                'image': new_item.get('image'),
+                'stock_status': new_item.get('stock_status'),
+                'shop': new_item.get('shop'),
+                'scrape_order': reverse_order,  # Reverse-indexed shop order
+                'scrape_timestamp': current_time_iso,
+                'last_seen': current_time_iso,
+            }
+            
+            if existing:
+                # Update existing beer
+                beer_data['first_seen'] = existing.get('first_seen')
+                beer_data['brewery_name_en'] = existing.get('brewery_name_en')
+                beer_data['brewery_name_jp'] = existing.get('brewery_name_jp')
+                beer_data['untappd_url'] = existing.get('untappd_url')
+                beer_data['untappd_fetched_at'] = existing.get('untappd_fetched_at')
+                
+                # Restock detection
+                prev_stock = (existing.get('stock_status') or '').lower()
+                new_stock = (new_item.get('stock_status') or '').lower()
+                
+                was_sold_out = 'sold' in prev_stock or 'out' in prev_stock
+                is_now_available = not ('sold' in new_stock or 'out' in new_stock)
+                
+                if was_sold_out and is_now_available:
+                    beer_data['restocked_at'] = current_time_iso
+                    beer_data['available_since'] = current_time_iso
+                    print(f"  🔄 Restock: {new_item.get('name', 'Unknown')[:50]}")
+                else:
+                    beer_data['available_since'] = existing.get('available_since') or existing.get('first_seen')
+                
+                updated_count += 1
             else:
-                beer_data['available_since'] = existing.get('available_since') or existing.get('first_seen')
+                # New beer
+                beer_data['first_seen'] = current_time_iso
+                beer_data['available_since'] = current_time_iso
+                new_count += 1
             
-            updated_count += 1
-        else:
-            # New beer
-            beer_data['first_seen'] = current_time_iso
-            beer_data['available_since'] = current_time_iso
-            new_count += 1
-        
-        beers_to_upsert.append(beer_data)
+            beers_to_upsert.append(beer_data)
     
     # Batch upsert
     if beers_to_upsert:

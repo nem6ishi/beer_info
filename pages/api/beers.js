@@ -30,9 +30,11 @@ export default async function handler(req, res) {
         // Sorting
         switch (sort) {
             case 'newest':
+                // Sort by registration time (first_seen), then by shop and shop order (reverse-indexed)
                 query = query
-                    .order('scrape_timestamp', { ascending: false })
-                    .order('scrape_order', { ascending: true })
+                    .order('first_seen', { ascending: false })
+                    .order('shop', { ascending: true })
+                    .order('scrape_order', { ascending: false })  // DESC for reverse-indexed order
                 break
             case 'price_asc':
                 // Note: price is stored as text, so this might need custom handling
@@ -51,9 +53,11 @@ export default async function handler(req, res) {
                 query = query.order('name', { ascending: true })
                 break
             default:
+                // Default: newest registration first
                 query = query
-                    .order('scrape_timestamp', { ascending: false })
-                    .order('scrape_order', { ascending: true })
+                    .order('first_seen', { ascending: false })
+                    .order('shop', { ascending: true })
+                    .order('scrape_order', { ascending: false })  // DESC for reverse-indexed order
         }
 
         // Pagination

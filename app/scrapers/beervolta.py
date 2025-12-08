@@ -148,7 +148,15 @@ async def scrape_beervolta(limit: int = None) -> List[Dict[str, Optional[str]]]:
                                 break
                         
                         # Simple heuristic for Name
-                        potential_names = [p for p in parts if '円' not in p and len(p) > 2]
+                        # Exclude status text like SOLD OUT, 売切, etc.
+                        potential_names = [
+                            p for p in parts 
+                            if '円' not in p 
+                            and len(p) > 2
+                            and 'SOLD OUT' not in p.upper()
+                            and '売切' not in p
+                            and '入荷予定' not in p
+                        ]
                         if potential_names:
                             name = potential_names[0]
                             
