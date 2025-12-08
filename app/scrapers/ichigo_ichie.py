@@ -116,6 +116,16 @@ async def scrape_ichigo_ichie(limit: int = None, existing_urls: set = None) -> L
                              #     stop_scan = True
                              #     break
 
+                             if p_item['stock_status'] == "Sold Out":
+                                 consecutive_sold_out += 1
+                             else:
+                                 consecutive_sold_out = 0
+                             
+                             if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                                  print(f"[Ichigo Ichie] ⚠️  Early stop in Smart Mode: {consecutive_sold_out} consecutive sold-out items detected.")
+                                  stop_scan = True
+                                  break
+
                         except Exception as e:
                              print(f"[Ichigo Ichie] Error parsing item: {e}")
                              continue
