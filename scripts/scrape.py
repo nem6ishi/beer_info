@@ -47,7 +47,7 @@ def parse_timestamp(ts_str):
         return None
 
 
-async def scrape_to_supabase(limit: int = None, smart: bool = False, full_scrape: bool = False):
+async def scrape_to_supabase(limit: int = None, smart: bool = False, full_scrape: bool = False, reset_first_seen: bool = False):
     """
     Scrape and write directly to Supabase (scraped_beers table).
     
@@ -169,7 +169,7 @@ async def scrape_to_supabase(limit: int = None, smart: bool = False, full_scrape
                 'last_seen': current_time_iso, # Last seen is always "Now"
             }
             
-            if existing:
+            if existing and not reset_first_seen:
                 # Update existing beer
                 beer_data['first_seen'] = existing.get('first_seen')
                 # Preserve link to Untappd Data
@@ -214,7 +214,8 @@ if __name__ == "__main__":
     parser.add_argument('--limit', type=int, help='Limit items per scraper')
     parser.add_argument('--smart', action='store_true', help='Smart scrape')
     parser.add_argument('--full', action='store_true', help='Full scrape (ignore sold-out threshold)')
+    parser.add_argument('--reset-dates', action='store_true', help='Reset first_seen timestamps')
     
     args = parser.parse_args()
     
-    asyncio.run(scrape_to_supabase(limit=args.limit, smart=args.smart, full_scrape=args.full))
+    asyncio.run(scrape_to_supabase(limit=args.limit, smart=args.smart, full_scrape=args.full, reset_first_seen=args.reset_dates))

@@ -15,6 +15,8 @@ def main():
     scrape_parser.add_argument("--limit", type=int, help="Limit number of items to scrape", default=None)
     # Reverse argument removed
     scrape_parser.add_argument("--smart", action="store_true", help="Smart scrape: Detect new items")
+    scrape_parser.add_argument("--full", action="store_true", help="Full scrape: Ignore limits")
+    scrape_parser.add_argument("--reset-dates", action="store_true", help="Reset first_seen timestamps")
 
     # Enrich Gemini only
     enrich_gemini_parser = subparsers.add_parser("enrich-gemini", help="Run Gemini enrichment only")
@@ -34,7 +36,7 @@ def main():
 
     if args.command == "scrape":
         from scripts.scrape import scrape_to_supabase
-        asyncio.run(scrape_to_supabase(limit=args.limit, smart=args.smart))
+        asyncio.run(scrape_to_supabase(limit=args.limit, smart=args.smart, full_scrape=args.full, reset_first_seen=args.reset_dates))
     elif args.command == "enrich-gemini":
         from scripts.enrich_gemini import enrich_gemini
         asyncio.run(enrich_gemini(limit=args.limit))
