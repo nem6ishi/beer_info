@@ -21,6 +21,7 @@ def main():
     # Enrich Gemini only
     enrich_gemini_parser = subparsers.add_parser("enrich-gemini", help="Run Gemini enrichment only")
     enrich_gemini_parser.add_argument("--limit", type=int, help="Limit number of items to enrich", default=50)
+    enrich_gemini_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
     
     # Enrich Untappd only
     enrich_untappd_parser = subparsers.add_parser("enrich-untappd", help="Run Untappd enrichment only")
@@ -40,7 +41,7 @@ def main():
         asyncio.run(scrape_to_supabase(limit=args.limit, smart=args.smart, full_scrape=args.full, reset_first_seen=args.reset_dates))
     elif args.command == "enrich-gemini":
         from scripts.enrich_gemini import enrich_gemini
-        asyncio.run(enrich_gemini(limit=args.limit))
+        asyncio.run(enrich_gemini(limit=args.limit, shop_filter=args.shop))
     elif args.command == "enrich-untappd":
         from scripts.enrich_untappd import enrich_untappd
         asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode))

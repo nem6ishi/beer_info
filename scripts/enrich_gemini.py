@@ -17,10 +17,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.services.gemini_extractor import GeminiExtractor
 from app.services.brewery_manager import BreweryManager
 try:
-    from scripts.enrich_untappd import process_beer
+    from scripts.enrich_untappd import process_beer_missing
 except ImportError:
     # If running directly from scripts dir
-    from enrich_untappd import process_beer
+    from enrich_untappd import process_beer_missing
 
 # Load environment variables
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
@@ -40,7 +40,7 @@ if not GEMINI_API_KEY:
     sys.exit(1)
 
 
-async def enrich_gemini(limit: int = 50):
+async def enrich_gemini(limit: int = 50, shop_filter: str = None):
     """
     Enrich beers with Gemini extraction only.
     Loops until all eligible beers are processed.
@@ -48,7 +48,10 @@ async def enrich_gemini(limit: int = 50):
     print("=" * 70)
     print("🤖 Gemini Enrichment (Supabase)")
     print("=" * 70)
-    print(f"Target: All beers without Gemini data (Batch size: {limit})")
+    target_msg = f"Target: All beers without Gemini data"
+    if shop_filter:
+        target_msg += f" (Shop: {shop_filter})"
+    print(f"{target_msg} (Batch size: {limit})")
     print(f"Started at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Create Supabase client
@@ -80,10 +83,15 @@ async def enrich_gemini(limit: int = 50):
         # Get beers that need Gemini enrichment OR Untappd enrichment
         # Use verified view to find missing data
         print(f"\n📂 Loading batch of beers from beer_info_view (Batch Target: {current_batch_size})...")
-        response = supabase.table('beer_info_view') \
+        
+        query = supabase.table('beer_info_view') \
             .select('*') \
-            .or_('brewery_name_en.is.null,untappd_url.is.null') \
-            .order('first_seen', desc=True) \
+            .or_('brewery_name_en.is.null,untappd_url.is.null')
+            
+        if shop_filter:
+            query = query.eq('shop', shop_filter)
+            
+        response = query.order('first_seen', desc=True) \
             .limit(current_batch_size) \
             .execute()
         
@@ -160,7 +168,7 @@ async def enrich_gemini(limit: int = 50):
                 try:
                      print("  🔗 Chaining Untappd enrichment...")
                      # Note: process_beer handles its own DB updates (to untappd_data/scraped_beers)
-                     await process_beer(beer, supabase, brewery_manager)
+                     await process_beer_missing(beer, supabase)
                 except Exception as e:
                     total_errors += 1
             else:
