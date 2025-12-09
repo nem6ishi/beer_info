@@ -78,8 +78,9 @@ async def enrich_gemini(limit: int = 50):
         current_batch_size = min(1000, remaining)
         
         # Get beers that need Gemini enrichment
-        print(f"\n📂 Loading batch of beers from Supabase (Batch Target: {current_batch_size})...")
-        response = supabase.table('beers') \
+        # Use verified view to find missing data
+        print(f"\n📂 Loading batch of beers from beer_info_view (Batch Target: {current_batch_size})...")
+        response = supabase.table('beer_info_view') \
             .select('*') \
             .is_('brewery_name_en', None) \
             .is_('brewery_name_jp', None) \
@@ -114,39 +115,50 @@ async def enrich_gemini(limit: int = 50):
                 enriched_info = await extractor.extract_info(beer['name'], known_brewery=known_brewery)
                 
                 if enriched_info:
-                    if enriched_info.get('brewery_name_jp'):
-                        updates['brewery_name_jp'] = enriched_info['brewery_name_jp']
-                    if enriched_info.get('brewery_name_en'):
-                        updates['brewery_name_en'] = enriched_info['brewery_name_en']
-                    if enriched_info.get('beer_name_jp'):
-                        updates['beer_name_jp'] = enriched_info['beer_name_jp']
-                    if enriched_info.get('beer_name_en'):
-                        updates['beer_name_en'] = enriched_info['beer_name_en']
+                    print("  ✅ Gemini Extraction Success:")
+                    print(f"     Brewery (EN): {enriched_info.get('brewery_name_en')}")
+                    print(f"     Brewery (JP): {enriched_info.get('brewery_name_jp')}")
+                    print(f"     Beer (EN):    {enriched_info.get('beer_name_en')}")
                     
-                    print(f"  ✅ Extracted:")
-                    print(f"     Brewery: {updates.get('brewery_name_en', 'N/A')} / {updates.get('brewery_name_jp', 'N/A')}")
-                    print(f"     Beer: {updates.get('beer_name_en', 'N/A')} / {updates.get('beer_name_jp', 'N/A')}")
+                    # Store enrichment data
+                    gemini_payload = {
+                        'url': beer['url'], # Key
+                        'brewery_name_en': enriched_info.get('brewery_name_en'),
+                        'brewery_name_jp': enriched_info.get('brewery_name_jp'),
+                        'beer_name_en': enriched_info.get('beer_name_en'),
+                        'beer_name_jp': enriched_info.get('beer_name_jp'),
+                        'payload': enriched_info.get('raw_response'), # Save raw for debugging
+                        'updated_at': datetime.now(timezone.utc).isoformat()
+                    }
+
+                    # Upsert to gemini_data table
+                    try:
+                        supabase.table('gemini_data').upsert(gemini_payload).execute()
+                        print(f"  💾 Saved to gemini_data table")
+                    except Exception as e:
+                         print(f"  ❌ Error saving to gemini_data: {e}")
+                         continue
+
+                    # Merge for Untappd step (process_beer expects these in the beer dict or separate db fetch)
+                    # We update the 'beer' object in memory so process_beer has the info
+                    beer.update(gemini_payload)
+                    updates = gemini_payload # Marker that we have updates
+
                     total_enriched += 1
                 else:
-                    print(f"  ⚠️  Gemini returned no data")
+                    print("  ⚠️  Gemini returned no info")
             
             except Exception as e:
-                print(f"  ❌ Gemini error: {e}")
+                print(f"  ❌ Error during Gemini processing: {e}")
                 total_errors += 1
             
-            # Update database with new info
+            # Chain Untappd processing if successful
             if updates:
                 try:
-                    supabase.table('beers').update(updates).eq('id', beer['id']).execute()
-                    print(f"  💾 Updated database")
-                    
-                    # Sequential: Trigger Untappd enrichment immediately
-                    print(f"  🔗 Triggering Untappd enrichment...")
-                    beer.update(updates) # Keep local object in sync
-                    await process_beer(beer, supabase, brewery_manager)
-                    
+                     print("  🔗 Chaining Untappd enrichment...")
+                     # Note: process_beer handles its own DB updates (to untappd_data/scraped_beers)
+                     await process_beer(beer, supabase, brewery_manager)
                 except Exception as e:
-                    print(f"  ❌ Database update error: {e}")
                     total_errors += 1
             else:
                  # If no updates, we must mark it as processed to avoid infinite loop

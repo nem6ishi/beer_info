@@ -20,7 +20,7 @@ export default async function handler(req, res) {
 
         // Build query
         let query = supabase
-            .from('beers')
+            .from('beer_info_view')
             .select('*', { count: 'exact' })
 
         // Apply shop filter if provided

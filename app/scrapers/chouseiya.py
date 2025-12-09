@@ -9,11 +9,67 @@ from datetime import datetime
 # Threshold for consecutive sold-out items before stopping
 SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '50'))
 
-async def scrape_chouseiya(limit: int = None, existing_urls: set = None) -> List[Dict[str, Optional[str]]]:
+def extract_product_data(item):
+    """Helper to extract product data from a soup item."""
+    try:
+        img_wrap = item.select_one('div.imgWrap')
+        if not img_wrap: return None
+        
+        link_tag = img_wrap.find('a')
+        img_tag = img_wrap.find('img')
+        
+        if not link_tag: return None
+        
+        href = link_tag.get('href')
+        product_url = f"https://beer-chouseiya.shop{href}" if href.startswith('/') else href
+        
+        image_url = None
+        if img_tag:
+            src = img_tag.get('src')
+            image_url = f"https://beer-chouseiya.shop{src}" if src.startswith('/') else src
+        
+        detail = item.select_one('div.detail')
+        name = "Unknown"
+        price = "Unknown"
+        stock_status = "In Stock"
+        
+        if detail:
+            name_tag = detail.select_one('p.name')
+            if name_tag:
+                name = name_tag.get_text(strip=True)
+            
+            price_tag = detail.select_one('p.price')
+            if price_tag:
+                price_text = price_tag.get_text(strip=True)
+                price = price_text
+                
+            quantity_tag = detail.select_one('p.quantity')
+            qty_text = quantity_tag.get_text(strip=True) if quantity_tag else ""
+            detail_text = detail.get_text(strip=True)
+            
+            if "売り切れ" in qty_text or "0個" in qty_text:
+                stock_status = "Sold Out"
+            elif "売り切れ" in detail_text or "SOLD OUT" in detail_text.upper():
+                stock_status = "Sold Out"
+        
+        return {
+            "name": name,
+            "price": price,
+            "url": product_url,
+            "image": image_url,
+            "stock_status": stock_status,
+            "shop": "ちょうせいや"
+        }
+
+    except Exception as e:
+        print(f"[Chouseiya] Error parsing item: {e}")
+        return None
+
+async def scrape_chouseiya(limit: int = None, existing_urls: set = None, full_scrape: bool = False) -> List[Dict[str, Optional[str]]]:
     """
     Scrapes product information from Chouseiya using httpx and BeautifulSoup.
     Handles EUC-JP encoding manually.
-    Stops early if too many consecutive sold-out items are found.
+    Stops early if too many consecutive sold-out items are found, unless full_scrape is True.
     """
     base_url = "https://beer-chouseiya.shop/shopbrand/all_items/page{}/order/"
     all_items = []
@@ -63,72 +119,30 @@ async def scrape_chouseiya(limit: int = None, existing_urls: set = None) -> List
                      page_items = []
                      
                      for item in item_elements:
-                         try:
-                            img_wrap = item.select_one('div.imgWrap')
-                            if not img_wrap: continue
-                            link_tag = img_wrap.find('a')
-                            if not link_tag: continue
-                            href = link_tag.get('href')
-                            product_url = f"https://beer-chouseiya.shop{href}" if href.startswith('/') else href
-                            
-                            # Check existing
-                            if product_url in existing_urls:
-                                consecutive_existing += 1
-                            else:
-                                consecutive_existing = 0
-                            
-                            # Parse details
-                            img_tag = img_wrap.find('img')
-                            image_url = None
-                            if img_tag:
-                                src = img_tag.get('src')
-                                image_url = f"https://beer-chouseiya.shop{src}" if src.startswith('/') else src
-                            
-                            detail = item.select_one('div.detail')
-                            name = "Unknown"
-                            price = "Unknown"
-                            stock_status = "In Stock"
-                            
-                            if detail:
-                                name_tag = detail.select_one('p.name')
-                                if name_tag: name = name_tag.get_text(strip=True)
-                                
-                                price_tag = detail.select_one('p.price')
-                                if price_tag: price = price_tag.get_text(strip=True)
-                                    
-                                quantity_tag = detail.select_one('p.quantity')
-                                qty_text = quantity_tag.get_text(strip=True) if quantity_tag else ""
-                                detail_text = detail.get_text(strip=True)
-                                
-                                if "売り切れ" in qty_text or "0個" in qty_text: stock_status = "Sold Out"
-                                elif "売り切れ" in detail_text or "SOLD OUT" in detail_text.upper(): stock_status = "Sold Out"
-                            
-                            p_item = {
-                                "name": name,
-                                "price": price,
-                                "url": product_url,
-                                "image": image_url,
-                                "stock_status": stock_status,
-                                "shop": "ちょうせいや"
-                            }
-                            
-                            all_items.append(p_item)
-                            page_items.append(p_item)
-                            
-                            if limit and len(all_items) >= limit:
-                                print(f"[Chouseiya] Limit reached ({limit}). Stopping scan.")
-                                stop_scan = True
-                                break
-                            
-                            # Existing item check removed
-                            # if consecutive_existing >= 10:
-                            #    print(f"[Chouseiya] Found 10 consecutive existing items. Stopping scan.")
-                            #    stop_scan = True
-                            #    break
-                                
-                         except Exception as e:
-                             print(f"[Chouseiya] Error parsing item: {e}")
-                             continue
+                        p_item = extract_product_data(item)
+                        if not p_item: continue
+                        
+                        product_url = p_item['url']
+                        
+                        # Check existing
+                        if product_url in existing_urls:
+                            consecutive_existing += 1
+                        else:
+                            consecutive_existing = 0
+                        
+                        all_items.append(p_item)
+                        page_items.append(p_item)
+                        
+                        if limit and len(all_items) >= limit:
+                            print(f"[Chouseiya] Limit reached ({limit}). Stopping scan.")
+                            stop_scan = True
+                            break
+                        
+                        # Existing item check removed
+                        # if consecutive_existing >= 10:
+                        #    print(f"[Chouseiya] Found 10 consecutive existing items. Stopping scan.")
+                        #    stop_scan = True
+                        #    break
                      
                      if not stop_scan:
                          scan_page += 1
@@ -143,7 +157,7 @@ async def scrape_chouseiya(limit: int = None, existing_urls: set = None) -> List
             
              print(f"[Chouseiya] Smart Scrape Finished. Buffered {len(all_items)} items.")
              return all_items # Return immediately
-
+        
         
         # Infinite loop until 404 or empty
         page_num = start_page
@@ -187,62 +201,10 @@ async def scrape_chouseiya(limit: int = None, existing_urls: set = None) -> List
                     break
                 
                 for item in item_elements:
-                    try:
-                        # Extract Image and potentially URL (from imgWrap)
-                        img_wrap = item.select_one('div.imgWrap')
-                        if not img_wrap: continue
-                        
-                        link_tag = img_wrap.find('a')
-                        img_tag = img_wrap.find('img')
-                        
-                        if not link_tag: continue
-                        
-                        href = link_tag.get('href')
-                        product_url = f"https://beer-chouseiya.shop{href}" if href.startswith('/') else href
-                        
-                        image_url = None
-                        if img_tag:
-                            src = img_tag.get('src')
-                            image_url = f"https://beer-chouseiya.shop{src}" if src.startswith('/') else src
-                        
-                        # Extract Details
-                        detail = item.select_one('div.detail')
-                        name = "Unknown"
-                        price = "Unknown"
-                        stock_status = "In Stock"
-                        
-                        if detail:
-                            name_tag = detail.select_one('p.name')
-                            if name_tag:
-                                name = name_tag.get_text(strip=True)
-                            
-                            price_tag = detail.select_one('p.price')
-                            if price_tag:
-                                price_text = price_tag.get_text(strip=True)
-                                price = price_text
-                                
-                            # Robust Stock Status Detection
-                            quantity_tag = detail.select_one('p.quantity')
-                            qty_text = quantity_tag.get_text(strip=True) if quantity_tag else ""
-                            detail_text = detail.get_text(strip=True)
-                            
-                            if "売り切れ" in qty_text or "0個" in qty_text:
-                                stock_status = "Sold Out"
-                            elif "売り切れ" in detail_text or "SOLD OUT" in detail_text.upper():
-                                stock_status = "Sold Out"
-                        
-                        page_items.append({
-                            "name": name,
-                            "price": price,
-                            "url": product_url,
-                            "image": image_url,
-                            "stock_status": stock_status,
-                            "shop": "ちょうせいや"
-                        })
-
-                    except Exception as e:
-                        print(f"[Chouseiya] Error parsing item: {e}")
-                        continue
+                    p_item = extract_product_data(item)
+                    if not p_item: continue
+                    
+                    page_items.append(p_item)
                 
                 for p_item in page_items:
                     if p_item['stock_status'] == "Sold Out":
@@ -251,7 +213,7 @@ async def scrape_chouseiya(limit: int = None, existing_urls: set = None) -> List
                         consecutive_sold_out = 0
                         
                     # Check threshold
-                    if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                    if not full_scrape and consecutive_sold_out >= SOLD_OUT_THRESHOLD:
                         print(f"[Chouseiya] ⚠️  Early stop: {consecutive_sold_out} consecutive sold-out items detected.")
                         pass 
 
@@ -262,7 +224,7 @@ async def scrape_chouseiya(limit: int = None, existing_urls: set = None) -> List
                 if limit and len(all_items) >= limit:
                     break
 
-                if consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                if not full_scrape and consecutive_sold_out >= SOLD_OUT_THRESHOLD:
                     print(f"[Chouseiya] Stopping pagination due to consecutive sold-out items.")
                     break
                 

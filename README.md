@@ -52,7 +52,8 @@ This is the cloud-deployed version of the Craft Beer Watch Japan service, using:
    npm install
    
    # Python (for scraping/enrichment)
-   pip install -r requirements.txt
+   # We use uv for dependency management
+   uv sync
    ```
 
 6. **Run locally**
@@ -99,16 +100,16 @@ You can also trigger workflows manually from the Actions tab.
 
 ```bash
 # Scrape to Supabase
-python -m app.cli scrape [--limit N]
+uv run python -m app.cli scrape [--limit N]
 
 # Enrich with Gemini only (extract brewery/beer names)
-python -m app.cli enrich-gemini [--limit 50]
+uv run python -m app.cli enrich-gemini [--limit 50]
 
 # Enrich with Untappd only (for beers that have Gemini data)
-python -m app.cli enrich-untappd [--limit 50]
+uv run python -m app.cli enrich-untappd [--limit 50]
 
 # Full enrichment (Gemini + Untappd combined - for backwards compatibility)
-python -m app.cli enrich [--limit 50]
+uv run python -m app.cli enrich [--limit 50]
 ```
 
 ### Project Structure

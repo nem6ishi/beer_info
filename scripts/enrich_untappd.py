@@ -30,9 +30,11 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 async def process_beer(beer, supabase, brewery_manager=None):
     """
-    Process a single beer: search Untappd, scrape details, update DB, and optionally update brewery manager.
+    Process a single beer: search Untappd, scrape details, update DB (untappd_data, scraped_beers, gemini_data).
     """
-    updates = {}
+    scraped_updates = {} # Updates for scraped_beers table (link)
+    untappd_payload = {} # Updates for untappd_data table (master info)
+    gemini_updates = {}  # Updates for gemini_data table (persistence)
     
     # Extract brewery and beer names
     brewery = beer.get('brewery_name_en') or beer.get('brewery_name_jp')
@@ -45,6 +47,10 @@ async def process_beer(beer, supabase, brewery_manager=None):
     try:
         untappd_url = beer.get('untappd_url')
         
+        # 1. OPTIMIZATION: Check if we have this URL in gemini_data already (if not passed in beer)
+        # The view should have it, but if it was just added to the schema, it might be null in view but passed here?
+        # Actually, let's rely on what's passed or search.
+        
         # Use existing URL if valid, otherwise search
         if untappd_url and "untappd.com" in untappd_url:
             print(f"  🔗 Using existing URL: {untappd_url}")
@@ -53,66 +59,99 @@ async def process_beer(beer, supabase, brewery_manager=None):
             untappd_url = get_untappd_url(brewery, beer_name)
         
         if untappd_url:
-            updates['untappd_url'] = untappd_url
+            scraped_updates['untappd_url'] = untappd_url
+            gemini_updates['untappd_url'] = untappd_url # PERSISTENCE
+            untappd_payload['untappd_url'] = untappd_url # PK
+            
             print(f"  ✅ Found URL: {untappd_url}")
             
-            # If it's a direct beer page, scrape details
-            if "untappd.com/b/" in untappd_url:
+            # 2. OPTIMIZATION: Check if this URL already exists in untappd_data table
+            # If so, we don't need to re-scrape attributes (style, abv, etc.)
+            existing_entry = supabase.table('untappd_data').select('untappd_url').eq('untappd_url', untappd_url).execute()
+            
+            if existing_entry.data:
+                print(f"  💾 Data already exists in untappd_data. Skipping scrape.")
+                untappd_payload = {} # No content updates needed for master table
+                # We still proceed to update links (scraped_beers, gemini_data)
+            
+            # If not in DB, scrape details
+            elif "untappd.com/b/" in untappd_url:
                 await asyncio.sleep(2)  # Rate limiting
                 print(f"  🔄 Scraping beer details...")
                 
                 try:
                     details = scrape_beer_details(untappd_url)
                     if details:
-                        updates.update(details)
-                        updates['untappd_fetched_at'] = datetime.now(timezone.utc).isoformat()
-                        print(f"  ✅ Details scraped:")
-                        print(f"     Style: {details.get('untappd_style', 'N/A')}")
-                        print(f"     ABV: {details.get('untappd_abv', 'N/A')}, IBU: {details.get('untappd_ibu', 'N/A')}")
-                        print(f"     Rating: {details.get('untappd_rating', 'N/A')} ({details.get('untappd_rating_count', 'N/A')})")
+                        # Map details to untappd_data columns
+                        untappd_payload.update({
+                            'beer_name': details.get('untappd_beer_name'),
+                            'brewery_name': details.get('untappd_brewery_name'),
+                            'style': details.get('untappd_style'),
+                            'abv': details.get('untappd_abv'),
+                            'ibu': details.get('untappd_ibu'),
+                            'rating': details.get('untappd_rating'),
+                            'rating_count': details.get('untappd_rating_count'),
+                            'image_url': details.get('untappd_label'),
+                            'fetched_at': datetime.now(timezone.utc).isoformat()
+                        })
+
+                        print(f"  ✅ Details scraped: {details.get('untappd_style', 'N/A')}")
                     else:
                         print(f"  ⚠️  Could not scrape details from page")
+                        untappd_payload['fetched_at'] = datetime.now(timezone.utc).isoformat()
                 except Exception as detail_error:
                     print(f"  ⚠️  Error scraping details: {detail_error}")
         else:
             print(f"  ❌ Untappd URL not found")
-            updates['untappd_url'] = "NOT_FOUND" 
+            return None
     
     except Exception as e:
         print(f"  ❌ Untappd search error: {e}")
         return None
     
-    # Update database
-    if updates:
+    # Update databases
+    success = False
+    
+    # 1. Upsert to untappd_data (only if we have new payload)
+    if untappd_payload:
         try:
-            supabase.table('beers').update(updates).eq('id', beer['id']).execute()
-            print(f"  💾 Updated database")
-            
-            # Immediate brewery update if manager is provided
-            if brewery_manager:
-                # Create a temporary beer dict with updates applied to extract brewery info
-                enriched_beer = beer.copy()
-                enriched_beer.update(updates)
-                
-                # We need ensure untappd_brewery_name is present if we scraped it
-                # It comes from 'details' which is merged into updates.
-                
-                new_count = brewery_manager.extract_breweries_from_beers([enriched_beer])
-                if new_count > 0:
-                    brewery_manager.save_breweries()
-                    print(f"  🏭 Saved new brewery info")
-                    
+            supabase.table('untappd_data').upsert(untappd_payload).execute()
+            print(f"  💾 Saved to untappd_data table")
+            success = True
         except Exception as e:
-            print(f"  ❌ Database update error: {e}")
+            print(f"  ❌ Error saving to untappd_data: {e}")
+
+    # 2. Update gemini_data (PERSISTENCE)
+    # Be careful: gemini_data PK is 'url' (product url). We need that from 'beer' dict.
+    if gemini_updates and beer.get('url'):
+        try:
+            # We used to upsert entire gemini payload, but here we just want to update one field?
+            # 'gemini_data' has 'url' as PK.
+            supabase.table('gemini_data').update(gemini_updates).eq('url', beer['url']).execute()
+            print(f"  💾 Persisted URL to gemini_data")
+        except Exception as e:
+            # Check if this is "column does not exist" error to fallback gracefully?
+            # User said "done", so we assume column exists.
+            print(f"  ⚠️ Error updating gemini_data (maybe column missing?): {e}")
+
+    # 3. Update scraped_beers (Link)
+    if scraped_updates:
+        try:
+            supabase.table('scraped_beers').update(scraped_updates).eq('url', beer['url']).execute()
+            print(f"  🔗 Linked scraped_beer to Untappd URL")
+            success = True
+                
+        except Exception as e:
+            print(f"  ❌ Error updating scraped_beers: {e}")
             return None
             
-    return updates
+    return untappd_payload or scraped_updates # Return truthy if we did something useful
 
 
 async def enrich_untappd(limit: int = 50):
     """Enrich beers with Untappd data only. Loops until all processed."""
     print("=" * 70)
-    print("🍺 Untappd Enrichment (Supabase)")
+    print("🍺 Untappd Enrichment (Supabase: Normalized)")
     print("=" * 70)
     print(f"Target: All beers with Gemini data but no Untappd URL (Batch size: {limit})")
     print(f"Started at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
@@ -132,8 +171,9 @@ async def enrich_untappd(limit: int = 50):
     
     while True:
         # Get beers that have Gemini data but no Untappd URL
-        print(f"\n📂 Loading batch of beers from Supabase (Limit: {batch_size})...")
-        response = supabase.table('beers') \
+        # We use the VIEW
+        print(f"\n📂 Loading batch of beers from beer_info_view (Limit: {batch_size})...")
+        response = supabase.table('beer_info_view') \
             .select('*') \
             .not_.is_('brewery_name_en', None) \
             .is_('untappd_rating', None) \
@@ -141,21 +181,8 @@ async def enrich_untappd(limit: int = 50):
             .limit(batch_size) \
             .execute()
         
-        # Also try beers with brewery_name_jp but no brewery_name_en
-        if len(response.data) < batch_size:
-            response2 = supabase.table('beers') \
-                .select('*') \
-                .not_.is_('brewery_name_jp', None) \
-                .is_('untappd_rating', None) \
-                .order('first_seen', desc=True) \
-                .limit(batch_size - len(response.data)) \
-                .execute()
-            
-            # Merge results, avoiding duplicates
-            existing_ids = {b['id'] for b in response.data}
-            for beer in response2.data:
-                if beer['id'] not in existing_ids:
-                    response.data.append(beer)
+        # Also try beers with brewery_name_jp but no brewery_name_en logic? 
+        # The view makes it simple. We prioritize those with Gemini data.
         
         beers = response.data
         print(f"  Found {len(beers)} beers needing Untappd enrichment")
@@ -173,9 +200,8 @@ async def enrich_untappd(limit: int = 50):
             updates = await process_beer(beer, supabase, brewery_manager)
             
             if updates:
-                if 'untappd_url' in updates and updates['untappd_url'] != "NOT_FOUND":
-                    total_untappd_found += 1
-                if 'untappd_style' in updates:
+                total_untappd_found += 1
+                if 'style' in updates:
                     total_details_scraped += 1
             else:
                 # If None returned, it's an error or skip. 
@@ -196,24 +222,27 @@ async def enrich_untappd(limit: int = 50):
     print(f"  Errors: {total_errors}")
     
     # Update brewery database
-    print(f"\n🏭 Updating brewery database...")
-    brewery_manager = BreweryManager()
+    # The brewery manager logic is currently simplified/skipped in process_beer
+    # If full brewery management is needed, this section would need to be re-evaluated
+    # based on the new untappd_data table structure.
+    # For now, we'll keep the manager initialization but remove the final update loop.
+    # brewery_manager = BreweryManager() # Already initialized above
     
     # Get all beers with Untappd data to extract breweries
-    all_enriched = supabase.table('beers') \
-        .select('untappd_brewery_name, brewery_name_en, brewery_name_jp') \
-        .not_.is_('untappd_brewery_name', None) \
-        .execute()
+    # all_enriched = supabase.table('beers') \
+    #     .select('untappd_brewery_name, brewery_name_en, brewery_name_jp') \
+    #     .not_.is_('untappd_brewery_name', None) \
+    #     .execute()
     
-    new_breweries = brewery_manager.extract_breweries_from_beers(all_enriched.data)
-    if new_breweries > 0:
-        brewery_manager.save_breweries()
-        print(f"  ✅ Added {new_breweries} new breweries")
-    else:
-        print(f"  ℹ️  No new breweries to add")
+    # new_breweries = brewery_manager.extract_breweries_from_beers(all_enriched.data)
+    # if new_breweries > 0:
+    #     brewery_manager.save_breweries()
+    #     print(f"  ✅ Added {new_breweries} new breweries")
+    # else:
+    #     print(f"  ℹ️  No new breweries to add")
     
-    stats = brewery_manager.get_stats()
-    print(f"  📊 Total breweries: {stats['total_breweries']}")
+    # stats = brewery_manager.get_stats()
+    # print(f"  📊 Total breweries: {stats['total_breweries']}")
     
     print(f"\n  Completed at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
     

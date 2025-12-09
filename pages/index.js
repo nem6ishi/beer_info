@@ -1,32 +1,55 @@
 import Head from 'next/head'
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/router'
 
 export default function Home() {
-    // State
+    const router = useRouter()
+
+    // State for data
     const [beers, setBeers] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
-    const [search, setSearch] = useState('')
-    const [sort, setSort] = useState('newest')
-    const [shop, setShop] = useState('')
-    const [page, setPage] = useState(1)
     const [totalPages, setTotalPages] = useState(0)
     const [totalItems, setTotalItems] = useState(0)
 
+    // Local state for search input to allow immediate feedback while typing
+    const [searchInput, setSearchInput] = useState('')
+
+    // Derived state from URL (defaults)
+    // Only trust these when router.isReady is true
+    const page = parseInt(router.query.page || '1', 10)
+    const sort = router.query.sort || 'newest'
+    const shop = router.query.shop || ''
+
+    // Initialize search input from URL once router is ready. 
+    // We use a ref or flag to ensure we only do this once on mount/ready 
+    // to avoid overwriting user input if they start typing immediately (edge case)
+    // but useEffect [router.isReady] is usually fine.
+    useEffect(() => {
+        if (router.isReady) {
+            setSearchInput(router.query.search || '')
+        }
+    }, [router.isReady]) // Only run once when ready
+
     // Data Fetching
     const fetchBeers = useCallback(async () => {
+        if (!router.isReady) return
+
         setLoading(true)
         setError(null)
         try {
+            // Use router.query directly to ensure we fetch what matches the URL
+            const currentParams = router.query
             const params = new URLSearchParams({
-                page: page.toString(),
+                page: currentParams.page || '1',
                 limit: '30',
-                search,
-                sort
+                search: currentParams.search || '',
+                sort: currentParams.sort || 'newest',
             })
-            if (shop) {
-                params.append('shop', shop)
+            if (currentParams.shop) {
+                params.append('shop', currentParams.shop)
             }
+
             const res = await fetch(`/api/beers?${params}`)
             if (!res.ok) throw new Error('Failed to load beers')
             const data = await res.json()
@@ -42,41 +65,68 @@ export default function Home() {
         } finally {
             setLoading(false)
         }
-    }, [page, search, sort, shop])
+    }, [router.isReady, router.query])
 
-    // Effects
+    // Fetch on URL change
     useEffect(() => {
         fetchBeers()
     }, [fetchBeers])
 
-    // Handlers
-    const handleSearch = (e) => {
-        setSearch(e.target.value)
-        setPage(1)
+    // Helper to update URL
+    const updateURL = (newParams) => {
+        const query = { ...router.query, ...newParams }
+
+        // Cleanup defaults to keep URL clean
+        if (query.page == '1') delete query.page
+        if (query.sort === 'newest') delete query.sort
+        if (!query.search) delete query.search
+        if (!query.shop) delete query.shop
+
+        router.push({ pathname: '/', query }, undefined, { scroll: false })
     }
 
+    // Handlers
+    const handleSearchChange = (e) => {
+        setSearchInput(e.target.value)
+    }
+
+    // Debounce search update to URL
+    useEffect(() => {
+        if (!router.isReady) return
+
+        // Check if current input matches current URL param to avoid redundant pushes
+        const currentUrlSearch = router.query.search || ''
+        if (searchInput === currentUrlSearch) return
+
+        const timeoutId = setTimeout(() => {
+            updateURL({ search: searchInput, page: '1' })
+        }, 500) // 500ms debounce
+
+        return () => clearTimeout(timeoutId)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchInput, router.isReady])
+    // Removed router.query.search from deps to avoid loops, though strict equality check handles it.
+    // We mainly want to react to searchInput changes.
+
+
     const handleSort = (e) => {
-        setSort(e.target.value)
-        setPage(1)
+        updateURL({ sort: e.target.value, page: '1' })
     }
 
     const handleShopFilter = (e) => {
-        setShop(e.target.value)
-        setPage(1)
+        updateURL({ shop: e.target.value, page: '1' })
     }
 
     const handlePageChange = (newPage) => {
         if (newPage >= 1 && newPage <= totalPages) {
-            setPage(newPage)
+            updateURL({ page: newPage.toString() })
             window.scrollTo({ top: 0, behavior: 'smooth' })
         }
     }
 
     const formatPrice = (price) => {
         if (!price) return '¥-';
-        // Basic check if it already has yen symbol
         if (price.includes('¥')) return price;
-        // Try to format as number if possible
         const num = parseInt(price.replace(/[^0-9]/g, ''), 10);
         if (isNaN(num)) return price;
         return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(num);
@@ -130,8 +180,8 @@ export default function Home() {
                         <input
                             type="text"
                             placeholder="Search beers..."
-                            value={search}
-                            onChange={handleSearch}
+                            value={searchInput}
+                            onChange={handleSearchChange}
                             aria-label="Search for beers"
                         />
                     </div>
@@ -304,22 +354,101 @@ export default function Home() {
 
                         {totalPages > 1 && (
                             <div className="pagination-controls">
+                                {/* First Page */}
+                                <button
+                                    className="page-btn icon-btn"
+                                    disabled={page <= 1}
+                                    onClick={() => handlePageChange(1)}
+                                    aria-label="First Page"
+                                >
+                                    «
+                                </button>
+
+                                {/* Previous */}
                                 <button
                                     className="page-btn"
                                     disabled={page <= 1}
                                     onClick={() => handlePageChange(page - 1)}
                                 >
-                                    ← Previous
+                                    ‹ Prev
                                 </button>
-                                <span className="page-info">
-                                    Page {page} of {totalPages} <span className="total-items">({totalItems} beers)</span>
-                                </span>
+
+                                {/* Page Numbers */}
+                                <div className="page-numbers">
+                                    {(() => {
+                                        const pages = [];
+                                        const maxVisible = 7; // Total number of slots (1, ..., 4, 5, 6, ..., 100)
+
+                                        if (totalPages <= maxVisible) {
+                                            for (let i = 1; i <= totalPages; i++) pages.push(i);
+                                        } else {
+                                            // Always show 1
+                                            pages.push(1);
+
+                                            // Determine start and end of sliding window
+                                            let start = Math.max(2, page - 1);
+                                            let end = Math.min(totalPages - 1, page + 1);
+
+                                            // Adjust if at edges
+                                            if (page <= 3) {
+                                                end = 4; // 1, 2, 3, 4 ...
+                                            }
+                                            if (page >= totalPages - 2) {
+                                                start = totalPages - 3; // ... 97, 98, 99, 100
+                                            }
+
+                                            // Add left ellipsis
+                                            if (start > 2) {
+                                                pages.push('...');
+                                            }
+
+                                            // Add window
+                                            for (let i = start; i <= end; i++) {
+                                                pages.push(i);
+                                            }
+
+                                            // Add right ellipsis
+                                            if (end < totalPages - 1) {
+                                                pages.push('...');
+                                            }
+
+                                            // Always show last
+                                            pages.push(totalPages);
+                                        }
+
+                                        return pages.map((p, idx) => (
+                                            p === '...' ? (
+                                                <span key={`ellipsis-${idx}`} className="page-ellipsis">...</span>
+                                            ) : (
+                                                <button
+                                                    key={p}
+                                                    className={`page-number ${p === page ? 'active' : ''}`}
+                                                    onClick={() => handlePageChange(p)}
+                                                >
+                                                    {p}
+                                                </button>
+                                            )
+                                        ));
+                                    })()}
+                                </div>
+
+                                {/* Next */}
                                 <button
                                     className="page-btn"
                                     disabled={page >= totalPages}
                                     onClick={() => handlePageChange(page + 1)}
                                 >
-                                    Next →
+                                    Next ›
+                                </button>
+
+                                {/* Last Page */}
+                                <button
+                                    className="page-btn icon-btn"
+                                    disabled={page >= totalPages}
+                                    onClick={() => handlePageChange(totalPages)}
+                                    aria-label="Last Page"
+                                >
+                                    »
                                 </button>
                             </div>
                         )}

@@ -47,26 +47,30 @@ def parse_timestamp(ts_str):
         return None
 
 
-async def scrape_to_supabase(limit: int = None, smart: bool = False):
+async def scrape_to_supabase(limit: int = None, smart: bool = False, full_scrape: bool = False):
     """
-    Scrape and write directly to Supabase.
+    Scrape and write directly to Supabase (scraped_beers table).
     
     Args:
         limit (int, optional): Limit the number of items to scrape per store. Defaults to None.
         smart (bool, optional): Smart scrape: Detect new items and scrape in reverse order. Defaults to False.
+        full_scrape (bool, optional): If True, ignore sold-out threshold/early stopping. Defaults to False.
     """
     print("=" * 60)
-    print("🍺 Cloud Scraper (writing to Supabase)")
+    print("🍺 Cloud Scraper (writing to Supabase: scraped_beers)")
     if smart:
         print("🧠 Smart Mode ENABLED: Scanning for new items first.")
+    if full_scrape:
+        print("🔥 Full Scrape Mode ENABLED: Ignoring sold-out threshold/early stopping.")
     print("=" * 60)
     
     # Create Supabase client
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     # Get existing beers from Supabase to check for updates vs new items
-    print("\n📂 Loading existing beers from Supabase...")
-    existing_response = supabase.table('beers').select('url, first_seen, brewery_name_en, brewery_name_jp, untappd_url, untappd_fetched_at, stock_status').execute()
+    print("\n📂 Loading existing beers from scraped_beers...")
+    # Select only what we need to preserve or check
+    existing_response = supabase.table('scraped_beers').select('url, first_seen, stock_status, untappd_url').execute()
     existing_data = {beer['url']: beer for beer in existing_response.data}
     existing_urls = set(existing_data.keys())
     print(f"  Loaded {len(existing_data)} existing beers")
@@ -77,9 +81,9 @@ async def scrape_to_supabase(limit: int = None, smart: bool = False):
     # Run scrapers in parallel
     print("\n🔍 Running scrapers in parallel...")
     results = await asyncio.gather(
-        beervolta.scrape_beervolta(limit=limit, existing_urls=existing_urls if smart else None),
-        chouseiya.scrape_chouseiya(limit=limit, existing_urls=existing_urls if smart else None),
-        ichigo_ichie.scrape_ichigo_ichie(limit=limit, existing_urls=existing_urls if smart else None),
+        beervolta.scrape_beervolta(limit=limit, existing_urls=existing_urls if smart else None, full_scrape=full_scrape),
+        chouseiya.scrape_chouseiya(limit=limit, existing_urls=existing_urls if smart else None, full_scrape=full_scrape),
+        ichigo_ichie.scrape_ichigo_ichie(limit=limit, existing_urls=existing_urls if smart else None, full_scrape=full_scrape),
         return_exceptions=True
     )
     
@@ -116,10 +120,6 @@ async def scrape_to_supabase(limit: int = None, smart: bool = False):
     updated_count = 0
     
     beers_to_upsert = []
-    
-    # Process each store's results
-    # Standard scrape (Page 1 -> N) usually returns Newest -> Oldest (if site is sorted by date desc).
-    # To assign increasing timestamps (Oldest -> Newest) so Newest gets latest time, we should reverse.
     
     global_index = 0
     base_time = datetime.now(timezone.utc)
@@ -171,10 +171,9 @@ async def scrape_to_supabase(limit: int = None, smart: bool = False):
             if existing:
                 # Update existing beer
                 beer_data['first_seen'] = existing.get('first_seen')
-                beer_data['brewery_name_en'] = existing.get('brewery_name_en')
-                beer_data['brewery_name_jp'] = existing.get('brewery_name_jp')
-                beer_data['untappd_url'] = existing.get('untappd_url')
-                beer_data['untappd_fetched_at'] = existing.get('untappd_fetched_at')
+                # Preserve link to Untappd Data
+                if existing.get('untappd_url'):
+                    beer_data['untappd_url'] = existing.get('untappd_url')
                 
                 updated_count += 1
             else:
@@ -191,7 +190,8 @@ async def scrape_to_supabase(limit: int = None, smart: bool = False):
             batch = beers_to_upsert[i:i + batch_size]
             print(f"\n💾 Upserting batch {i // batch_size + 1} ({len(batch)} beers)...")
             try:
-                supabase.table('beers').upsert(batch, on_conflict='url').execute()
+                # Upsert to scraped_beers
+                supabase.table('scraped_beers').upsert(batch, on_conflict='url').execute()
                 print(f"  ✅ Upserted {len(batch)} beers")
             except Exception as e:
                 print(f"  ❌ Error upserting batch: {e}")
@@ -212,7 +212,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Scrape beer data to Supabase')
     parser.add_argument('--limit', type=int, help='Limit items per scraper')
     parser.add_argument('--smart', action='store_true', help='Smart scrape')
+    parser.add_argument('--full', action='store_true', help='Full scrape (ignore sold-out threshold)')
     
     args = parser.parse_args()
     
-    asyncio.run(scrape_to_supabase(limit=args.limit, smart=args.smart))
+    asyncio.run(scrape_to_supabase(limit=args.limit, smart=args.smart, full_scrape=args.full))

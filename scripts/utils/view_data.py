@@ -94,7 +94,7 @@ def main():
         query = sys.argv[2]
         print(f"\n🔍 Search Results for '{query}'\n" + "="*50)
         
-        result = supabase.table('beers').select('name, shop, price, stock_status').ilike('name', f'%{query}%').limit(20).execute()
+        result = supabase.table('beers').select('name, shop, price, stock_status, url').ilike('name', f'%{query}%').limit(20).execute()
         
         if not result.data:
             print("No results found.")
@@ -102,6 +102,7 @@ def main():
             for i, beer in enumerate(result.data, 1):
                 print(f"\n{i}. [{beer['shop']}] {beer['name']}")
                 print(f"   Price: {beer['price']} | Status: {beer['stock_status']}")
+                print(f"   URL: {beer['url']}")
     
     else:
         print("Unknown command. Available commands:")
