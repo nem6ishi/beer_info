@@ -171,7 +171,12 @@ async def scrape_to_supabase(limit: int = None, smart: bool = False, full_scrape
             
             if existing and not reset_first_seen:
                 # Update existing beer
-                beer_data['first_seen'] = existing.get('first_seen')
+                if is_restock:
+                    # Treat as new for sorting purposes
+                    beer_data['first_seen'] = item_time_iso
+                else:
+                    beer_data['first_seen'] = existing.get('first_seen')
+                
                 # Preserve link to Untappd Data
                 if existing.get('untappd_url'):
                     beer_data['untappd_url'] = existing.get('untappd_url')
