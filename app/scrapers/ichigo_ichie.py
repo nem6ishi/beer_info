@@ -9,7 +9,7 @@ import re
 # Threshold for consecutive sold-out items before stopping
 SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '50'))
 # Number of pages to fetch in parallel
-BATCH_SIZE = 5
+BATCH_SIZE = 10
 
 async def fetch_page(client: httpx.AsyncClient, url: str, page_num: int) -> Dict:
     """

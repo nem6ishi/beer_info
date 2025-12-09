@@ -82,13 +82,14 @@ SELECT
   g.beer_name_jp,
   
   -- Untappd Data
+  -- Untappd Data (Cast to Numeric for Filtering/Sorting)
   u.beer_name as untappd_beer_name,
   u.brewery_name as untappd_brewery_name,
   u.style as untappd_style,
-  u.abv as untappd_abv,
-  u.ibu as untappd_ibu,
-  u.rating as untappd_rating,
-  u.rating_count as untappd_rating_count,
+  NULLIF(regexp_replace(u.abv, '[^0-9.]', '', 'g'), '')::numeric as untappd_abv,
+  NULLIF(regexp_replace(u.ibu, '[^0-9.]', '', 'g'), '')::numeric as untappd_ibu,
+  NULLIF(regexp_replace(u.rating, '[^0-9.]', '', 'g'), '')::numeric as untappd_rating,
+  NULLIF(regexp_replace(u.rating_count, '[^0-9.]', '', 'g'), '')::numeric as untappd_rating_count,
   u.image_url as untappd_image,
   u.fetched_at as untappd_fetched_at
 

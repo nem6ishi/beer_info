@@ -11,7 +11,14 @@ export default async function handler(req, res) {
             sort = 'newest',
             page = '1',
             limit = '100',
-            shop = ''
+            shop = '',
+            min_abv,
+            max_abv,
+            min_ibu,
+            max_ibu,
+            min_rating,
+            style_filter,
+            stock_filter
         } = req.query
 
         const pageNum = parseInt(page, 10)
@@ -31,6 +38,42 @@ export default async function handler(req, res) {
         // Apply search filter if provided
         if (search) {
             query = query.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
+        }
+
+        // Apply advanced filters
+        if (min_abv) query = query.gte('untappd_abv', min_abv)
+        if (max_abv) query = query.lte('untappd_abv', max_abv)
+        if (min_ibu) query = query.gte('untappd_ibu', min_ibu)
+        if (max_ibu) query = query.lte('untappd_ibu', max_ibu)
+        if (min_rating) query = query.gte('untappd_rating', min_rating)
+        // Filter by Shop (Multi-select)
+        if (shop) {
+            const shops = shop.split(',').map(s => s.trim()).filter(Boolean)
+            if (shops.length > 0) {
+                query = query.in('shop', shops)
+            }
+        }
+
+        // Filter by Style (Multi-select)
+        if (style_filter) {
+            // Logic: style_filter is now a list of exact styles from the DB (e.g. "IPA", "Stout")
+            // We generally use exact match if we are providing a dropdown of existing styles.
+            // But previously it was partial match (ilike).
+            // Since we are moving to a multi-select dropdown of *existing* styles, .in() is appropriate.
+            // HOWEVER, if the user still wants to type "IPA" and find "IPA - American", that's different.
+            // The requirement says "gather styles from untappd db and make checklist". 
+            // So .in() on the exact style name is the correct approach for a checklist.
+
+            const styles = style_filter.split(',').map(s => s.trim()).filter(Boolean)
+            if (styles.length > 0) {
+                query = query.in('untappd_style', styles)
+            }
+        } if (stock_filter === 'in_stock') {
+            // Assuming stock_status contains 'In Stock' or similar
+            // Using ilike to be safe, or check data. Usually it's 'In Stock' or 'Sold Out'
+            // Let's assume 'In Stock' for now based on style.css (.stock-badge.in-stock)
+            // But checking partial match
+            query = query.ilike('stock_status', '%In Stock%')
         }
 
         // Sorting
