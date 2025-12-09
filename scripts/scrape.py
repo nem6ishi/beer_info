@@ -153,8 +153,9 @@ async def scrape_to_supabase(limit: int = None, smart: bool = False, full_scrape
                     is_restock = True
                     print(f"  🔄 Restock: {new_item.get('name', 'Unknown')[:50]}")
 
-            # Assign increasing timestamp
-            item_time = base_time + timedelta(seconds=global_index)
+            # Assign increasing timestamp with minimal difference (microseconds)
+            # This ensures order is preserved without significant clock drift
+            item_time = base_time + timedelta(milliseconds=global_index)
             item_time_iso = item_time.isoformat()
             global_index += 1
 
