@@ -220,12 +220,13 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing'):
             beers = response.data
             
         elif mode == 'refresh':
-            # Get beers that HAVE Untappd URL, ordered by fetched_at ASC (oldest first)
+            # Get beers that HAVE Untappd URL, ordered by untappd_fetched_at ASC (oldest first)
+            # We use beer_info_view to get stock_status for "stop if consecutive sold out" logic.
             print(f"\n📂 Loading batch of REFRESH beers (Limit: {batch_size})...")
-            response = supabase.table('untappd_data') \
-                .select('*') \
+            response = supabase.table('beer_info_view') \
+                .select('name, untappd_url, stock_status, untappd_fetched_at') \
                 .not_.is_('untappd_url', None) \
-                .order('fetched_at', desc=False) \
+                .order('untappd_fetched_at', desc=False) \
                 .limit(batch_size) \
                 .execute()
             beers = response.data
@@ -236,8 +237,31 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing'):
             print("\n✨ No more beers to process!")
             break
         
+        processed_urls = set() # Track unique URLs in this batch to avoid redundant refreshes
+        consecutive_sold_out = 0
+        
         # Process beers
         for i, beer in enumerate(beers, 1):
+            # Check stock status for early stop logic
+            # "Sold Out" is the standard string from our scrapers
+            if beer.get('stock_status') == 'Sold Out':
+                 consecutive_sold_out += 1
+            else:
+                 consecutive_sold_out = 0
+                 
+            if consecutive_sold_out >= 30:
+                print(f"\n🛑 Stopping refresh: {consecutive_sold_out} consecutive sold-out items detected.")
+                # We want to exit the entire script/process
+                print(f"  (Processing stopped to conserve resources on old/sold-out items)")
+                return
+
+            untappd_url = beer.get('untappd_url')
+            
+            # Skip if we already processed this URL in this batch (e.g. multiple vintages pointing to same Untappd entry)
+            if untappd_url in processed_urls:
+                continue
+            processed_urls.add(untappd_url)
+
             name_display = beer.get('name', beer.get('beer_name', 'Unknown'))
             print(f"\n{'='*70}")
             print(f"[Batch {i}/{len(beers)} | Total {total_processed + i}] Processing: {name_display[:60]}")
@@ -256,9 +280,8 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing'):
             
         total_processed += len(beers)
         
-        # Break if we've processed enough (based on user limit, though the loop logic above re-queries)
-        # Actually the limit arg was passed to the query. If we exhausted the query or hit the limit, we stop.
-        # But since we update the records, they effectively disappear from the 'missing' query or move to end of 'refresh' query.
+        # In refresh mode with duplicates in view, we might process fewer than 'limit' unique items.
+        # But checking total_processed against limit is safely approximate.
         if total_processed >= limit:
             break
 
