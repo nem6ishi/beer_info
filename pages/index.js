@@ -237,8 +237,7 @@ export default function Home() {
                                     <tr>
                                         <th className="col-img">Image</th>
                                         <th className="col-name">Info</th>
-                                        <th className="col-beer-style">Style</th>
-                                        <th className="col-style">ABV / IBU</th>
+                                        <th className="col-beer-style">Style / Specs</th>
                                         <th className="col-rating">Rating</th>
                                         <th className="col-price">Price</th>
                                         <th className="col-shop">Shop</th>
@@ -285,15 +284,20 @@ export default function Home() {
                                                 </div>
                                             </td>
                                             <td className="col-beer-style">
-                                                <span className="beer-style-text">{beer.untappd_style || 'N/A'}</span>
-                                            </td>
-                                            <td className="col-style">
-                                                <div className="stats-stack">
-                                                    <div className="stat-item">
-                                                        {beer.untappd_abv ? `${beer.untappd_abv} ABV` : 'N/A ABV'}
-                                                    </div>
-                                                    <div className="stat-item">
-                                                        {beer.untappd_ibu ? `${beer.untappd_ibu} IBU` : 'N/A IBU'}
+                                                <div className="style-specs-group">
+                                                    {beer.untappd_style ? (
+                                                        <span className="beer-style-text">{beer.untappd_style}</span>
+                                                    ) : (
+                                                        <span className="na-text">Top Style N/A</span>
+                                                    )}
+                                                    <div className="stats-row">
+                                                        <div className="stat-item">
+                                                            {beer.untappd_abv ? `${beer.untappd_abv} ABV` : <span className="na-text">N/A ABV</span>}
+                                                        </div>
+                                                        <span className="separator">•</span>
+                                                        <div className="stat-item">
+                                                            {beer.untappd_ibu ? `${beer.untappd_ibu} IBU` : <span className="na-text">N/A IBU</span>}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </td>
@@ -335,7 +339,7 @@ export default function Home() {
                                                         </span>
                                                     )}
                                                     <div className="date-display">
-                                                        Checked: {formatDate(beer.first_seen)}
+                                                        Checked: {formatSimpleDate(beer.first_seen)}
                                                     </div>
                                                 </div>
                                             </td>
@@ -353,108 +357,114 @@ export default function Home() {
                         </div>
 
                         {totalPages > 1 && (
-                            <div className="pagination-controls">
-                                {/* First Page */}
-                                <button
-                                    className="page-btn icon-btn"
-                                    disabled={page <= 1}
-                                    onClick={() => handlePageChange(1)}
-                                    aria-label="First Page"
-                                >
-                                    «
-                                </button>
-
-                                {/* Previous */}
-                                <button
-                                    className="page-btn"
-                                    disabled={page <= 1}
-                                    onClick={() => handlePageChange(page - 1)}
-                                >
-                                    ‹ Prev
-                                </button>
-
-                                {/* Page Numbers */}
-                                <div className="page-numbers">
-                                    {(() => {
-                                        const pages = [];
-                                        const maxVisible = 7; // Total number of slots (1, ..., 4, 5, 6, ..., 100)
-
-                                        if (totalPages <= maxVisible) {
-                                            for (let i = 1; i <= totalPages; i++) pages.push(i);
-                                        } else {
-                                            // Always show 1
-                                            pages.push(1);
-
-                                            // Determine start and end of sliding window
-                                            let start = Math.max(2, page - 1);
-                                            let end = Math.min(totalPages - 1, page + 1);
-
-                                            // Adjust if at edges
-                                            if (page <= 3) {
-                                                end = 4; // 1, 2, 3, 4 ...
-                                            }
-                                            if (page >= totalPages - 2) {
-                                                start = totalPages - 3; // ... 97, 98, 99, 100
-                                            }
-
-                                            // Add left ellipsis
-                                            if (start > 2) {
-                                                pages.push('...');
-                                            }
-
-                                            // Add window
-                                            for (let i = start; i <= end; i++) {
-                                                pages.push(i);
-                                            }
-
-                                            // Add right ellipsis
-                                            if (end < totalPages - 1) {
-                                                pages.push('...');
-                                            }
-
-                                            // Always show last
-                                            pages.push(totalPages);
-                                        }
-
-                                        return pages.map((p, idx) => (
-                                            p === '...' ? (
-                                                <span key={`ellipsis-${idx}`} className="page-ellipsis">...</span>
-                                            ) : (
-                                                <button
-                                                    key={p}
-                                                    className={`page-number ${p === page ? 'active' : ''}`}
-                                                    onClick={() => handlePageChange(p)}
-                                                >
-                                                    {p}
-                                                </button>
-                                            )
-                                        ));
-                                    })()}
+                            <div className="pagination-wrapper">
+                                <div className="total-count">
+                                    Total: {totalItems} beers
                                 </div>
+                                <div className="pagination-controls">
+                                    {/* First Page */}
+                                    <button
+                                        className="page-btn icon-btn"
+                                        disabled={page <= 1}
+                                        onClick={() => handlePageChange(1)}
+                                        aria-label="First Page"
+                                    >
+                                        «
+                                    </button>
 
-                                {/* Next */}
-                                <button
-                                    className="page-btn"
-                                    disabled={page >= totalPages}
-                                    onClick={() => handlePageChange(page + 1)}
-                                >
-                                    Next ›
-                                </button>
+                                    {/* Previous */}
+                                    <button
+                                        className="page-btn"
+                                        disabled={page <= 1}
+                                        onClick={() => handlePageChange(page - 1)}
+                                    >
+                                        ‹ Prev
+                                    </button>
 
-                                {/* Last Page */}
-                                <button
-                                    className="page-btn icon-btn"
-                                    disabled={page >= totalPages}
-                                    onClick={() => handlePageChange(totalPages)}
-                                    aria-label="Last Page"
-                                >
-                                    »
-                                </button>
+                                    {/* Page Numbers */}
+                                    <div className="page-numbers">
+                                        {(() => {
+                                            const pages = [];
+                                            const maxVisible = 7; // Total number of slots (1, ..., 4, 5, 6, ..., 100)
+
+                                            if (totalPages <= maxVisible) {
+                                                for (let i = 1; i <= totalPages; i++) pages.push(i);
+                                            } else {
+                                                // Always show 1
+                                                pages.push(1);
+
+                                                // Determine start and end of sliding window
+                                                let start = Math.max(2, page - 1);
+                                                let end = Math.min(totalPages - 1, page + 1);
+
+                                                // Adjust if at edges
+                                                if (page <= 3) {
+                                                    end = 4; // 1, 2, 3, 4 ...
+                                                }
+                                                if (page >= totalPages - 2) {
+                                                    start = totalPages - 3; // ... 97, 98, 99, 100
+                                                }
+
+                                                // Add left ellipsis
+                                                if (start > 2) {
+                                                    pages.push('...');
+                                                }
+
+                                                // Add window
+                                                for (let i = start; i <= end; i++) {
+                                                    pages.push(i);
+                                                }
+
+                                                // Add right ellipsis
+                                                if (end < totalPages - 1) {
+                                                    pages.push('...');
+                                                }
+
+                                                // Always show last
+                                                pages.push(totalPages);
+                                            }
+
+                                            return pages.map((p, idx) => (
+                                                p === '...' ? (
+                                                    <span key={`ellipsis-${idx}`} className="page-ellipsis">...</span>
+                                                ) : (
+                                                    <button
+                                                        key={p}
+                                                        className={`page-number ${p === page ? 'active' : ''}`}
+                                                        onClick={() => handlePageChange(p)}
+                                                    >
+                                                        {p}
+                                                    </button>
+                                                )
+                                            ));
+                                        })()}
+                                    </div>
+
+                                    {/* Next */}
+                                    <button
+                                        className="page-btn"
+                                        disabled={page >= totalPages}
+                                        onClick={() => handlePageChange(page + 1)}
+                                    >
+                                        Next ›
+                                    </button>
+
+                                    {/* Last Page */}
+                                    <button
+                                        className="page-btn icon-btn"
+                                        disabled={page >= totalPages}
+                                        onClick={() => handlePageChange(totalPages)}
+                                        aria-label="Last Page"
+                                    >
+                                        »
+                                    </button>
+
+                                </div>
                             </div>
                         )}
                     </>
                 )}
-            </main>
+            </main >
 
             <footer className="glass-footer">
                 <div className="container">
