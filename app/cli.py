@@ -25,6 +25,7 @@ def main():
     # Enrich Untappd only
     enrich_untappd_parser = subparsers.add_parser("enrich-untappd", help="Run Untappd enrichment only")
     enrich_untappd_parser.add_argument("--limit", type=int, help="Limit number of items to enrich", default=50)
+    enrich_untappd_parser.add_argument("--mode", choices=['missing', 'refresh'], default='missing', help="Enrichment mode: 'missing' for new items, 'refresh' for existing items")
 
     # Sync command
     subparsers.add_parser("sync", help="Download Supabase data to local JSON")
@@ -42,7 +43,7 @@ def main():
         asyncio.run(enrich_gemini(limit=args.limit))
     elif args.command == "enrich-untappd":
         from scripts.enrich_untappd import enrich_untappd
-        asyncio.run(enrich_untappd(limit=args.limit))
+        asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode))
     elif args.command == "sync":
         from scripts.sync_local import sync_from_supabase
         sync_from_supabase()
