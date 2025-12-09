@@ -77,13 +77,12 @@ async def enrich_gemini(limit: int = 50):
         remaining = limit - total_processed
         current_batch_size = min(1000, remaining)
         
-        # Get beers that need Gemini enrichment
+        # Get beers that need Gemini enrichment OR Untappd enrichment
         # Use verified view to find missing data
         print(f"\n📂 Loading batch of beers from beer_info_view (Batch Target: {current_batch_size})...")
         response = supabase.table('beer_info_view') \
             .select('*') \
-            .is_('brewery_name_en', None) \
-            .is_('brewery_name_jp', None) \
+            .or_('brewery_name_en.is.null,untappd_url.is.null') \
             .order('first_seen', desc=True) \
             .limit(current_batch_size) \
             .execute()
@@ -92,7 +91,7 @@ async def enrich_gemini(limit: int = 50):
         print(f"  Found {len(beers)} beers in this batch")
         
         if not beers:
-            print("\n✨ No more beers need Gemini enrichment!")
+            print("\n✨ No more beers need enrichment!")
             break
         
         # Process batch
@@ -102,51 +101,55 @@ async def enrich_gemini(limit: int = 50):
             print(f"{'='*70}")
             
             updates = {}
+            need_gemini = not beer.get('brewery_name_en')
             
             try:
-                # Check for known brewery hint in the beer name
-                known_brewery = None
-                brewery_match = brewery_manager.find_brewery_in_text(beer['name'])
-                if brewery_match:
-                    known_brewery = brewery_match.get('name_en')
-                    print(f"  🏭 Found known brewery hint: {known_brewery}")
-                
-                print("  🤖 Calling Gemini API...")
-                enriched_info = await extractor.extract_info(beer['name'], known_brewery=known_brewery)
-                
-                if enriched_info:
-                    print("  ✅ Gemini Extraction Success:")
-                    print(f"     Brewery (EN): {enriched_info.get('brewery_name_en')}")
-                    print(f"     Brewery (JP): {enriched_info.get('brewery_name_jp')}")
-                    print(f"     Beer (EN):    {enriched_info.get('beer_name_en')}")
+                if need_gemini:
+                    # Check for known brewery hint in the beer name
+                    known_brewery = None
+                    brewery_match = brewery_manager.find_brewery_in_text(beer['name'])
+                    if brewery_match:
+                        known_brewery = brewery_match.get('name_en')
+                        print(f"  🏭 Found known brewery hint: {known_brewery}")
                     
-                    # Store enrichment data
-                    gemini_payload = {
-                        'url': beer['url'], # Key
-                        'brewery_name_en': enriched_info.get('brewery_name_en'),
-                        'brewery_name_jp': enriched_info.get('brewery_name_jp'),
-                        'beer_name_en': enriched_info.get('beer_name_en'),
-                        'beer_name_jp': enriched_info.get('beer_name_jp'),
-                        'payload': enriched_info.get('raw_response'), # Save raw for debugging
-                        'updated_at': datetime.now(timezone.utc).isoformat()
-                    }
+                    print("  🤖 Calling Gemini API...")
+                    enriched_info = await extractor.extract_info(beer['name'], known_brewery=known_brewery)
+                    
+                    if enriched_info:
+                        print("  ✅ Gemini Extraction Success:")
+                        print(f"     Brewery (EN): {enriched_info.get('brewery_name_en')}")
+                        print(f"     Brewery (JP): {enriched_info.get('brewery_name_jp')}")
+                        print(f"     Beer (EN):    {enriched_info.get('beer_name_en')}")
+                        
+                        # Store enrichment data
+                        gemini_payload = {
+                            'url': beer['url'], # Key
+                            'brewery_name_en': enriched_info.get('brewery_name_en'),
+                            'brewery_name_jp': enriched_info.get('brewery_name_jp'),
+                            'beer_name_en': enriched_info.get('beer_name_en'),
+                            'beer_name_jp': enriched_info.get('beer_name_jp'),
+                            'payload': enriched_info.get('raw_response'), # Save raw for debugging
+                            'updated_at': datetime.now(timezone.utc).isoformat()
+                        }
 
-                    # Upsert to gemini_data table
-                    try:
-                        supabase.table('gemini_data').upsert(gemini_payload).execute()
-                        print(f"  💾 Saved to gemini_data table")
-                    except Exception as e:
-                         print(f"  ❌ Error saving to gemini_data: {e}")
-                         continue
+                        # Upsert to gemini_data table
+                        try:
+                            supabase.table('gemini_data').upsert(gemini_payload).execute()
+                            print(f"  💾 Saved to gemini_data table")
+                        except Exception as e:
+                             print(f"  ❌ Error saving to gemini_data: {e}")
+                             continue
 
-                    # Merge for Untappd step (process_beer expects these in the beer dict or separate db fetch)
-                    # We update the 'beer' object in memory so process_beer has the info
-                    beer.update(gemini_payload)
-                    updates = gemini_payload # Marker that we have updates
-
-                    total_enriched += 1
+                        # Merge for Untappd step (process_beer expects these in the beer dict or separate db fetch)
+                        # We update the 'beer' object in memory so process_beer has the info
+                        beer.update(gemini_payload)
+                        updates = gemini_payload # Marker that we have updates
+                        total_enriched += 1
+                    else:
+                        print("  ⚠️  Gemini returned no info")
                 else:
-                    print("  ⚠️  Gemini returned no info")
+                    print("  ✅ Gemini data already exists. Skipping extraction.")
+                    updates = True # Mark as "proceed to chain"
             
             except Exception as e:
                 print(f"  ❌ Error during Gemini processing: {e}")
