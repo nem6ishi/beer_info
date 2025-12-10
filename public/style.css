@@ -451,10 +451,12 @@ h1 {
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
 }
 
-.rating-count {
-    font-size: 11px;
+.untappd-badge.na {
+    background: #e0e0e0;
     color: #888;
-    margin-top: 3px;
+    box-shadow: none;
+    text-shadow: none;
+    font-weight: 600;
 }
 
 .untappd-header {

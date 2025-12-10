@@ -544,26 +544,30 @@ export default function Home() {
                                             </td>
                                             <td className="col-rating">
                                                 <div className="rating-box">
-                                                    {beer.untappd_rating ? (
-                                                        <>
-                                                            {beer.untappd_url ? (
-                                                                <a href={beer.untappd_url} target="_blank" rel="noopener noreferrer" className="untappd-badge-link">
-                                                                    <span className="untappd-header">UNTAPPD ↗</span>
-                                                                    <span className="untappd-badge">{Number(beer.untappd_rating).toFixed(2)}</span>
-                                                                </a>
+                                                    {beer.untappd_url ? (
+                                                        <a href={beer.untappd_url} target="_blank" rel="noopener noreferrer" className="untappd-badge-link">
+                                                            <span className="untappd-header">UNTAPPD ↗</span>
+                                                            {beer.untappd_rating ? (
+                                                                <span className="untappd-badge">{Number(beer.untappd_rating).toFixed(2)}</span>
                                                             ) : (
-                                                                <div className="untappd-badge-container">
-                                                                    <span className="untappd-header">UNTAPPD</span>
-                                                                    <span className="untappd-badge">{Number(beer.untappd_rating).toFixed(2)}</span>
-                                                                </div>
+                                                                <span className="untappd-badge na">N/A</span>
                                                             )}
-                                                            <span className="rating-count">({beer.untappd_rating_count || 0})</span>
-                                                            {beer.untappd_fetched_at && (
-                                                                <span className="fetched-date">Checked: {formatSimpleDate(beer.untappd_fetched_at)}</span>
-                                                            )}
-                                                        </>
+                                                        </a>
                                                     ) : (
-                                                        <span className="na-text">N/A</span>
+                                                        beer.untappd_rating ? (
+                                                            <div className="untappd-badge-container">
+                                                                <span className="untappd-header">UNTAPPD</span>
+                                                                <span className="untappd-badge">{Number(beer.untappd_rating).toFixed(2)}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="na-text">N/A</span>
+                                                        )
+                                                    )}
+                                                    {beer.untappd_rating_count > 0 && (
+                                                        <span className="rating-count">({beer.untappd_rating_count})</span>
+                                                    )}
+                                                    {beer.untappd_fetched_at && (
+                                                        <span className="fetched-date">Checked: {formatSimpleDate(beer.untappd_fetched_at)}</span>
                                                     )}
                                                 </div>
                                             </td>
