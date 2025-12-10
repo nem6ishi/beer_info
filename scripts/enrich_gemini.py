@@ -232,7 +232,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Enrich beer data with Gemini in Supabase')
     parser.add_argument('--limit', type=int, default=1000, help='Batch size (default 1000)')
     parser.add_argument('--offline', action='store_true', help='Offline mode: Skip API calls, only verify/chain existing data')
+    parser.add_argument('--shop', type=str, help='Filter by shop name')
     
     args = parser.parse_args()
     
-    asyncio.run(enrich_gemini(limit=args.limit, offline=args.offline))
+    asyncio.run(enrich_gemini(limit=args.limit, offline=args.offline, shop_filter=args.shop))

@@ -32,6 +32,7 @@ export default function Home() {
     // Only trust these when router.isReady is true
     // Derived state from URL (defaults)
     const page = parseInt(router.query.page || '1', 10)
+    const limit = router.query.limit || '20' // Default limit 20
     const sort = router.query.sort || 'newest'
     const shop = router.query.shop || ''
     const style_filter = router.query.style_filter || ''
@@ -75,7 +76,7 @@ export default function Home() {
             const currentParams = router.query
             const params = new URLSearchParams({
                 page: currentParams.page || '1',
-                limit: '30',
+                limit: currentParams.limit || '20', // Dynamic limit
                 search: currentParams.search || '',
                 sort: currentParams.sort || 'newest',
             })
@@ -116,6 +117,7 @@ export default function Home() {
 
         // Cleanup defaults to keep URL clean
         if (query.page == '1') delete query.page
+        if (query.limit == '20') delete query.limit // Default limit cleanup
         if (query.sort === 'newest') delete query.sort
         if (!query.search) delete query.search
         if (!query.shop) delete query.shop
@@ -131,8 +133,8 @@ export default function Home() {
     // Filter Logic
     const activeFilterCount = (() => {
         if (!router.isReady) return 0
-        const keys = ['min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter']
-        return keys.filter(k => !!router.query[k]).length
+        const keys = ['limit', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter'] // Limit acts like a filter param
+        return keys.filter(k => !!router.query[k] && k !== 'limit' && k !== 'sort' && k !== 'page').length // Exclude structural params from badge count
     })()
 
     // Generic handler for Advanced Filters (Auto-Apply with debounce for inputs?)
@@ -246,6 +248,10 @@ export default function Home() {
 
     const handleSort = (e) => {
         updateURL({ sort: e.target.value, page: '1' })
+    }
+
+    const handleLimitChange = (e) => {
+        updateURL({ limit: e.target.value, page: '1' })
     }
 
     const handlePageChange = (newPage) => {
@@ -369,6 +375,25 @@ export default function Home() {
                                 <option value="abv_desc">ABV: High to Low</option>
                                 <option value="rating_desc">Rating: High to Low</option>
                                 <option value="name_asc">Name: A to Z</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Limit Filter */}
+                    <div className="filter-group-main">
+                        <label htmlFor="limitSelect" className="sort-label">Limit:</label>
+                        <div className="select-wrapper">
+                            <select
+                                id="limitSelect"
+                                className="sort-select"
+                                value={limit}
+                                onChange={handleLimitChange}
+                                aria-label="Items per page"
+                                style={{ minWidth: '80px' }}
+                            >
+                                <option value="20">20</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
                             </select>
                         </div>
                     </div>
