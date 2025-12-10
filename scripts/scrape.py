@@ -47,33 +47,52 @@ def parse_timestamp(ts_str):
         return None
 
 
-async def scrape_to_supabase(limit: int = None, smart: bool = False, full_scrape: bool = False, reset_first_seen: bool = False):
+async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scrape: bool = False, reset_first_seen: bool = False):
     """
     Scrape and write directly to Supabase (scraped_beers table).
     
     Args:
         limit (int, optional): Limit the number of items to scrape per store. Defaults to None.
-        smart (bool, optional): Smart scrape: Detect new items and scrape in reverse order. Defaults to False.
+        new_only (bool, optional): New items only: Detect new items and scrape in reverse order. Defaults to False.
         full_scrape (bool, optional): If True, ignore sold-out threshold/early stopping. Defaults to False.
     """
     print("=" * 60)
     print("🍺 Cloud Scraper (writing to Supabase: scraped_beers)")
-    if smart:
-        print("🧠 Smart Mode ENABLED: Scanning for new items first.")
+    if new_only:
+        print("🍺 新商品スクレイプ (New Product Scrape) ENABLED: 既存商品が30件続いたら停止")
     if full_scrape:
-        print("🔥 Full Scrape Mode ENABLED: Ignoring sold-out threshold/early stopping.")
+        print("🔥 全件スクレイプ (Full Scrape) ENABLED: 停止リミットを無視して全件取得")
     print("=" * 60)
     
     # Create Supabase client
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     # Get existing beers from Supabase to check for updates vs new items
+    # Get existing beers from Supabase to check for updates vs new items
     print("\n📂 Loading existing beers from scraped_beers...")
-    # Select only what we need to preserve or check
-    existing_response = supabase.table('scraped_beers').select('url, first_seen, stock_status, untappd_url').execute()
-    existing_data = {beer['url']: beer for beer in existing_response.data}
+    
+    all_existing_beers = []
+    chunk_size = 1000
+    start = 0
+    
+    while True:
+        # Fetch in chunks
+        response = supabase.table('scraped_beers').select('url, first_seen, stock_status, untappd_url').range(start, start + chunk_size - 1).execute()
+        
+        if not response.data:
+            break
+            
+        all_existing_beers.extend(response.data)
+        
+        if len(response.data) < chunk_size:
+            break
+            
+        start += chunk_size
+        print(f"  Loaded {len(all_existing_beers)} items...", end='\r')
+
+    existing_data = {beer['url']: beer for beer in all_existing_beers}
     existing_urls = set(existing_data.keys())
-    print(f"  Loaded {len(existing_data)} existing beers")
+    print(f"  Loaded {len(existing_data)} existing beers (Complete)")
     
     scraper_names = ['beervolta', 'chouseiya', 'ichigo_ichie']
     display_names = ['BeerVolta', 'Chouseiya', 'Ichigo Ichie']
@@ -81,9 +100,9 @@ async def scrape_to_supabase(limit: int = None, smart: bool = False, full_scrape
     # Run scrapers in parallel
     print("\n🔍 Running scrapers in parallel...")
     results = await asyncio.gather(
-        beervolta.scrape_beervolta(limit=limit, existing_urls=existing_urls if smart else None, full_scrape=full_scrape),
-        chouseiya.scrape_chouseiya(limit=limit, existing_urls=existing_urls if smart else None, full_scrape=full_scrape),
-        ichigo_ichie.scrape_ichigo_ichie(limit=limit, existing_urls=existing_urls if smart else None, full_scrape=full_scrape),
+        beervolta.scrape_beervolta(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
+        chouseiya.scrape_chouseiya(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
+        ichigo_ichie.scrape_ichigo_ichie(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
         return_exceptions=True
     )
     
@@ -170,6 +189,10 @@ async def scrape_to_supabase(limit: int = None, smart: bool = False, full_scrape
             }
             
             if existing and not reset_first_seen:
+                # In New Product Scrape mode, skip updating existing items unless it's a restock
+                if new_only and not is_restock:
+                    continue
+
                 # Update existing beer
                 if is_restock:
                     # Treat as new for sorting purposes
@@ -217,10 +240,10 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Scrape beer data to Supabase')
     parser.add_argument('--limit', type=int, help='Limit items per scraper')
-    parser.add_argument('--smart', action='store_true', help='Smart scrape')
+    parser.add_argument('--new', action='store_true', help='New items only scrape')
     parser.add_argument('--full', action='store_true', help='Full scrape (ignore sold-out threshold)')
     parser.add_argument('--reset-dates', action='store_true', help='Reset first_seen timestamps')
     
     args = parser.parse_args()
     
-    asyncio.run(scrape_to_supabase(limit=args.limit, smart=args.smart, full_scrape=args.full, reset_first_seen=args.reset_dates))
+    asyncio.run(scrape_to_supabase(limit=args.limit, new_only=args.new, full_scrape=args.full, reset_first_seen=args.reset_dates))

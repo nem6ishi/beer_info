@@ -31,7 +31,7 @@ async def fetch_page(client: httpx.AsyncClient, url: str, page_num: int) -> Dict
             "error": str(e)
         }
 
-def parse_page_content(content: bytes) -> List[Dict]:
+def parse_page_content(content: bytes, selector: str = 'li.productlist_list') -> List[Dict]:
     """
     Parses HTML content and returns a list of product dictionaries.
     """
@@ -51,7 +51,12 @@ def parse_page_content(content: bytes) -> List[Dict]:
         decoded_html = content.decode('utf-8', errors='replace')
 
     soup = BeautifulSoup(decoded_html, 'lxml')
-    items = soup.select('li.productlist_list')
+    items = soup.select(selector)
+    
+    if not items:
+        # Fallback: try finding .recommend_list if default selector failed and we didn't specify one
+        if selector == 'li.productlist_list':
+             items = soup.select('li.recommend_list')
     
     if not items:
         return []
@@ -68,13 +73,19 @@ def parse_page_content(content: bytes) -> List[Dict]:
             
             img_tag = item.select_one('img.item_img')
             image_url = None
+            img_alt = None
             if img_tag:
                 src = img_tag.get('src', '')
                 image_url = src if src.startswith('http') else f"https://151l.shop{src}"
+                img_alt = img_tag.get('alt', '').strip()
 
             name = "Unknown"
             name_tag = item.select_one('span.item_name')
-            if name_tag: name = name_tag.get_text(strip=True)
+            if name_tag: 
+                name = name_tag.get_text(strip=True)
+            elif img_alt:
+                # Fallback to img alt if name tag is missing (common in Top Page recommend_list)
+                name = img_alt
 
             price = "Unknown"
             price_tag = item.select_one('span.item_price')
@@ -109,16 +120,46 @@ async def scrape_ichigo_ichie(limit: int = None, existing_urls: set = None, full
     Scrapes product information from Ichigo Ichie (https://151l.shop/).
     Uses batched parallel requests to speed up scraping while maintaining order.
     """
+    top_url = "https://151l.shop/"
     base_url = "https://151l.shop/?mode=grp&gid=1978037&sort=n&page={}"  # 全てのビール一覧
     products = []
+    seen_urls = set()
     consecutive_sold_out = 0
     consecutive_existing = 0
     
     async with httpx.AsyncClient() as client:
+        # Phase 1: Top Page (ONLY in New Product Scrape mode)
+        if existing_urls is not None:
+            print(f"[Ichigo Ichie] New Product Scrape: Scraping Top Page ({top_url}) ONLY...")
+            try:
+                # We reuse fetch_page but page_num is 0 for top page
+                top_res = await fetch_page(client, top_url, 0)
+                if top_res['status'] == 200 and not top_res['error']:
+                    # Use selector for Top Page recommendation list
+                    top_items = parse_page_content(top_res['content'], selector='li.recommend_list')
+                    print(f"[Ichigo Ichie] Top Page found {len(top_items)} items")
+                    for item in top_items:
+                        if item['url'] not in seen_urls:
+                            products.append(item)
+                            seen_urls.add(item['url'])
+                            if limit and len(products) >= limit:
+                                print(f"[Ichigo Ichie] Limit reached ({limit}) in Phase 1. Stopping.")
+                                return products # Stop completely
+                else:
+                    print(f"[Ichigo Ichie] Failed to fetch Top Page: {top_res.get('error') or top_res['status']}")
+            except Exception as e:
+                print(f"[Ichigo Ichie] Error scraping Top Page: {e}")
+            
+            # In New Mode, we STOP here as requested
+            print(f"[Ichigo Ichie] New Product Scrape Completed. Extracted {len(products)} products.")
+            return products
+
+        # Phase 2: Category Pages (ONLY in Normal/Full Mode)
+        print(f"[Ichigo Ichie] Normal/Full Scrape: Scraping Category Pages...")
         current_page = 1
         stop_scan = False
         
-        mode_label = "Smart Mode" if existing_urls is not None else "Normal Mode"
+        mode_label = "New Product Scrape" if existing_urls is not None else "Normal Mode"
         if existing_urls is not None:
              print(f"[Ichigo Ichie] {mode_label}: Forward Scrape & Buffer...")
         
@@ -162,6 +203,11 @@ async def scrape_ichigo_ichie(limit: int = None, existing_urls: set = None, full
                 
                 # Process items strictly in order
                 for p_item in page_items:
+                    # Skip if saw in Top Page
+                    if p_item['url'] in seen_urls:
+                        continue
+                    seen_urls.add(p_item['url'])
+
                     # Logic checks
                     
                     if existing_urls is not None:
@@ -169,6 +215,11 @@ async def scrape_ichigo_ichie(limit: int = None, existing_urls: set = None, full
                             consecutive_existing += 1
                         else:
                             consecutive_existing = 0
+                            
+                        if consecutive_existing >= 30:
+                             print(f"[Ichigo Ichie] Found 30 consecutive existing items. Stopping scan.")
+                             stop_scan = True
+                             break
                     
                     if p_item['stock_status'] == "Sold Out":
                         consecutive_sold_out += 1
@@ -176,7 +227,9 @@ async def scrape_ichigo_ichie(limit: int = None, existing_urls: set = None, full
                         consecutive_sold_out = 0
                     
                     # Stop conditions
-                    if not full_scrape and consecutive_sold_out >= SOLD_OUT_THRESHOLD:
+                    # In New Product Scrape mode (existing_urls is not None), we ONLY stop based on existing_urls count.
+                    # We ignore consecutive_sold_out in that mode.
+                    if existing_urls is None and not full_scrape and consecutive_sold_out >= SOLD_OUT_THRESHOLD:
                          print(f"[Ichigo Ichie] ⚠️  Early stop: {consecutive_sold_out} consecutive sold-out items detected.")
                          stop_scan = True
                          break
@@ -191,6 +244,10 @@ async def scrape_ichigo_ichie(limit: int = None, existing_urls: set = None, full
                 if stop_scan:
                     break
             
+            # Global limit check (after batch)
+            if limit and len(products) >= limit:
+                break
+
             if stop_scan:
                 break
                 

@@ -81,7 +81,7 @@ async def scrape_chouseiya(limit: int = None, existing_urls: set = None, full_sc
         step = 1
 
         if existing_urls is not None:
-             print(f"[Chouseiya] Smart Mode: Forward Scrape & Buffer...")
+             print(f"[Chouseiya] New Product Scrape: Forward Scrape & Buffer...")
              
              scan_page = 1
              consecutive_existing = 0
@@ -138,11 +138,11 @@ async def scrape_chouseiya(limit: int = None, existing_urls: set = None, full_sc
                             stop_scan = True
                             break
                         
-                        # Existing item check removed
-                        # if consecutive_existing >= 10:
-                        #    print(f"[Chouseiya] Found 10 consecutive existing items. Stopping scan.")
-                        #    stop_scan = True
-                        #    break
+                        # Existing item check
+                        if consecutive_existing >= 30:
+                           print(f"[Chouseiya] Found 30 consecutive existing items. Stopping scan.")
+                           stop_scan = True
+                           break
                      
                      if not stop_scan:
                          scan_page += 1

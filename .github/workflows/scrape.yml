@@ -30,7 +30,7 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SCRAPER_SOLD_OUT_THRESHOLD: 30
         run: |
-          python -m app.cli scrape --smart
+          python -m app.cli scrape --new
       
       - name: Report status
         if: always()

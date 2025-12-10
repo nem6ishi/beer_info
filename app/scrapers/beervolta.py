@@ -33,17 +33,55 @@ def extract_product_data(item) -> Optional[Dict[str, str]]:
         elif href.startswith('http'): link = href
         else: link = f"https://beervolta.com/{href}"
 
-        img_tag = item.find('img')
-        img_url = img_tag.get('src') if img_tag else None
-        name = img_tag.get('alt', 'Unknown').strip() if img_tag else 'Unknown'
-        name = html.unescape(name)
-        for indicator in ['≪12/10入荷予定≫', '≪入荷予定≫', '≪予約≫', '売切', 'SOLD OUT']:
-            name = name.replace(indicator, '').strip()
+        # Find the correct product image (skip icons)
+        images = item.find_all('img')
+        img_tag = None
+        for img in images:
+            classes = img.get('class', [])
+            src = img.get('src', '')
+            # Skip known icon classes or sources
+            if 'new_mark_img' in str(classes) or 'icons' in src:
+                continue
+            img_tag = img
+            break
         
-        text_content = item.get_text(strip=True, separator='|')
-        parts = text_content.split('|')
+        # If no specific product image found (unlikely), fallback to first or None
+        if not img_tag and images:
+             # Try to find one that is NOT the icon if possible
+             pass 
+
+        img_url = img_tag.get('src') if img_tag else None
+        
+        # Name extraction strategy:
+        # 1. Image Alt
+        # 2. Text content (cleanup required)
+        
+        name_from_alt = img_tag.get('alt', '').strip() if img_tag else ''
+        text_content = item.get_text(strip=True, separator=' ')
+        
+        # Use alt if present and not generic
+        if name_from_alt and name_from_alt.lower() != 'unknown':
+             name = name_from_alt
+        else:
+             # Fallback to text content
+             # Remove price info which is usually at the end or recognized by '円'
+             # Splitting by '円' or known separators might be risky, but usually text is "Name / EngName Price"
+             # Let's try to use the full text and clean it up later
+             name = text_content
+             
+        name = html.unescape(name)
+        
+        # Cleanup
+        indicators = ['≪12/10入荷予定≫', '≪入荷予定≫', '≪予約≫', '売切', 'SOLD OUT', 'SALE!!', 'SALE!']
+        for indicator in indicators:
+            name = name.replace(indicator, '').strip()
+            
+        # Remove price info from name if it leaked from text content
+        # Pattern: "1,234円(税込...)"
+        name = re.sub(r'[0-9,]+円.*', '', name).strip()
+        
         price = "Unknown"
-        prices_found = [part for part in parts if '円' in part]
+        prices_found = [part for part in item.get_text(strip=True, separator='|').split('|') if '円' in part]
         if prices_found:
             for price_str in prices_found:
                 tax_match = re.search(r'[（(]税込([0-9,]+円)[）)]', price_str)
@@ -111,7 +149,7 @@ async def scrape_beervolta(limit: int = None, existing_urls: set = None, full_sc
 
         # Smart Mode Logic
         if existing_urls is not None:
-            print(f"[Beervolta] Smart Mode: Forward Scrape & Buffer...")
+            print(f"[Beervolta] New Product Scrape: Forward Scrape & Buffer...")
             
             scan_page = 1
             consecutive_existing = 0
@@ -154,6 +192,11 @@ async def scrape_beervolta(limit: int = None, existing_urls: set = None, full_sc
                             consecutive_existing += 1
                         else:
                             consecutive_existing = 0
+                        
+                        if consecutive_existing >= 30:
+                            print(f"[Beervolta] Found 30 consecutive existing items. Stopping scan.")
+                            stop_scan = True
+                            break
                             
                         all_products.append(p_item)
                         
