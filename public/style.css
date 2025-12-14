@@ -79,7 +79,7 @@ h1 {
 
 .search-bar input {
     width: 100%;
-    padding: 10px 40px 10px 42px;
+    padding: 10px 50px 10px 42px;
     background: #f5f5f5;
     border: 1px solid #e5e5e5;
     border-radius: 8px;
@@ -101,7 +101,7 @@ h1 {
 
 .clear-search-btn {
     position: absolute;
-    right: 10px;
+    right: 14px;
     top: 50%;
     transform: translateY(-50%);
     background: transparent;
@@ -112,6 +112,7 @@ h1 {
     align-items: center;
     justify-content: center;
     padding: 6px;
+    margin: 0;
     border-radius: 50%;
     transition: all 0.2s ease;
     z-index: 3;
