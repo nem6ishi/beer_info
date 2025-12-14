@@ -56,17 +56,17 @@ export default async function handler(req, res) {
 
         // Filter by Style (Multi-select)
         if (style_filter) {
-            // Logic: style_filter is now a list of exact styles from the DB (e.g. "IPA", "Stout")
-            // We generally use exact match if we are providing a dropdown of existing styles.
-            // But previously it was partial match (ilike).
-            // Since we are moving to a multi-select dropdown of *existing* styles, .in() is appropriate.
-            // HOWEVER, if the user still wants to type "IPA" and find "IPA - American", that's different.
-            // The requirement says "gather styles from untappd db and make checklist". 
-            // So .in() on the exact style name is the correct approach for a checklist.
-
             const styles = style_filter.split(',').map(s => s.trim()).filter(Boolean)
             if (styles.length > 0) {
                 query = query.in('untappd_style', styles)
+            }
+        }
+
+        // Filter by Brewery (Multi-select)
+        if (req.query.brewery_filter) {
+            const breweries = req.query.brewery_filter.split(',').map(s => s.trim()).filter(Boolean)
+            if (breweries.length > 0) {
+                query = query.in('untappd_brewery_name', breweries)
             }
         } if (stock_filter === 'in_stock') {
             // Assuming stock_status contains 'In Stock' or similar
@@ -84,11 +84,13 @@ export default async function handler(req, res) {
                     .order('first_seen', { ascending: false, nullsLast: true })
                 break
             case 'price_asc':
-                // Use numeric price_value column
-                query = query.order('price_value', { ascending: true })
+                // Use numeric price_value column, NULLS LAST
+                query = query.order('price_value', { ascending: true, nullsFirst: false })
                 break
             case 'price_desc':
-                query = query.order('price_value', { ascending: false })
+                // Price High to Low, NULLS LAST (so unknowns are at bottom)
+                // Trying nullsFirst: false to force different behavior if nullsLast is ignored
+                query = query.order('price_value', { ascending: false, nullsFirst: false })
                 break
             case 'abv_desc':
                 query = query.order('untappd_abv', { ascending: false, nullsFirst: false })

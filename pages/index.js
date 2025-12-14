@@ -17,6 +17,7 @@ export default function Home() {
     const [searchInput, setSearchInput] = useState('')
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [availableStyles, setAvailableStyles] = useState([]) // Fetched from API
+    const [availableBreweries, setAvailableBreweries] = useState([]) // Fetched from API
 
     // Filter UI State (ABV, IBU, Rating, Stock)
     const [tempFilters, setTempFilters] = useState({
@@ -36,6 +37,7 @@ export default function Home() {
     const sort = router.query.sort || 'newest'
     const shop = router.query.shop || ''
     const style_filter = router.query.style_filter || ''
+    const brewery_filter = router.query.brewery_filter || ''
 
     // Initialize search input from URL once router is ready. 
     // We use a ref or flag to ensure we only do this once on mount/ready 
@@ -62,6 +64,14 @@ export default function Home() {
                     if (data.styles) setAvailableStyles(data.styles)
                 })
                 .catch(err => console.error('Failed to load styles', err))
+
+            // Fetch breweries
+            fetch('/api/breweries')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.breweries) setAvailableBreweries(data.breweries)
+                })
+                .catch(err => console.error('Failed to load breweries', err))
         }
     }, [router.isReady])
 
@@ -84,7 +94,7 @@ export default function Home() {
                 params.append('shop', currentParams.shop)
             }
             // Append advanced filters
-            const filterKeys = ['style_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter']
+            const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter']
             filterKeys.forEach(key => {
                 if (currentParams[key]) params.append(key, currentParams[key])
             })
@@ -122,7 +132,7 @@ export default function Home() {
         if (!query.search) delete query.search
         if (!query.shop) delete query.shop
         // Clean up empty filters
-        const filterKeys = ['style_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter']
+        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter']
         filterKeys.forEach(key => {
             if (!query[key]) delete query[key]
         })
@@ -133,7 +143,7 @@ export default function Home() {
     // Filter Logic
     const activeFilterCount = (() => {
         if (!router.isReady) return 0
-        const keys = ['limit', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter'] // Limit acts like a filter param
+        const keys = ['limit', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter'] // Limit acts like a filter param
         return keys.filter(k => !!router.query[k] && k !== 'limit' && k !== 'sort' && k !== 'page').length // Exclude structural params from badge count
     })()
 
@@ -206,20 +216,23 @@ export default function Home() {
             stock_filter: ''
         }
         setTempFilters(resetState)
-        // Update URL to clear advanced filters ONLY
-        if (activeFilterCount > 0) {
-            updateURL({
-                min_abv: '',
-                max_abv: '',
-                min_ibu: '',
-                max_ibu: '',
-                min_rating: '',
-                stock_filter: '',
-                shop: '', // Clear shop filter
-                style_filter: '', // Clear style filter
-                page: '1'
-            })
-        }
+        setSearchInput('') // Clear search input
+
+        // Update URL to clear advanced filters AND sort/search
+        updateURL({
+            min_abv: '',
+            max_abv: '',
+            min_ibu: '',
+            max_ibu: '',
+            min_rating: '',
+            stock_filter: '',
+            shop: '', // Clear shop filter
+            style_filter: '', // Clear style filter
+            brewery_filter: '', // Clear brewery filter
+            sort: 'newest', // Reset sort
+            search: '', // Clear search param
+            page: '1'
+        })
     }
 
     // Handlers
@@ -358,7 +371,20 @@ export default function Home() {
                         />
                     </div>
 
-                    {/* Style Filter (Multi-Select) */}
+                    {/* Breweries Dropdown (Multi-select) */}
+                    <div className="filter-group-main">
+                        <button className="dropdown-toggle" style={{ display: 'none' }}>Breweries</button> {/* Hidden dummy to keep layout if needed, or just remove */}
+                        <label className="sort-label">Breweries:</label>
+                        <MultiSelectDropdown
+                            options={availableBreweries.map(b => ({ label: b, value: b }))}
+                            selectedValues={brewery_filter ? brewery_filter.split(',') : []}
+                            onChange={(vals) => updateURL({ brewery_filter: vals.join(','), page: '1' })}
+                            placeholder="Select Breweries"
+                            searchable={true}
+                        />
+                    </div>
+
+                    {/* Style Dropdown (Multi-select) */}
                     <div className="filter-group-main">
                         <label className="sort-label">Style:</label>
                         <MultiSelectDropdown
@@ -424,6 +450,16 @@ export default function Home() {
                         Detailed Filters
                         {activeFilterCount > 0 && <span className="filter-badge-count">{activeFilterCount}</span>}
                         <span className="toggle-icon">{isFilterOpen ? '▲' : '▼'}</span>
+                    </button>
+
+                    {/* Reset Button (Always visible) */}
+                    <div className="controls-divider"></div>
+                    <button
+                        className="reset-btn-small"
+                        onClick={resetFilters}
+                        title="Reset all filters"
+                    >
+                        Reset
                     </button>
                 </div>
 
@@ -505,9 +541,7 @@ export default function Home() {
                             </div>
                         </div>
 
-                        <div className="filter-buttons-row">
-                            <button className="reset-btn-small" onClick={resetFilters}>Reset All Filters</button>
-                        </div>
+
                     </div>
                 </div>
 
