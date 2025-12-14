@@ -47,6 +47,31 @@ def parse_timestamp(ts_str):
         return None
 
 
+    except:
+        return None
+
+def parse_price(price_str):
+    """
+    Extract numeric value from price string.
+    
+    Args:
+        price_str (str): Price string (e.g., "¥1,000", "1500円")
+        
+    Returns:
+        int/float: Numeric price or None
+    """
+    if not price_str:
+        return None
+    try:
+        # Remove non-digits
+        import re
+        clean = re.sub(r'[^0-9]', '', str(price_str))
+        if clean:
+            return int(clean)
+        return None
+    except:
+        return None
+
 async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scrape: bool = False, reset_first_seen: bool = False):
     """
     Scrape and write directly to Supabase (scraped_beers table).
@@ -182,6 +207,7 @@ async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scr
                 'url': url,
                 'name': new_item.get('name'),
                 'price': new_item.get('price'),
+                'price_value': parse_price(new_item.get('price')),
                 'image': new_item.get('image'),
                 'stock_status': new_item.get('stock_status'),
                 'shop': new_item.get('shop'),

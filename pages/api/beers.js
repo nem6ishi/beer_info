@@ -84,11 +84,11 @@ export default async function handler(req, res) {
                     .order('first_seen', { ascending: false, nullsLast: true })
                 break
             case 'price_asc':
-                // Note: price is stored as text, so this might need custom handling
-                query = query.order('price', { ascending: true })
+                // Use numeric price_value column
+                query = query.order('price_value', { ascending: true })
                 break
             case 'price_desc':
-                query = query.order('price', { ascending: false })
+                query = query.order('price_value', { ascending: false })
                 break
             case 'abv_desc':
                 query = query.order('untappd_abv', { ascending: false, nullsFirst: false })
