@@ -101,7 +101,7 @@ h1 {
 
 .clear-search-btn {
     position: absolute;
-    right: 4px;
+    right: 10px;
     top: 50%;
     transform: translateY(-50%);
     background: transparent;
