@@ -1,102 +1,124 @@
 -- Beer Information Database Schema for Supabase
--- Run this in the Supabase SQL Editor
+-- Run this in the Supabase SQL Editor to set up the complete schema
 
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Beers table
-CREATE TABLE IF NOT EXISTS beers (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  url TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
+-- 1. scraped_beers: Raw data from scrapers
+CREATE TABLE IF NOT EXISTS scraped_beers (
+  url TEXT PRIMARY KEY,
+  name TEXT,
   price TEXT,
   image TEXT,
   stock_status TEXT,
   shop TEXT NOT NULL,
-  
-  -- Timestamps
   first_seen TIMESTAMPTZ NOT NULL,
   last_seen TIMESTAMPTZ NOT NULL,
-  
-  -- Gemini extracted data
-  brewery_name_jp TEXT,
-  brewery_name_en TEXT,
-  beer_name_jp TEXT,
-  beer_name_en TEXT,
-  
-  -- Untappd data
-  untappd_url TEXT,
-  untappd_beer_name TEXT,
-  untappd_brewery_name TEXT,
-  untappd_style TEXT,
-  untappd_abv TEXT,
-  untappd_ibu TEXT,
-  untappd_rating TEXT,
-  untappd_rating_count TEXT,
-  untappd_fetched_at TIMESTAMPTZ
+  untappd_url TEXT -- Loose link to untappd_data
 );
 
--- Breweries table
+-- 2. gemini_data: AI enriched text (linked by Product URL)
+CREATE TABLE IF NOT EXISTS gemini_data (
+  url TEXT PRIMARY KEY, -- References scraped_beers.url
+  brewery_name_en TEXT,
+  brewery_name_jp TEXT,
+  beer_name_en TEXT,
+  beer_name_jp TEXT,
+  payload JSONB, -- Raw response for debugging
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. untappd_data: Master data for beers (ratings, stats)
+CREATE TABLE IF NOT EXISTS untappd_data (
+  untappd_url TEXT PRIMARY KEY,
+  beer_name TEXT,
+  brewery_name TEXT,
+  style TEXT,
+  abv TEXT,
+  ibu TEXT,
+  rating TEXT,
+  rating_count TEXT,
+  image_url TEXT,
+  fetched_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. breweries: Reference table for hints
 CREATE TABLE IF NOT EXISTS breweries (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name_en TEXT,
   name_jp TEXT,
-  aliases TEXT[], -- Array of alternative names
+  aliases TEXT[],
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Indices for performance
-CREATE INDEX IF NOT EXISTS idx_beers_shop ON beers(shop);
-CREATE INDEX IF NOT EXISTS idx_beers_last_seen ON beers(last_seen DESC);
-CREATE INDEX IF NOT EXISTS idx_beers_first_seen ON beers(first_seen DESC);
-CREATE INDEX IF NOT EXISTS idx_beers_available_since ON beers(available_since DESC);
-CREATE INDEX IF NOT EXISTS idx_beers_display_timestamp ON beers(display_timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_beers_url ON beers(url);
-CREATE INDEX IF NOT EXISTS idx_beers_name ON beers USING gin(to_tsvector('english', name));
-CREATE INDEX IF NOT EXISTS idx_beers_brewery_name ON beers(untappd_brewery_name);
+-- 5. Indices for Performance
+CREATE INDEX IF NOT EXISTS idx_scraped_beers_shop ON scraped_beers(shop);
+CREATE INDEX IF NOT EXISTS idx_scraped_beers_last_seen ON scraped_beers(last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_scraped_beers_first_seen ON scraped_beers(first_seen DESC);
+-- Full-text search index (optional, but good for raw name search)
+CREATE INDEX IF NOT EXISTS idx_scraped_name ON scraped_beers USING gin(to_tsvector('english', name));
 
--- Full-text search index for better search performance
-CREATE INDEX IF NOT EXISTS idx_beers_search ON beers USING gin(
-  to_tsvector('english', 
-    COALESCE(name, '') || ' ' || 
-    COALESCE(beer_name_en, '') || ' ' || 
-    COALESCE(beer_name_jp, '') || ' ' || 
-    COALESCE(brewery_name_en, '') || ' ' || 
-    COALESCE(brewery_name_jp, '') || ' ' || 
-    COALESCE(untappd_brewery_name, '')
-  )
-);
 
--- Row Level Security (RLS) policies
+-- 6. beer_info_view: Unified view for API
+-- Casts prices and ratings to numeric for sorting
+CREATE OR REPLACE VIEW beer_info_view AS
+SELECT
+  s.url,
+  s.name,
+  s.price,
+  -- Extract numeric value from price string (remove non-digits, keep only numbers)
+  NULLIF(regexp_replace(s.price, '[^0-9]', '', 'g'), '')::numeric as price_value,
+  s.image,
+  s.stock_status,
+  s.shop,
+  s.first_seen,
+  s.last_seen,
+  s.untappd_url,
+  
+  -- Gemini Data
+  g.brewery_name_en,
+  g.brewery_name_jp,
+  g.beer_name_en,
+  g.beer_name_jp,
+  
+  -- Untappd Data
+  u.beer_name as untappd_beer_name,
+  u.brewery_name as untappd_brewery_name,
+  u.style as untappd_style,
+  -- Numeric casting for sorting/filtering
+  NULLIF(regexp_replace(u.abv, '[^0-9.]', '', 'g'), '')::numeric as untappd_abv,
+  NULLIF(regexp_replace(u.ibu, '[^0-9.]', '', 'g'), '')::numeric as untappd_ibu,
+  NULLIF(regexp_replace(u.rating, '[^0-9.]', '', 'g'), '')::numeric as untappd_rating,
+  NULLIF(regexp_replace(u.rating_count, '[^0-9.]', '', 'g'), '')::numeric as untappd_rating_count,
+  u.image_url as untappd_image,
+  u.fetched_at as untappd_fetched_at
+
+FROM scraped_beers s
+LEFT JOIN gemini_data g ON s.url = g.url
+LEFT JOIN untappd_data u ON s.untappd_url = u.untappd_url;
+
+
+-- 7. Row Level Security (RLS) policies
+
 -- Enable RLS
-ALTER TABLE beers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scraped_beers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE gemini_data ENABLE ROW LEVEL SECURITY;
+ALTER TABLE untappd_data ENABLE ROW LEVEL SECURITY;
 ALTER TABLE breweries ENABLE ROW LEVEL SECURITY;
 
 -- Allow anonymous read access (for frontend)
-CREATE POLICY "Allow anonymous read access on beers"
-  ON beers FOR SELECT
-  TO anon
-  USING (true);
+CREATE POLICY "Public Read Scraped" ON scraped_beers FOR SELECT TO anon USING (true);
+CREATE POLICY "Public Read Gemini" ON gemini_data FOR SELECT TO anon USING (true);
+CREATE POLICY "Public Read Untappd" ON untappd_data FOR SELECT TO anon USING (true);
+CREATE POLICY "Public Read Breweries" ON breweries FOR SELECT TO anon USING (true);
 
-CREATE POLICY "Allow anonymous read access on breweries"
-  ON breweries FOR SELECT
-  TO anon
-  USING (true);
+-- Allow authenticated write access (for GitHub Actions/Scripts)
+CREATE POLICY "Auth Write Scraped" ON scraped_beers FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth Write Gemini" ON gemini_data FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth Write Untappd" ON untappd_data FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth Write Breweries" ON breweries FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
--- Allow authenticated write access (for GitHub Actions with service role key)
-CREATE POLICY "Allow authenticated write access on beers"
-  ON beers FOR ALL
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
-
-CREATE POLICY "Allow authenticated write access on breweries"
-  ON breweries FOR ALL
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
-
--- Function to get beer statistics
+-- Function for stats (updated to work with new tables)
 CREATE OR REPLACE FUNCTION get_beer_stats()
 RETURNS JSON AS $$
 DECLARE
@@ -111,16 +133,9 @@ BEGIN
     'shops', json_agg(DISTINCT shop)
   )
   INTO result
-  FROM beers;
+  FROM beer_info_view;
   
   RETURN result;
 END;
 $$ LANGUAGE plpgsql;
 
--- Comments for documentation
-COMMENT ON TABLE beers IS 'Main table storing beer product information from Japanese craft beer shops';
-COMMENT ON TABLE breweries IS 'Reference table for known breweries to improve extraction accuracy';
-COMMENT ON COLUMN beers.first_seen IS 'First time this beer was discovered';
-COMMENT ON COLUMN beers.last_seen IS 'Last time this beer was confirmed available';
-COMMENT ON COLUMN beers.available_since IS 'When this beer became available (resets on restock)';
-COMMENT ON COLUMN beers.display_timestamp IS 'Artificial timestamp for maintaining store display order. First scraped item has oldest timestamp.';

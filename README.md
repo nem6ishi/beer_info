@@ -38,12 +38,13 @@ This is the cloud-deployed version of the Craft Beer Watch Japan service, using:
    - `SUPABASE_SERVICE_KEY`: Your service_role key (for scripts)
    - `GEMINI_API_KEY`: Your Google Gemini API key
 
-4 **Migrate existing data** (one-time)
+4. **Migrate existing data** (one-time)
    ```bash
+   # If migrating from old structure or local
    pip install supabase
    export SUPABASE_URL="your-url"
    export SUPABASE_SERVICE_KEY="your-service-key"
-   python scripts/migrate_to_supabase.py
+   # See scripts/maintenance/ for useful migration scripts
    ```
 
 5. **Install dependencies**
@@ -92,8 +93,6 @@ This is the cloud-deployed version of the Craft Beer Watch Japan service, using:
    - **Gemini Enrichment**: After scraping + 4x daily (0:00, 6:00, 12:00, 18:00 JST)
    - **Untappd Enrichment**: After Gemini enrichment + 2x daily (0:30, 12:30 JST)
 
-You can also trigger workflows manually from the Actions tab.
-
 ## 🛠️ Development
 
 ### Local CLI (for testing)
@@ -116,24 +115,30 @@ uv run python -m app.cli enrich [--limit 50]
 
 ```
 /
-├── .github/workflows/    # GitHub Actions
-│   ├── scrape.yml        # Scheduled scraping
-│   └── enrich.yml        # Scheduled enrichment
-├── app/                  # Python backend logic
-│   ├── scrapers/         # Site scrapers
-│   └── services/         # Business logic
-├── lib/                  # Next.js utilities
-│   └── supabase.js       # Supabase client
-├── pages/                # Next.js pages
-│   ├── index.js          # Frontend
-│   └── api/              # API routes
-├── public/               # Static assets
-├── scripts/              # Utility scripts
+├── .github/workflows/      # GitHub Actions
+│   ├── scrape.yml          # Scheduled scraping
+│   └── enrich.yml          # Scheduled enrichment
+├── app/                    # Python backend logic
+│   ├── scrapers/           # Site scrapers
+│   └── services/           # Business logic
+├── lib/                    # Next.js utilities
+│   └── supabase.js         # Supabase client
+├── pages/                  # Next.js pages
+│   ├── index.js            # Frontend
+│   └── api/                # API routes
+├── public/                 # Static assets
+├── scripts/                # Utility scripts
+│   ├── diagnostics/        # Check/Debug scripts
+│   ├── maintenance/        # Migration/Cleanup scripts
 │   ├── migrate_to_supabase.py
-│   ├── scrape_to_supabase.py
-│   └── enrich_supabase.py
-├── supabase_schema.sql   # Database schema
-└── vercel.json           # Vercel config
+│   ├── scrape.py           # Main scraping script
+│   ├── enrich_gemini.py    # Main Gemini enrichment script
+│   └── enrich_untappd.py   # Main Untappd enrichment script
+├── sql/                    # SQL Database Files
+│   ├── archive/            # Old/Review scripts
+│   └── (scripts moved)
+├── supabase_schema.sql     # Main Database schema definition
+└── vercel.json             # Vercel config
 ```
 
 ## 📊 API Endpoints
@@ -143,12 +148,11 @@ uv run python -m app.cli enrich [--limit 50]
 
 ## 🔄 Data Flow
 
-1. **GitHub Actions** runs scrapers every 2 hours
-2. **Scrapers** fetch data from Japanese beer shops
-3. **Data** is written to **Supabase** PostgreSQL
-4. **Enrichment** runs every 6 hours (Gemini + Untappd)
-5. **Frontend** fetches data from **Vercel API routes**
-6. **API routes** query **Supabase** and return JSON
+1. **Scraping**: `scripts/scrape.py` fetches data from shops and upserts to `scraped_beers`.
+2. **Enrichment (Gemini)**: `scripts/enrich_gemini.py` reads `scraped_beers` (via view) and upserts metadata to `gemini_data`.
+3. **Enrichment (Untappd)**: `scripts/enrich_untappd.py` reads `gemini_data`/`scraped_beers` AND checks Untappd API, then upserts to `untappd_data`.
+4. **Integration**: `beer_info_view` in Supabase joins these 3 tables to provide a unified "beers" view.
+5. **Frontend**: Next.js API (`/api/beers`) queries `beer_info_view` to serve the UI.
 
 ## 📝 License
 

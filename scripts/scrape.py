@@ -46,10 +46,6 @@ def parse_timestamp(ts_str):
     except:
         return None
 
-
-    except:
-        return None
-
 def parse_price(price_str):
     """
     Extract numeric value from price string.
