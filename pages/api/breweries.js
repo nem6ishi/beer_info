@@ -10,8 +10,10 @@ export default async function handler(req, res) {
 
         if (error) throw error
 
-        // Deduplicate and sort
-        const breweries = [...new Set(data.map(item => item.untappd_brewery_name))].sort()
+        // Deduplicate and sort (case-insensitive)
+        const breweries = [...new Set(data.map(item => item.untappd_brewery_name))].sort((a, b) =>
+            a.toLowerCase().localeCompare(b.toLowerCase())
+        )
 
         res.status(200).json({ breweries })
     } catch (err) {

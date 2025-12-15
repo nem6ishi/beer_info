@@ -23,8 +23,17 @@ export default async function handler(req, res) {
 
         if (error) throw error
 
-        // Deduplicate and sort
-        const styles = [...new Set(data.map(item => item.untappd_style))].sort()
+        // Count occurrences of each style
+        const styleCounts = data.reduce((acc, item) => {
+            const style = item.untappd_style
+            acc[style] = (acc[style] || 0) + 1
+            return acc
+        }, {})
+
+        // Convert to array and sort by count (descending), then alphabetically
+        const styles = Object.entries(styleCounts)
+            .map(([style, count]) => ({ style, count }))
+            .sort((a, b) => b.count - a.count || a.style.localeCompare(b.style))
 
         res.status(200).json({ styles })
     } catch (err) {

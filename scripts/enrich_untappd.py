@@ -107,7 +107,9 @@ async def process_beer_missing(beer, supabase, offline=False):
                     return None
             else:
                 print(f"  🔍 Searching Untappd for: {brewery} - {beer_name}")
-                untappd_url = get_untappd_url(brewery, beer_name)
+                # Pass Japanese name as fallback
+                beer_name_jp_clean = beer.get('beer_name_jp')
+                untappd_url = get_untappd_url(brewery, beer_name, beer_name_jp=beer_name_jp_clean)
         
         if untappd_url:
             scraped_updates['untappd_url'] = untappd_url
@@ -253,7 +255,6 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
             print(f"\n📂 Loading batch of MISSING beers (Limit: {batch_size})...")
             query = supabase.table('beer_info_view') \
                 .select('*') \
-                .not_.is_('brewery_name_en', None) \
                 .is_('untappd_url', None)
             
             if shop_filter:

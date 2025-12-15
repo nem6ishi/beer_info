@@ -18,7 +18,8 @@ export default async function handler(req, res) {
             max_ibu,
             min_rating,
             style_filter,
-            stock_filter
+            stock_filter,
+            missing_untappd
         } = req.query
 
         const pageNum = parseInt(page, 10)
@@ -74,6 +75,11 @@ export default async function handler(req, res) {
             // Let's assume 'In Stock' for now based on style.css (.stock-badge.in-stock)
             // But checking partial match
             query = query.ilike('stock_status', '%In Stock%')
+        }
+
+        // Filter by Missing Untappd
+        if (missing_untappd === 'true') {
+            query = query.or('untappd_url.is.null,untappd_url.ilike.%/search?%')
         }
 
         // Sorting

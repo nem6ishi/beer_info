@@ -54,7 +54,8 @@ export default function Home() {
                 min_ibu: router.query.min_ibu || '',
                 max_ibu: router.query.max_ibu || '',
                 min_rating: router.query.min_rating || '',
-                stock_filter: router.query.stock_filter || ''
+                stock_filter: router.query.stock_filter || '',
+                missing_untappd: router.query.missing_untappd || ''
             })
 
             // Fetch styles
@@ -94,7 +95,7 @@ export default function Home() {
                 params.append('shop', currentParams.shop)
             }
             // Append advanced filters
-            const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter']
+            const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'missing_untappd']
             filterKeys.forEach(key => {
                 if (currentParams[key]) params.append(key, currentParams[key])
             })
@@ -132,7 +133,7 @@ export default function Home() {
         if (!query.search) delete query.search
         if (!query.shop) delete query.shop
         // Clean up empty filters
-        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter']
+        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'missing_untappd']
         filterKeys.forEach(key => {
             if (!query[key]) delete query[key]
         })
@@ -143,7 +144,7 @@ export default function Home() {
     // Filter Logic
     const activeFilterCount = (() => {
         if (!router.isReady) return 0
-        const keys = ['limit', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter'] // Limit acts like a filter param
+        const keys = ['limit', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter', 'missing_untappd'] // Limit acts like a filter param
         return keys.filter(k => !!router.query[k] && k !== 'limit' && k !== 'sort' && k !== 'page').length // Exclude structural params from badge count
     })()
 
@@ -155,8 +156,8 @@ export default function Home() {
     const handleFilterChange = (key, value) => {
         setTempFilters(prev => ({ ...prev, [key]: value }))
 
-        // If it's a select (Stock), update URL immediately
-        if (key === 'stock_filter') {
+        // If it's a select or checkbox (Stock, Missing Untappd), update URL immediately
+        if (key === 'stock_filter' || key === 'missing_untappd') {
             updateURL({ [key]: value, page: '1' })
         }
     }
@@ -213,7 +214,8 @@ export default function Home() {
             min_ibu: '',
             max_ibu: '',
             min_rating: '',
-            stock_filter: ''
+            stock_filter: '',
+            missing_untappd: ''
         }
         setTempFilters(resetState)
         setSearchInput('') // Clear search input
@@ -226,6 +228,7 @@ export default function Home() {
             max_ibu: '',
             min_rating: '',
             stock_filter: '',
+            missing_untappd: '',
             shop: '', // Clear shop filter
             style_filter: '', // Clear style filter
             brewery_filter: '', // Clear brewery filter
@@ -388,7 +391,10 @@ export default function Home() {
                     <div className="filter-group-main">
                         <label className="sort-label">Style:</label>
                         <MultiSelectDropdown
-                            options={availableStyles.map(s => ({ value: s, label: s }))}
+                            options={availableStyles.map(s => ({
+                                value: typeof s === 'string' ? s : s.style,
+                                label: typeof s === 'string' ? s : `${s.style} (${s.count})`
+                            }))}
                             selectedValues={style_filter ? style_filter.split(',') : []}
                             onChange={(vals) => handleMultiSelectChange('style_filter', vals)}
                             placeholder="Select Styles"
@@ -537,6 +543,22 @@ export default function Home() {
                                         <option value="">All</option>
                                         <option value="in_stock">In Stock Only</option>
                                     </select>
+                                </div>
+                            </div>
+
+                            {/* Untappd Status Filter */}
+                            <div className="filter-item">
+                                <label>Untappd Status</label>
+                                <div className="checkbox-wrapper" style={{ marginTop: '8px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={tempFilters.missing_untappd === 'true'}
+                                            onChange={(e) => handleFilterChange('missing_untappd', e.target.checked ? 'true' : '')}
+                                            style={{ width: 'auto', margin: 0 }}
+                                        />
+                                        <span style={{ fontSize: '0.9rem' }}>Missing Untappd Link Only</span>
+                                    </label>
                                 </div>
                             </div>
                         </div>

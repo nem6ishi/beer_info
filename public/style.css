@@ -282,12 +282,12 @@ h1 {
    Beer Image
    ======================================== */
 .col-img {
-    width: 100px;
+    width: 120px;
 }
 
 .beer-image-wrapper {
-    width: 70px;
-    height: 70px;
+    width: 90px;
+    height: 90px;
     display: flex;
     align-items: center;
     justify-content: center;

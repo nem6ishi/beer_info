@@ -40,7 +40,7 @@ if not GEMINI_API_KEY:
     sys.exit(1)
 
 
-async def enrich_gemini(limit: int = 50, shop_filter: str = None, offline: bool = False):
+async def enrich_gemini(limit: int = 50, shop_filter: str = None, keyword_filter: str = None, offline: bool = False, force_reprocess: bool = False):
     """
     Enrich beers with Gemini extraction only.
     Loops until all eligible beers are processed.
@@ -53,6 +53,9 @@ async def enrich_gemini(limit: int = 50, shop_filter: str = None, offline: bool 
     target_msg = f"Target: All beers without Gemini data"
     if shop_filter:
         target_msg += f" (Shop: {shop_filter})"
+    if keyword_filter:
+        target_msg += f" (Keyword: {keyword_filter})"
+        
     print(f"{target_msg} (Batch size: {limit})")
     print(f"Started at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
     
@@ -75,10 +78,15 @@ async def enrich_gemini(limit: int = 50, shop_filter: str = None, offline: bool 
     if offline:
         count_query = count_query.not_.is_('brewery_name_en', 'null').is_('untappd_url', 'null')
     else:
-        count_query = count_query.or_('brewery_name_en.is.null,untappd_url.is.null')
+        # If force, we process everything matching filter, so count all
+        if not force_reprocess:
+             count_query = count_query.or_('brewery_name_en.is.null,untappd_url.is.null')
 
     if shop_filter:
         count_query = count_query.eq('shop', shop_filter)
+        
+    if keyword_filter:
+        count_query = count_query.ilike('name', f'%{keyword_filter}%')
         
     count_res = count_query.execute()
     total_remaining = count_res.count
@@ -101,53 +109,54 @@ async def enrich_gemini(limit: int = 50, shop_filter: str = None, offline: bool 
 
         # Calculate remaining items to process
         remaining = limit - total_processed
-        current_batch_size = min(1000, remaining)
-        
+        current_batch_size = min(100, remaining) # Cap batch size to Avoid massive fetches
+
         # Get beers that need Gemini enrichment OR Untappd enrichment
-        # Use verified view to find missing data
-        print(f"\n📂 Loading batch of beers from beer_info_view (Batch Target: {current_batch_size})...")
+        print(f"\n📂 Loading candidates from beer_info_view (Batch Target: {current_batch_size})...")
         
         query = supabase.table('beer_info_view').select('*')
         
         if offline:
-            # In offline mode, we ONLY fetch items that HAVE Gemini data but miss Untappd.
-            # We explicitly exclude valid stored Gemini data that is already processed to avoid infinite loops?
-            # Actually, check logic:
-            # We want: brewery_name_en IS NOT NULL (means Gemini Data Exists) AND untappd_url IS NULL (Needs chaining)
             query = query.not_.is_('brewery_name_en', 'null').is_('untappd_url', 'null')
         else:
-            # Normal mode: missing gemini OR missing untappd
-            query = query.or_('brewery_name_en.is.null,untappd_url.is.null')
-            
+            if not force_reprocess:
+                query = query.or_('brewery_name_en.is.null,untappd_url.is.null')
+        
         if shop_filter:
             query = query.eq('shop', shop_filter)
+            
+        if keyword_filter:
+            query = query.ilike('name', f'%{keyword_filter}%')
             
         response = query.order('first_seen', desc=True) \
             .limit(current_batch_size) \
             .execute()
-        
+            
         beers = response.data
         print(f"  Found {len(beers)} beers in this batch")
         
         if not beers:
-            print("\n✨ No more beers need enrichment!")
+            print("\n✨ No more beers found matching criteria!")
             break
-        
+            
         # Process batch
         for i, beer in enumerate(beers, 1):
             print(f"\n{'='*70}")
-            print(f"[Batch Item {i}/{len(beers)} | Total {total_processed + i}/{limit}] Processing: {beer.get('name', 'Unknown')[:60]}")
+            current_count = total_processed + i
+            print(f"[Batch Item {i}/{len(beers)} | Total {current_count}/{limit}] Processing: {beer.get('name', 'Unknown')[:60]}")
             print(f"{'='*70}")
             
             updates = {}
-            need_gemini = not beer.get('brewery_name_en')
+            # Re-enrich if either English brewery or beer name is missing OR if forcing
+            need_gemini = force_reprocess or (not beer.get('brewery_name_en') or not beer.get('beer_name_en'))
             
             try:
                 if need_gemini:
                     if offline:
-                        print("  ⏭️  Offline mode: Skipping Gemini API call.")
-                        # Should not happen given the query filter, but safety check
-                        updates = False 
+                         # Offline mode strictly chains, does not call Gemini
+                         # But if logic brought us here (force or missing), we can't do much without Gemini
+                         # Unless we rely on what we have.
+                         updates = False 
                     else:
                         # Check for known brewery hint in the beer name
                         known_brewery = None
@@ -233,7 +242,9 @@ if __name__ == "__main__":
     parser.add_argument('--limit', type=int, default=1000, help='Batch size (default 1000)')
     parser.add_argument('--offline', action='store_true', help='Offline mode: Skip API calls, only verify/chain existing data')
     parser.add_argument('--shop', type=str, help='Filter by shop name')
+    parser.add_argument('--keyword', type=str, help='Filter by product name keyword')
+    parser.add_argument('--force', action='store_true', help='Force re-process even if data exists')
     
     args = parser.parse_args()
     
-    asyncio.run(enrich_gemini(limit=args.limit, offline=args.offline, shop_filter=args.shop))
+    asyncio.run(enrich_gemini(limit=args.limit, offline=args.offline, shop_filter=args.shop, keyword_filter=args.keyword, force_reprocess=args.force))

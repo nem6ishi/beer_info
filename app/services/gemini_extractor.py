@@ -140,20 +140,47 @@ class GeminiExtractor:
         Extract the brewery name and beer name from the following product title string.
         Separate them into Japanese and English versions if present.
         Product Title: "{product_name}"{brewery_hint}
-        
+
+        Guidelines:
+        - Identify the brewery name and beer name from the title.
+        - Common formats include "Beer Name / Brewery Name" or "【Beer Name/Brewery Name】".
+        - If the title follows "【A/B】", A is typically the Beer Name and B is the Brewery Name.
+        - Use your knowledge to identify known breweries (e.g., "FETISH CLUB", "UCHU BREWING", "West Coast Brewing").
+        - "NAMACHAN" or "NAMACHAん" refers to "Namachan Brewing". Do NOT confuse it with "Black Tide" even if "Black" appears in the beer name.
+
         Return ONLY a raw JSON string (no markdown formatting, no code blocks) with strictly these keys:
         - "brewery_name_jp" (Japanese brewery name, or null)
         - "brewery_name_en" (English brewery name, or null)
         - "beer_name_jp" (Japanese beer name, or null)
         - "beer_name_en" (English beer name, or null)
         
-        Example:
-        {{
-          "brewery_name_jp": "インクホーン",
-          "brewery_name_en": "Inkhorn Brewing",
-          "beer_name_jp": "鶯",
-          "beer_name_en": "UGUISU"
-        }}
+        Examples:
+        1. Input: "【TECHNO PILS/FETISH CLUB】"
+           Output:
+           {{
+             "brewery_name_jp": null,
+             "brewery_name_en": "FETISH CLUB",
+             "beer_name_jp": null,
+             "beer_name_en": "TECHNO PILS"
+           }}
+
+        2. Input: "Theory of Clarity / Inkhorn Brewing"
+           Output:
+           {{
+             "brewery_name_jp": "インクホーン",
+             "brewery_name_en": "Inkhorn Brewing",
+             "beer_name_jp": null,
+             "beer_name_en": "Theory of Clarity"
+           }}
+
+        3. Input: "ナマチャン やみつきエール ブラックペッパー / NAMACHAN American IPA w/Black Paper"
+           Output:
+           {{
+             "brewery_name_jp": "NAMACHAん",
+             "brewery_name_en": "Namachan Brewing",
+             "beer_name_jp": "やみつきエール ブラックペッパー",
+             "beer_name_en": "Yamitsuki Ale Black Pepper"
+           }}
         """
 
         try:

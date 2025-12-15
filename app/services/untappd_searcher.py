@@ -5,19 +5,20 @@ from datetime import datetime
 from typing import Optional, Dict
 import time
 
-def get_untappd_url(brewery_name: str, beer_name: str) -> Optional[str]:
+def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None) -> Optional[str]:
     """
     Searches for an Untappd beer page using direct scraping of Untappd.com.
     
     Args:
         brewery_name (str): Name of the brewery (prefer English).
         beer_name (str): Name of the beer (prefer English).
+        beer_name_jp (str): Name of the beer in Japanese (optional fallback).
         
     Returns:
         Optional[str]: A direct beer page URL (e.g. https://untappd.com/b/...) if found,
                        otherwise the Untappd search result page URL, or None if inputs are empty.
     """
-    if not brewery_name and not beer_name:
+    if not brewery_name and not beer_name and not beer_name_jp:
         return None
 
     def search_untappd(query: str) -> Optional[str]:
@@ -70,9 +71,64 @@ def get_untappd_url(brewery_name: str, beer_name: str) -> Optional[str]:
         if result:
             print(f"[Untappd] Found direct link (fallback): {result}")
             return result
+            
+    # Advanced Fallback: Strip common style suffixes
+    # Sometimes "SomeBeer IPA" doesn't hit, but "SomeBeer" does (and returns the IPA)
+    COMMON_SUFFIXES = [
+        " IPA", " Hazy IPA", " Double IPA", " DIPA", " Triple IPA", " TIPA", 
+        " Pale Ale", " Stout", " Imperial Stout", " Lager", " Pilsner", " Sour", 
+        " Gose", " Porter", " Ale", " Wheat", " Saison", " Barleywine"
+    ]
     
+    # Sort by length desc to remove longest match first (e.g. "Imperial Stout" before "Stout")
+    COMMON_SUFFIXES.sort(key=len, reverse=True)
+    
+    if beer_name:
+        stripped_name = beer_name
+        found_suffix = False
+        
+        # Case insensitive check
+        lower_name = beer_name.lower()
+        
+        for suffix in COMMON_SUFFIXES:
+            if lower_name.endswith(suffix.lower()):
+                # Strip it (case insensitive way)
+                stripped_name = beer_name[:-len(suffix)].strip()
+                found_suffix = True
+                print(f"[Untappd] Detected suffix '{suffix}'. Stripped to: '{stripped_name}'")
+                break
+        
+        if found_suffix and stripped_name:
+            # Try 1: {Stripped} {Brewery}
+            query = f"{stripped_name} {brewery_name}" if brewery_name else stripped_name
+            print(f"[Untappd] Retrying with stripped name: {query}")
+            result = search_untappd(query)
+            if result:
+                print(f"[Untappd] Found direct link (stripped+brewery): {result}")
+                return result
+                
+            # Try 2: {Stripped} only
+            if brewery_name:
+                print(f"[Untappd] Retrying with stripped name only: {stripped_name}")
+                result = search_untappd(stripped_name)
+                if result:
+                    print(f"[Untappd] Found direct link (stripped only): {result}")
+                    return result
+
+    # Japanese Name Fallback
+    if beer_name_jp:
+        # Sometimes JP name works better (e.g. "Space Colony" vs "スペースコロニー") - actually EN is better usually,
+        # but sometimes the EN extraction is empty or wrong, or Untappd has JP name registered (rare but happens).
+        print(f"[Untappd] Retrying with Japanese name: {beer_name_jp}")
+        result = search_untappd(beer_name_jp)
+        if result:
+            print(f"[Untappd] Found direct link (JP name): {result}")
+            return result
+
     # Final Fallback: Return search URL
-    encoded_query = urllib.parse.quote(search_query)
+    # Use whatever available for the query param
+    final_query = search_query if search_query.strip() else (beer_name or beer_name_jp or "")
+    encoded_query = urllib.parse.quote(final_query)
     fallback_url = f"https://untappd.com/search?q={encoded_query}"
     print("[Untappd] No direct link found. Returning search URL.")
     return fallback_url
