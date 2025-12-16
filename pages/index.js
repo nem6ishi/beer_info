@@ -6,61 +6,7 @@ import BeerTable from '../components/BeerTable'
 import Pagination from '../components/Pagination'
 import BeerFilters from '../components/BeerFilters'
 
-// Debug Logger
-const DebugLogger = () => {
-    useEffect(() => {
-        const logContainer = document.getElementById('debug-log-container');
-        const appendLog = (type, args) => {
-            if (logContainer) {
-                const div = document.createElement('div');
-                div.style.borderBottom = '1px solid #333';
-                div.style.color = type === 'error' ? '#ff6b6b' : '#eee';
-                div.innerText = `[${type}] ` + args.map(a => String(a)).join(' ');
-                logContainer.appendChild(div);
-            }
-        };
-
-        const originalLog = console.log;
-        const originalError = console.error;
-
-        console.log = (...args) => {
-            originalLog(...args);
-            appendLog('log', args);
-        };
-        console.error = (...args) => {
-            originalError(...args);
-            appendLog('error', args);
-        };
-
-        // Heartbeat to check if JS is alive
-        const interval = setInterval(() => {
-            console.log("Heartbeat: JS is running");
-        }, 2000);
-
-        console.log("DebugLogger Direct-DOM active. UA:", navigator.userAgent);
-
-        return () => {
-            console.log = originalLog;
-            console.error = originalError;
-            clearInterval(interval);
-        };
-    }, []);
-
-    return (
-        <div style={{
-            position: 'fixed', bottom: 0, left: 0, right: 0,
-            height: '150px', overflowY: 'auto',
-            background: 'rgba(0,0,0,0.8)', color: '#fff',
-            fontSize: '10px', padding: '5px', zIndex: 9999,
-            pointerEvents: 'none'
-        }}>
-            <div style={{ borderBottom: '1px solid #444', marginBottom: '5px' }}>Debug Console (Direct DOM)</div>
-            <div id="debug-log-container">
-                <div>Waiting for logs... (DOM mode)</div>
-            </div>
-        </div>
-    );
-};
+// Debug Logger Removed
 
 import React from 'react'
 
@@ -76,7 +22,7 @@ class ErrorBoundary extends React.Component {
             return (
                 <div style={{ padding: 20, color: 'red' }}>
                     <h2>⚠️ Something went wrong.</h2>
-                    <p>{this.state.error ? this.state.error.toString() : 'Unknown Error'}</p>
+                    <p>{this.state.error?.toString()}</p>
                     <button onClick={() => window.location.reload()}>Reload Page</button>
                 </div>
             );
@@ -88,7 +34,6 @@ class ErrorBoundary extends React.Component {
 export default function Home() {
     return (
         <ErrorBoundary>
-            <DebugLogger />
             <HomeContent />
         </ErrorBoundary>
     )
@@ -96,7 +41,7 @@ export default function Home() {
 
 function HomeContent() {
     const router = useRouter()
-    console.log("[Render] HomeContent rendering. isReady:", router.isReady);
+    // console.log("[Render] HomeContent rendering. isReady:", router.isReady);
 
     // State for data
     const [beers, setBeers] = useState([])
@@ -162,14 +107,14 @@ function HomeContent() {
 
     // Data Fetching
     const fetchBeers = useCallback(async () => {
-        console.log("[Fetch] fetchBeers called. isReady:", router.isReady);
+        // console.log("[Fetch] fetchBeers called. isReady:", router.isReady);
 
         if (!router.isReady) {
-            console.log("[Fetch] Router not ready, aborting.");
+            // console.log("[Fetch] Router not ready, aborting.");
             return;
         }
 
-        console.log("Fetching beers with query:", JSON.stringify(router.query));
+        // console.log("Fetching beers with query:", JSON.stringify(router.query));
         setLoading(true)
         setError(null)
 
@@ -196,7 +141,7 @@ function HomeContent() {
             if (!res.ok) throw new Error('Failed to load beers')
             const data = await res.json()
 
-            console.log('Fetched:', (data.beers && data.beers.length));
+            // console.log('Fetched:', data.beers?.length);
             setBeers(data.beers || [])
             setTotalPages(data.pagination.totalPages)
             setTotalItems(data.pagination.total)
