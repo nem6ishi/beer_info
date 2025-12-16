@@ -817,10 +817,11 @@ h1 {
     }
 
     .style-specs-group {
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 6px;
+        display: flex;
+        flex-direction: column;
+        /* Force vertical stacking */
+        align-items: flex-start;
+        gap: 4px;
     }
 
     .beer-style-text {
@@ -838,10 +839,11 @@ h1 {
         grid-row: 3 / 4;
         display: flex;
         justify-content: center;
-        align-items: center;
-        /* Center Vertically in its cell */
+        /* Center Horizontally */
+        align-items: flex-start;
         margin-top: 4px;
-        /* Slight separation */
+        width: 100%;
+        /* Ensure full width of cell for centering */
     }
 
     .rating-box {
