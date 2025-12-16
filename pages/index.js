@@ -76,7 +76,7 @@ class ErrorBoundary extends React.Component {
             return (
                 <div style={{ padding: 20, color: 'red' }}>
                     <h2>⚠️ Something went wrong.</h2>
-                    <p>{this.state.error?.toString()}</p>
+                    <p>{this.state.error ? this.state.error.toString() : 'Unknown Error'}</p>
                     <button onClick={() => window.location.reload()}>Reload Page</button>
                 </div>
             );
@@ -196,7 +196,7 @@ function HomeContent() {
             if (!res.ok) throw new Error('Failed to load beers')
             const data = await res.json()
 
-            console.log('Fetched:', data.beers?.length);
+            console.log('Fetched:', (data.beers && data.beers.length));
             setBeers(data.beers || [])
             setTotalPages(data.pagination.totalPages)
             setTotalItems(data.pagination.total)
