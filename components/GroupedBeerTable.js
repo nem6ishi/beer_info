@@ -12,12 +12,19 @@ export default function GroupedBeerTable({ groups, loading, error }) {
 
     const formatSimpleDate = (isoString) => {
         if (!isoString) return '-';
-        const date = new Date(isoString);
-        return date.toLocaleDateString('ja-JP', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-        });
+        // Safari fix: Replace space with T for ISO format
+        const safeDate = isoString.replace(' ', 'T');
+        try {
+            const date = new Date(safeDate);
+            if (isNaN(date.getTime())) return '-';
+            return date.toLocaleDateString('ja-JP', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+            });
+        } catch (e) {
+            return '-';
+        }
     }
 
     if (loading) return <div className="status-message">Loading grouped collection...</div>
