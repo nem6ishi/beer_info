@@ -128,15 +128,14 @@ uv run python -m app.cli enrich [--limit 50]
 │   └── api/                # API routes
 ├── public/                 # Static assets
 ├── scripts/                # Utility scripts
+│   ├── archive/            # Old/Review scripts
 │   ├── diagnostics/        # Check/Debug scripts
 │   ├── maintenance/        # Migration/Cleanup scripts
-│   ├── migrate_to_supabase.py
 │   ├── scrape.py           # Main scraping script
 │   ├── enrich_gemini.py    # Main Gemini enrichment script
 │   └── enrich_untappd.py   # Main Untappd enrichment script
 ├── sql/                    # SQL Database Files
 │   ├── archive/            # Old/Review scripts
-│   └── (scripts moved)
 ├── supabase_schema.sql     # Main Database schema definition
 └── vercel.json             # Vercel config
 ```
@@ -144,7 +143,6 @@ uv run python -m app.cli enrich [--limit 50]
 ## 📊 API Endpoints
 
 - `GET /api/beers?search=&sort=newest&page=1&limit=100` - Get beers with filtering
-- `GET /api/stats` - Get database statistics
 
 ## 🔄 Data Flow
 
