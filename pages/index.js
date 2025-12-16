@@ -116,11 +116,18 @@ function HomeContent() {
         setLoading(true)
         setError(null)
 
-        // Timeout logic
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-
         try {
+            // Timeout logic (Polyfill-ish: Check if AbortController exists)
+            let controller = null;
+            let timeoutId = null;
+            let signal = undefined;
+
+            if (typeof AbortController !== 'undefined') {
+                controller = new AbortController();
+                timeoutId = setTimeout(() => controller.abort(), 10000);
+                signal = controller.signal;
+            }
+
             const currentParams = router.query
             const params = new URLSearchParams({
                 page: currentParams.page || '1',
@@ -133,8 +140,9 @@ function HomeContent() {
             const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
             filterKeys.forEach(key => { if (currentParams[key]) params.append(key, currentParams[key]) })
 
-            const res = await fetch(`/api/beers?${params}`, { signal: controller.signal })
-            clearTimeout(timeoutId);
+            const res = await fetch(`/api/beers?${params}`, { signal })
+
+            if (timeoutId) clearTimeout(timeoutId);
 
             if (!res.ok) throw new Error('Failed to load beers')
             const data = await res.json()
