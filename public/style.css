@@ -941,6 +941,16 @@ h1 {
         text-align: center;
         justify-content: center;
     }
+
+    /* Prevent Mobile Zoom */
+    input[type="text"],
+    input[type="number"],
+    select,
+    textarea,
+    .multi-select-search input,
+    .search-bar input {
+        font-size: 16px !important;
+    }
 }
 
 /* MultiSelect Dropdown Styles */
