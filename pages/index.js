@@ -6,7 +6,76 @@ import BeerTable from '../components/BeerTable'
 import Pagination from '../components/Pagination'
 import BeerFilters from '../components/BeerFilters'
 
+// Debug Logger
+const DebugLogger = () => {
+    const [logs, setLogs] = useState([]);
+    useEffect(() => {
+        const originalLog = console.log;
+        const originalError = console.error;
+        console.log = (...args) => {
+            originalLog(...args);
+            setLogs(prev => [...prev, { type: 'log', msg: args.map(a => String(a)).join(' ') }].slice(-20));
+        };
+        console.error = (...args) => {
+            originalError(...args);
+            setLogs(prev => [...prev, { type: 'error', msg: args.map(a => String(a)).join(' ') }].slice(-20));
+        };
+        return () => {
+            console.log = originalLog;
+            console.error = originalError;
+        };
+    }, []);
+    if (logs.length === 0) return null;
+    return (
+        <div style={{
+            position: 'fixed', bottom: 0, left: 0, right: 0,
+            height: '150px', overflowY: 'auto',
+            background: 'rgba(0,0,0,0.8)', color: '#fff',
+            fontSize: '10px', padding: '5px', zIndex: 9999,
+            pointerEvents: 'none'
+        }}>
+            {logs.map((L, i) => (
+                <div key={i} style={{ color: L.type === 'error' ? '#ff6b6b' : '#eee' }}>
+                    [{L.type}] {L.msg}
+                </div>
+            ))}
+        </div>
+    );
+};
+
+import React from 'react'
+
+class ErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+    static getDerivedStateFromError(error) { return { hasError: true, error }; }
+    componentDidCatch(error, errorInfo) { console.error("Uncaught error:", error, errorInfo); }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{ padding: 20, color: 'red' }}>
+                    <h2>⚠️ Something went wrong.</h2>
+                    <p>{this.state.error?.toString()}</p>
+                    <button onClick={() => window.location.reload()}>Reload Page</button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
 export default function Home() {
+    return (
+        <ErrorBoundary>
+            <DebugLogger />
+            <HomeContent />
+        </ErrorBoundary>
+    )
+}
+
+function HomeContent() {
     const router = useRouter()
 
     // State for data
@@ -19,32 +88,40 @@ export default function Home() {
     // UI State
     const [searchInput, setSearchInput] = useState('')
     const [isFilterOpen, setIsFilterOpen] = useState(false)
-    const [availableStyles, setAvailableStyles] = useState([]) // Fetched from API
-    const [availableBreweries, setAvailableBreweries] = useState([]) // Fetched from API
+    const [availableStyles, setAvailableStyles] = useState([])
+    const [availableBreweries, setAvailableBreweries] = useState([])
 
-    // Filter UI State (ABV, IBU, Rating, Stock)
+    // View Mode (Fixed as 'individual' for index.js)
+    const viewMode = 'individual';
+    const handleViewModeChange = (mode) => {
+        if (mode === 'grouped') {
+            router.push('/grouped');
+        }
+    }
+
+    // Filter UI State
     const [tempFilters, setTempFilters] = useState({
         min_abv: '',
         max_abv: '',
         min_ibu: '',
         max_ibu: '',
         min_rating: '',
-        stock_filter: ''
+        stock_filter: '',
+        untappd_status: '',
+        shop: '',
+        brewery_filter: '',
+        style_filter: ''
     })
 
     // Derived state from URL (defaults)
     const page = parseInt(router.query.page || '1', 10)
-    const limit = router.query.limit || '20' // Default limit 20
+    const limit = router.query.limit || '20'
     const sort = router.query.sort || 'newest'
-    const shop = router.query.shop || ''
-    const style_filter = router.query.style_filter || ''
-    const brewery_filter = router.query.brewery_filter || ''
 
-    // Initialize search input from URL once router is ready. 
+    // Initialize search input from URL
     useEffect(() => {
         if (router.isReady) {
             setSearchInput(router.query.search || '')
-            // Don't need styleInput state anymore, using router directly for multi-select
             setTempFilters({
                 min_abv: router.query.min_abv || '',
                 max_abv: router.query.max_abv || '',
@@ -52,24 +129,14 @@ export default function Home() {
                 max_ibu: router.query.max_ibu || '',
                 min_rating: router.query.min_rating || '',
                 stock_filter: router.query.stock_filter || '',
-                untappd_status: router.query.untappd_status || ''
+                untappd_status: router.query.untappd_status || '',
+                shop: router.query.shop || '',
+                brewery_filter: router.query.brewery_filter || '',
+                style_filter: router.query.style_filter || ''
             })
 
-            // Fetch styles
-            fetch('/api/styles')
-                .then(res => res.json())
-                .then(data => {
-                    if (data.styles) setAvailableStyles(data.styles)
-                })
-                .catch(err => console.error('Failed to load styles', err))
-
-            // Fetch breweries
-            fetch('/api/breweries')
-                .then(res => res.json())
-                .then(data => {
-                    if (data.breweries) setAvailableBreweries(data.breweries)
-                })
-                .catch(err => console.error('Failed to load breweries', err))
+            fetch('/api/styles').then(res => res.json()).then(d => d.styles && setAvailableStyles(d.styles)).catch(console.error)
+            fetch('/api/breweries').then(res => res.json()).then(d => d.breweries && setAvailableBreweries(d.breweries)).catch(console.error)
         }
     }, [router.isReady])
 
@@ -77,39 +144,40 @@ export default function Home() {
     const fetchBeers = useCallback(async () => {
         if (!router.isReady) return
 
+        console.log("Fetching beers...", router.query);
         setLoading(true)
         setError(null)
+
+        // Timeout logic
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
         try {
-            // Use router.query directly to ensure we fetch what matches the URL
-            // ... (rest of logic)
             const currentParams = router.query
             const params = new URLSearchParams({
                 page: currentParams.page || '1',
-                limit: currentParams.limit || '20', // Dynamic limit
+                limit: currentParams.limit || '20',
                 search: currentParams.search || '',
                 sort: currentParams.sort || 'newest',
             })
-            if (currentParams.shop) {
-                params.append('shop', currentParams.shop)
-            }
-            // Append advanced filters
-            const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
-            filterKeys.forEach(key => {
-                if (currentParams[key]) params.append(key, currentParams[key])
-            })
+            if (currentParams.shop) params.append('shop', currentParams.shop)
 
-            const res = await fetch(`/api/beers?${params}`)
+            const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
+            filterKeys.forEach(key => { if (currentParams[key]) params.append(key, currentParams[key]) })
+
+            const res = await fetch(`/api/beers?${params}`, { signal: controller.signal })
+            clearTimeout(timeoutId);
+
             if (!res.ok) throw new Error('Failed to load beers')
             const data = await res.json()
 
-            console.log('Fetched beers:', data.beers?.length, data.pagination);
+            console.log('Fetched:', data.beers?.length);
             setBeers(data.beers || [])
             setTotalPages(data.pagination.totalPages)
             setTotalItems(data.pagination.total)
         } catch (err) {
             console.error('Fetch error:', err);
             setError(err.message)
-            console.error(err)
         } finally {
             setLoading(false)
         }
@@ -123,148 +191,55 @@ export default function Home() {
     // Helper to update URL
     const updateURL = (newParams, pathname = '/') => {
         const query = { ...router.query, ...newParams }
-
-        // Cleanup defaults to keep URL clean
+        // Cleanups
         if (query.page == '1') delete query.page
-        if (query.limit == '20') delete query.limit // Default limit cleanup
+        if (query.limit == '20') delete query.limit
         if (query.sort === 'newest') delete query.sort
         if (!query.search) delete query.search
         if (!query.shop) delete query.shop
-        // Clean up empty filters
-        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
-        filterKeys.forEach(key => {
-            if (!query[key]) delete query[key]
-        })
-
+        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
+        filterKeys.forEach(key => { if (!query[key]) delete query[key] })
         router.push({ pathname, query }, undefined, { scroll: false })
     }
 
-    // Filter Logic
     const activeFilterCount = (() => {
         if (!router.isReady) return 0
-        const keys = ['limit', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter', 'untappd_status'] // Limit acts like a filter param
-        return keys.filter(k => !!router.query[k] && k !== 'limit' && k !== 'sort' && k !== 'page').length // Exclude structural params from badge count
+        const keys = ['min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter', 'untappd_status']
+        return keys.filter(k => !!router.query[k]).length
     })()
 
-    // We update tempFilters state immediately for UI 
     const handleFilterChange = (key, value) => {
+        updateURL({ [key]: value, page: '1' })
         setTempFilters(prev => ({ ...prev, [key]: value }))
-
-        // If it's a select or checkbox (Stock, Untappd Status), update URL immediately
-        if (key === 'stock_filter' || key === 'untappd_status') {
-            updateURL({ [key]: value, page: '1' })
-        }
     }
 
-    // Debounced effect for Advanced Filters (ABV, IBU, Rating)
-    useEffect(() => {
-        if (!router.isReady) return
-
-        const timeoutId = setTimeout(() => {
-            const query = router.query
-            const { min_abv, max_abv, min_ibu, max_ibu, min_rating } = tempFilters
-
-            if (
-                min_abv !== (query.min_abv || '') ||
-                max_abv !== (query.max_abv || '') ||
-                min_ibu !== (query.min_ibu || '') ||
-                max_ibu !== (query.max_ibu || '') ||
-                min_rating !== (query.min_rating || '')
-            ) {
-                updateURL({ ...tempFilters, page: '1' })
-            }
-
-        }, 500) // 500ms debounce for typing numbers
-
-        return () => clearTimeout(timeoutId)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tempFilters, router.isReady])
-
-    const handleMultiSelectChange = (paramKey, newValues) => {
-        const valueStr = newValues.join(',')
-        updateURL({ [paramKey]: valueStr, page: '1' })
+    const handleMultiSelectChange = (key, value) => {
+        handleFilterChange(key, value.join(','))
     }
 
     const resetFilters = () => {
-        const resetState = {
-            min_abv: '',
-            max_abv: '',
-            min_ibu: '',
-            max_ibu: '',
-            min_rating: '',
-            stock_filter: '',
-            untappd_status: ''
-        }
-        setTempFilters(resetState)
         setSearchInput('')
-
-        updateURL({
-            min_abv: '',
-            max_abv: '',
-            min_ibu: '',
-            max_ibu: '',
-            min_rating: '',
-            stock_filter: '',
-            untappd_status: '',
-            shop: '',
-            style_filter: '',
-            brewery_filter: '',
-            sort: 'newest',
-            search: '',
-            page: '1',
-            limit: '20'
-        }, '/')
+        setTempFilters({
+            min_abv: '', max_abv: '', min_ibu: '', max_ibu: '', min_rating: '', stock_filter: '', untappd_status: '', shop: '', brewery_filter: '', style_filter: ''
+        })
+        router.push({ pathname: '/', query: {} }, undefined, { scroll: false })
     }
 
     const handleSearchChange = (e) => {
-        setSearchInput(e.target.value)
+        const val = e.target.value
+        setSearchInput(val)
+        // Debounce logic handled by simple timeout in user typing usually, but here we can just update URL on blur or verify debounce
+        // Simplified for this replacement:
+        if (window.searchTimeout) clearTimeout(window.searchTimeout)
+        window.searchTimeout = setTimeout(() => updateURL({ search: val, page: '1' }), 500)
     }
 
-    // Debounce search update to URL
-    useEffect(() => {
-        if (!router.isReady) return
-
-        const currentUrlSearch = router.query.search || ''
-        if (searchInput === currentUrlSearch) return
-
-        const timeoutId = setTimeout(() => {
-            setPage(1) // Reset page on search
-            updateURL({ search: searchInput, page: '1' })
-        }, 500)
-
-        return () => clearTimeout(timeoutId)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchInput, router.isReady])
-
-
-    const handleSort = (e) => {
-        const newSort = e.target.value
-        setSort(newSort)
-        setPage(1)
-        updateURL({ sort: newSort, page: '1' })
-    }
-
-    const handleLimitChange = (e) => {
-        const newLimit = e.target.value
-        setLimit(parseInt(newLimit, 10))
-        setPage(1)
-        updateURL({ limit: newLimit, page: '1' })
-    }
-
+    const handleSort = (e) => updateURL({ sort: e.target.value, page: '1' })
+    const handleLimitChange = (e) => updateURL({ limit: e.target.value, page: '1' })
     const handlePageChange = (newPage) => {
         if (newPage >= 1 && newPage <= totalPages) {
-            setPage(newPage)
             updateURL({ page: newPage.toString() })
             window.scrollTo({ top: 0, behavior: 'smooth' })
-        }
-    }
-    const handleViewModeChange = (mode) => {
-        setViewMode(mode)
-        setPage(1)
-        if (mode === 'grouped') {
-            updateURL({}, '/grouped')
-        } else {
-            updateURL({}, '/')
         }
     }
 
@@ -277,41 +252,22 @@ export default function Home() {
                 <meta name="description" content="Discover premium craft beers collected from the best Japanese shops." />
             </Head>
 
-            <div className="background-globes">
-                <div className="globe globe-1"></div>
-                <div className="globe globe-2"></div>
-            </div>
-
-            <header className="glass-header">
-                <div className="container header-content">
-                    <h1>
-                        <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
-                            Craft Beer Alert Japan
-                        </Link>
-                    </h1>
+            <header className="header">
+                <div className="logo-section">
+                    <h1>Craft Beer Alert <span>Japan</span></h1>
+                    <p className="subtitle">Curated drops from top bottle shops</p>
+                </div>
+                <div className="search-bar-container">
                     <div className="search-bar">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                            strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                        </svg>
                         <input
                             type="text"
                             placeholder="Search beers..."
                             value={searchInput}
                             onChange={handleSearchChange}
-                            aria-label="Search for beers"
                         />
                         {searchInput && (
-                            <button
-                                className="clear-search-btn"
-                                onClick={() => setSearchInput('')}
-                                aria-label="Clear search"
-                            >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
+                            <button className="clear-search-btn" onClick={() => { setSearchInput(''); updateURL({ search: '', page: '1' }) }}>
+                                ✕
                             </button>
                         )}
                     </div>
@@ -319,7 +275,6 @@ export default function Home() {
             </header>
 
             <main className="container">
-
                 <BeerFilters
                     shop={tempFilters.shop}
                     brewery_filter={tempFilters.brewery_filter}
@@ -342,33 +297,22 @@ export default function Home() {
                     onRefresh={fetchBeers}
                 />
 
-                {viewMode === 'individual' ? (
-                    <BeerTable
-                        beers={beers}
-                        loading={loading}
-                        error={error}
-                    />
-                ) : (
-                    // Assuming groupedBeers state and GroupedBeerTable component exist
-                    <GroupedBeerTable
-                        groups={beers} // Re-using 'beers' state for grouped data for simplicity, or define a new 'groupedBeers' state
-                        loading={loading}
-                        error={error}
-                    />
-                )}
-
+                <BeerTable
+                    beers={beers}
+                    loading={loading}
+                    error={error}
+                />
 
                 {!loading && !error && (
                     <Pagination
                         currentPage={page}
                         totalPages={totalPages}
-                        totalItems={totalItems}
                         onPageChange={handlePageChange}
                     />
                 )}
-            </main >
+            </main>
 
-            <footer className="glass-footer">
+            <footer className="footer">
                 <div className="container">
                     <p>&copy; 2025 Craft Beer Watch Japan. Data sourced from Beervolta &amp; Chouseiya.</p>
                 </div>
