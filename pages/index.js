@@ -211,8 +211,9 @@ export default function Home() {
             brewery_filter: '',
             sort: 'newest',
             search: '',
-            page: '1'
-        })
+            page: '1',
+            limit: '20'
+        }, '/')
     }
 
     const handleSearchChange = (e) => {
@@ -227,6 +228,7 @@ export default function Home() {
         if (searchInput === currentUrlSearch) return
 
         const timeoutId = setTimeout(() => {
+            setPage(1) // Reset page on search
             updateURL({ search: searchInput, page: '1' })
         }, 500)
 
@@ -236,22 +238,33 @@ export default function Home() {
 
 
     const handleSort = (e) => {
-        updateURL({ sort: e.target.value, page: '1' })
+        const newSort = e.target.value
+        setSort(newSort)
+        setPage(1)
+        updateURL({ sort: newSort, page: '1' })
     }
 
     const handleLimitChange = (e) => {
-        updateURL({ limit: e.target.value, page: '1' })
+        const newLimit = e.target.value
+        setLimit(parseInt(newLimit, 10))
+        setPage(1)
+        updateURL({ limit: newLimit, page: '1' })
     }
 
     const handlePageChange = (newPage) => {
         if (newPage >= 1 && newPage <= totalPages) {
+            setPage(newPage)
             updateURL({ page: newPage.toString() })
             window.scrollTo({ top: 0, behavior: 'smooth' })
         }
     }
     const handleViewModeChange = (mode) => {
+        setViewMode(mode)
+        setPage(1)
         if (mode === 'grouped') {
             updateURL({}, '/grouped')
+        } else {
+            updateURL({}, '/')
         }
     }
 
@@ -308,9 +321,9 @@ export default function Home() {
             <main className="container">
 
                 <BeerFilters
-                    shop={shop}
-                    brewery_filter={brewery_filter}
-                    style_filter={style_filter}
+                    shop={tempFilters.shop}
+                    brewery_filter={tempFilters.brewery_filter}
+                    style_filter={tempFilters.style_filter}
                     sort={sort}
                     limit={limit}
                     isFilterOpen={isFilterOpen}
@@ -324,16 +337,26 @@ export default function Home() {
                     onToggleFilter={() => setIsFilterOpen(!isFilterOpen)}
                     onReset={resetFilters}
                     onFilterChange={handleFilterChange}
-                    viewMode="individual"
+                    viewMode={viewMode}
                     onViewModeChange={handleViewModeChange}
                     onRefresh={fetchBeers}
                 />
 
-                <BeerTable
-                    beers={beers}
-                    loading={loading}
-                    error={error}
-                />
+                {viewMode === 'individual' ? (
+                    <BeerTable
+                        beers={beers}
+                        loading={loading}
+                        error={error}
+                    />
+                ) : (
+                    // Assuming groupedBeers state and GroupedBeerTable component exist
+                    <GroupedBeerTable
+                        groups={beers} // Re-using 'beers' state for grouped data for simplicity, or define a new 'groupedBeers' state
+                        loading={loading}
+                        error={error}
+                    />
+                )}
+
 
                 {!loading && !error && (
                     <Pagination
