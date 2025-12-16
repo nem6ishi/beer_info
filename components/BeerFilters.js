@@ -18,7 +18,7 @@ export default function BeerFilters({
     onToggleFilter,
     onReset,
     onFilterChange,
-    onFilterChange,
+
     viewMode = 'individual', // 'individual' or 'grouped'
     onViewModeChange,
     onRefresh
