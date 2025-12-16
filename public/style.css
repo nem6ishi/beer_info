@@ -769,10 +769,10 @@ h1 {
         display: block;
     }
 
-    /* 1. Image Cell - Top Left */
+    /* 1. Image Cell - Top Left (Spans 2 rows) */
     .col-img {
         grid-column: 1 / 2;
-        grid-row: 1 / 2;
+        grid-row: 1 / 3;
     }
 
     .beer-image-wrapper {
@@ -787,109 +787,119 @@ h1 {
         grid-row: 1 / 2;
         min-width: 0;
         /* Prevent overflow */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .beer-name-group {
+        gap: 2px;
     }
 
     .beer-name {
         font-size: 16px;
-        margin-bottom: 4px;
+        line-height: 1.3;
+        margin-bottom: 2px;
     }
 
     .brewery-name {
         font-size: 11px;
+        color: #888;
+        margin-bottom: 2px;
     }
 
-    /* 3. Style/Specs Cell - Below Info */
+    /* 3. Style/Specs Cell - Below Info (Right side) */
     .col-beer-style {
         grid-column: 2 / 3;
         grid-row: 2 / 3;
         width: 100%;
         min-width: 0;
-        margin-top: -8px;
-        /* Pull closer to name */
     }
 
     .style-specs-group {
         flex-direction: row;
         flex-wrap: wrap;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
     }
 
-    /* 4. Rating Cell - Bottom Left (moved to be part of action bar or own row) */
-    .col-rating {
-        grid-column: 1 / 2;
-        grid-row: 2 / 4;
-        /* Span down next to image or below */
-        display: flex;
-        justify-content: center;
-        align-items: flex-start;
-        padding-top: 8px !important;
+    .beer-style-text {
+        font-size: 10px;
+        padding: 2px 6px;
     }
 
-    /* Revise layout for Rating & Purchase to sit at bottom */
-    /* Let's actually make a 3rd row for Actions/Footer of Card */
-    .beer-table tbody tr {
-        grid-template-columns: 80px 1fr;
-        grid-template-rows: auto auto auto;
-        /* Row 1: Image | Name+Brewery */
-        /* Row 2: Rating | Style+Specs */
-        /* Row 3: Actions (Full Width) or Rating|Actions */
+    .stats-row {
+        font-size: 11px;
     }
 
-    /* Layout Adjustment */
-    .col-img {
-        grid-column: 1 / 2;
-        grid-row: 1 / 3;
-        /* Image spans 2 rows */
-    }
-
-    .col-name {
-        grid-column: 2 / 3;
-        grid-row: 1 / 2;
-    }
-
-    .col-beer-style {
-        grid-column: 2 / 3;
-        grid-row: 2 / 3;
-    }
-
+    /* 4. Rating Cell - Bottom Left */
     .col-rating {
         grid-column: 1 / 2;
         grid-row: 3 / 4;
         display: flex;
         justify-content: center;
+        align-items: center;
+        /* Center Vertically in its cell */
         margin-top: 4px;
+        /* Slight separation */
     }
 
+    .rating-box {
+        min-width: auto;
+        padding: 4px;
+        background: transparent;
+        gap: 0;
+    }
+
+    .untappd-badge {
+        font-size: 13px;
+        padding: 3px 6px;
+    }
+
+    .rating-count,
+    .fetched-date {
+        font-size: 8px;
+        /* Smaller text for mobile rating details */
+    }
+
+    /* 5. Shop/Actions Cell - Bottom Right */
     .col-shop {
         grid-column: 2 / 3;
         grid-row: 3 / 4;
         width: 100%;
         display: flex;
-        justify-content: flex-end;
-        align-items: center;
+        flex-direction: column;
+        justify-content: center;
+        /* Center vertically if single item */
     }
 
     /* Adjust specific elements for mobile */
     .shop-list-flat {
         width: 100%;
+        gap: 6px;
     }
 
     .shop-item-flat {
         width: 100%;
     }
 
-    .shop-btn {
-        width: 100%;
-        text-align: center;
-        justify-content: center;
+    .shop-btn-flat {
+        padding: 8px 12px;
+        /* Larger touch target */
+        background: #f8f9fa;
     }
 
-    /* Hide less important items if needed or adjust sizes */
-    .rating-box {
-        min-width: auto;
-        padding: 4px;
-        background: transparent;
+    .shop-info-primary {
+        justify-content: space-between;
+    }
+
+    .shop-name-text {
+        font-size: 13px;
+        /* Slightly larger for readability */
+    }
+
+    .price-text {
+        font-size: 14px;
     }
 
     /* Make MultiSelect Full Width */
