@@ -252,22 +252,35 @@ function HomeContent() {
                 <meta name="description" content="Discover premium craft beers collected from the best Japanese shops." />
             </Head>
 
-            <header className="header">
-                <div className="logo-section">
-                    <h1>Craft Beer Alert <span>Japan</span></h1>
-                    <p className="subtitle">Curated drops from top bottle shops</p>
-                </div>
-                <div className="search-bar-container">
+            <header className="glass-header">
+                <div className="container header-content">
+                    <h1>
+                        <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+                            Craft Beer Alert Japan
+                        </Link>
+                    </h1>
                     <div className="search-bar">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#999', zIndex: 2 }}>
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
                         <input
                             type="text"
                             placeholder="Search beers..."
                             value={searchInput}
                             onChange={handleSearchChange}
+                            aria-label="Search for beers"
                         />
                         {searchInput && (
-                            <button className="clear-search-btn" onClick={() => { setSearchInput(''); updateURL({ search: '', page: '1' }) }}>
-                                ✕
+                            <button
+                                className="clear-search-btn"
+                                onClick={() => { setSearchInput(''); updateURL({ search: '', page: '1' }) }}
+                                aria-label="Clear search"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
                             </button>
                         )}
                     </div>
