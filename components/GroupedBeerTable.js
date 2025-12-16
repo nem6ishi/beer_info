@@ -4,34 +4,29 @@ export default function GroupedBeerTable({ groups, loading, error }) {
 
     const formatPrice = (price) => {
         if (!price) return '¥-';
-        if (price.includes('¥')) return price;
-        const num = parseInt(price.replace(/[^0-9]/g, ''), 10);
+        const num = typeof price === 'number' ? price : parseInt(price.replace(/[^0-9]/g, ''), 10);
         if (isNaN(num)) return price;
-        return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(num);
+        return `¥${num.toLocaleString()}`;
     }
 
+    // Simplified date formatter
     const formatSimpleDate = (isoString) => {
         if (!isoString) return '-';
-        // Safari fix: Replace space with T for ISO format
-        const safeDate = isoString.replace(' ', 'T');
         try {
-            const date = new Date(safeDate);
+            const date = new Date(isoString.replace(' ', 'T'));
             if (isNaN(date.getTime())) return '-';
-            return date.toLocaleDateString('ja-JP', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-            });
-        } catch (e) {
-            return '-';
-        }
+            return `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
+        } catch (e) { return '-'; }
     }
 
-    if (loading) return <div className="status-message">Loading grouped collection...</div>
     if (error) return <div className="status-message error">Error: {error}</div>
 
+    if (loading && groups.length === 0) {
+        return <div className="status-message">Loading grouped collection...</div>
+    }
+
     return (
-        <div className="table-container">
+        <div className="table-container" style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s' }}>
             <table className="beer-table">
                 <thead>
                     <tr>
@@ -44,10 +39,8 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                 </thead>
                 <tbody>
                     {groups.map(group => {
-                        // Sort items by price to find cheapest. Clone array to avoid mutating prop.
                         const sortedItems = [...(group.items || [])].sort((a, b) => (a.price_value || Infinity) - (b.price_value || Infinity));
                         const cheapestItem = sortedItems[0];
-                        // Use cheapest item's image, fallback to group image
                         const displayImage = (cheapestItem && cheapestItem.image) ? cheapestItem.image : group.beer_image;
 
                         return (
@@ -74,18 +67,16 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                 </td>
                                 <td className="col-beer-style">
                                     <div className="style-specs-group">
-                                        {group.style ? (
-                                            <span className="beer-style-text">{group.style}</span>
-                                        ) : (
-                                            <span className="na-text">Top Style N/A</span>
-                                        )}
+                                        <span className={group.style ? "beer-style-text" : "na-text"}>
+                                            {group.style || 'Style N/A'}
+                                        </span>
                                         <div className="stats-row">
                                             <div className="stat-item">
-                                                {group.abv ? `${group.abv.toString().includes('%') ? Number(group.abv.replace('%', '')).toFixed(1) : Number(group.abv).toFixed(1)}% ABV` : <span className="na-text">N/A ABV</span>}
+                                                {group.abv ? `${group.abv}% ABV` : <span className="na-text">N/A ABV</span>}
                                             </div>
                                             <span className="separator">•</span>
                                             <div className="stat-item">
-                                                {group.ibu ? `${Number(group.ibu.toString().replace(/[^0-9.]/g, '')).toFixed(0)} IBU` : <span className="na-text">N/A IBU</span>}
+                                                {group.ibu ? `${group.ibu} IBU` : <span className="na-text">N/A IBU</span>}
                                             </div>
                                         </div>
                                     </div>
@@ -95,24 +86,14 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                         {group.untappd_url ? (
                                             <a href={group.untappd_url} target="_blank" rel="noopener noreferrer" className="untappd-badge-link">
                                                 <span className="untappd-header">UNTAPPD ↗</span>
-                                                {group.rating ? (
-                                                    <span className="untappd-badge">{Number(group.rating).toFixed(2)}</span>
-                                                ) : (
-                                                    <span className="untappd-badge na">N/A</span>
-                                                )}
+                                                <span className={group.rating ? "untappd-badge" : "untappd-badge na"}>
+                                                    {group.rating ? Number(group.rating).toFixed(2) : "N/A"}
+                                                </span>
                                             </a>
                                         ) : (
-                                            <div className="untappd-badge-container">
-                                                <span className="untappd-header">UNTAPPD</span>
-                                                <span className="untappd-badge na">N/A</span>
-                                            </div>
+                                            <span className="na-text">N/A</span>
                                         )}
-                                        {group.rating_count > 0 && (
-                                            <span className="rating-count">({group.rating_count})</span>
-                                        )}
-                                        {group.untappd_updated_at && (
-                                            <span className="fetched-date">{formatSimpleDate(group.untappd_updated_at)}</span>
-                                        )}
+                                        {group.rating_count > 0 && <span className="rating-count">({group.rating_count})</span>}
                                     </div>
                                 </td>
                                 <td className="col-shop">
@@ -121,21 +102,14 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                             <div key={idx} className="shop-item-flat">
                                                 <a href={item.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
                                                     <div className="shop-info-primary">
-                                                        <span className="price-text">
-                                                            {formatPrice(item.price)}
-                                                        </span>
+                                                        <span className="price-text">{formatPrice(item.price)}</span>
                                                         <span className="shop-name-text">{item.shop}</span>
                                                         {item.stock_status && (
-                                                            <span className={`stock-dot ${item.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={item.stock_status}>
-                                                            </span>
+                                                            <span className={`stock-dot ${item.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={item.stock_status}></span>
                                                         )}
                                                     </div>
                                                     <div className="shop-info-secondary">
-                                                        {item.last_seen && (
-                                                            <span className="check-date">
-                                                                {formatSimpleDate(item.last_seen)}
-                                                            </span>
-                                                        )}
+                                                        {item.last_seen && <span className="check-date">{formatSimpleDate(item.last_seen)}</span>}
                                                         <span className="external-link-arrow">↗</span>
                                                     </div>
                                                 </a>
@@ -146,12 +120,10 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                             </tr>
                         );
                     })}
-                    {groups.length === 0 && (
+                    {groups.length === 0 && !loading && (
                         <tr>
                             <td colSpan="5" style={{ textAlign: 'center', padding: '2rem' }}>
-                                No grouped beers found matching your criteria.
-                                <br />
-                                <small>(Note: Only beers with Untappd data are shown in Grouped view)</small>
+                                No grouped beers found.
                             </td>
                         </tr>
                     )}

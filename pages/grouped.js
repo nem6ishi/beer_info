@@ -74,49 +74,48 @@ export default function GroupedBeers() {
     }, [router.isReady])
 
     // Data Fetching
+    // Data Fetching
     const fetchGroups = useCallback(async () => {
-        if (!router.isReady) return
+        if (!router.isReady) return;
 
-        setLoading(true)
-        setError(null)
+        setLoading(true);
+        setError(null);
+
         try {
-            // Use router.query directly to ensure we fetch what matches the URL
-            const currentParams = router.query
+            const currentParams = router.query;
             const params = new URLSearchParams({
                 page: currentParams.page || '1',
-                limit: currentParams.limit || '20', // Dynamic limit
+                limit: currentParams.limit || '20',
                 search: currentParams.search || '',
                 sort: currentParams.sort || 'newest',
-            })
-            if (currentParams.shop) {
-                params.append('shop', currentParams.shop)
-            }
-            // Append advanced filters
-            const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'missing_untappd']
-            filterKeys.forEach(key => {
-                if (currentParams[key]) params.append(key, currentParams[key])
-            })
+            });
 
-            const res = await fetch(`/api/grouped-beers?${params}`)
-            if (!res.ok) throw new Error('Failed to load grouped beers')
-            const data = await res.json()
+            if (currentParams.shop) params.append('shop', currentParams.shop);
 
-            setGroups(data.groups || [])
-            setTotalPages(data.pagination.totalPages)
-            setTotalItems(data.pagination.total)
+            // Add filters
+            ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'missing_untappd']
+                .forEach(key => { if (currentParams[key]) params.append(key, currentParams[key]) });
+
+            const res = await fetch(`/api/grouped-beers?${params}`);
+
+            if (!res.ok) throw new Error('Failed to load grouped beers');
+
+            const data = await res.json();
+            setGroups(data.groups || []);
+            setTotalPages(data.pagination.totalPages);
+            setTotalItems(data.pagination.total);
         } catch (err) {
             console.error('Fetch error:', err);
-            setError(err.message)
-            console.error(err)
+            setError('Failed to load data. Please try again.');
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }, [router.isReady, router.query])
+    }, [router.isReady, router.query]);
 
     // Fetch on URL change
     useEffect(() => {
-        fetchGroups()
-    }, [fetchGroups])
+        fetchGroups();
+    }, [fetchGroups]);
 
     // Helper to update URL
     const updateURL = (newParams, pathname = '/grouped') => {

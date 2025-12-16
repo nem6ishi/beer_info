@@ -4,34 +4,34 @@ export default function BeerTable({ beers, loading, error }) {
 
     const formatPrice = (price) => {
         if (!price) return '¥-';
-        if (price.includes('¥')) return price;
-        const num = parseInt(price.replace(/[^0-9]/g, ''), 10);
+        // Simple numeric cleanup
+        const num = typeof price === 'number' ? price : parseInt(price.replace(/[^0-9]/g, ''), 10);
         if (isNaN(num)) return price;
-        return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(num);
+        return `¥${num.toLocaleString()}`;
     }
 
+    // Simplified date formatter
     const formatSimpleDate = (isoString) => {
         if (!isoString) return '-';
-        // Safari fix: Replace space with T for ISO format
-        const safeDate = isoString.replace(' ', 'T');
         try {
-            const date = new Date(safeDate);
+            // Safari friendly date parsing
+            const date = new Date(isoString.replace(' ', 'T'));
             if (isNaN(date.getTime())) return '-';
-            return date.toLocaleDateString('ja-JP', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-            });
-        } catch (e) {
-            return '-';
-        }
+            return `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
+        } catch (e) { return '-'; }
     }
 
-    if (loading) return <div className="status-message">Loading collection...</div>
     if (error) return <div className="status-message error">Error: {error}</div>
 
+    // Don't block render on loading. Show table with opacity if reloading.
+    // If initial load and no data, show a simple loading message in a container to prevent CLS if possible, 
+    // but here we prioritize simplicity.
+    if (loading && beers.length === 0) {
+        return <div className="status-message">Loading...</div>
+    }
+
     return (
-        <div className="table-container">
+        <div className="table-container" style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s' }}>
             <table className="beer-table">
                 <thead>
                     <tr>
@@ -57,101 +57,62 @@ export default function BeerTable({ beers, loading, error }) {
                             </td>
                             <td className="col-name">
                                 <div className="beer-name-group">
-                                    {(beer.untappd_brewery_name || beer.untappd_beer_name || beer.brewery_name_en || beer.brewery_name_jp || beer.beer_name_en || beer.beer_name_jp) ? (
-                                        <>
-                                            <div className="brewery-name">
-                                                {beer.untappd_brewery_name || beer.brewery_name_en || beer.brewery_name_jp || ''}
-                                            </div>
-                                            <div className="beer-name">
-                                                {beer.untappd_beer_name || beer.beer_name_jp || beer.beer_name_en || beer.name}
-                                            </div>
-                                        </>
-                                    ) : beer.name === 'Unknown' ? (
-                                        <div className="beer-name" style={{ color: '#999', fontStyle: 'italic' }}>
-                                            商品情報取得中... <a href={beer.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8em' }}>詳細を見る</a>
-                                        </div>
-                                    ) : (
-                                        <div className="beer-name">{beer.name}</div>
-                                    )}
+                                    <div className="brewery-name">
+                                        {beer.untappd_brewery_name || beer.brewery_name_en || beer.brewery_name_jp || ''}
+                                    </div>
+                                    <div className="beer-name">
+                                        {beer.untappd_beer_name || beer.beer_name_jp || beer.beer_name_en || beer.name}
+                                    </div>
                                 </div>
                             </td>
                             <td className="col-beer-style">
                                 <div className="style-specs-group">
-                                    {beer.untappd_style ? (
-                                        <span className="beer-style-text">{beer.untappd_style}</span>
-                                    ) : (
-                                        <span className="na-text">Top Style N/A</span>
-                                    )}
+                                    <span className={beer.untappd_style ? "beer-style-text" : "na-text"}>
+                                        {beer.untappd_style || 'Style N/A'}
+                                    </span>
                                     <div className="stats-row">
                                         <div className="stat-item">
-                                            {beer.untappd_abv ? `${beer.untappd_abv.toString().includes('%') ? Number(beer.untappd_abv.replace('%', '')).toFixed(1) : Number(beer.untappd_abv).toFixed(1)}% ABV` : <span className="na-text">N/A ABV</span>}
+                                            {beer.untappd_abv ? `${beer.untappd_abv}% ABV` : <span className="na-text">Top ABV N/A</span>}
                                         </div>
                                         <span className="separator">•</span>
                                         <div className="stat-item">
-                                            {beer.untappd_ibu ? `${Number(beer.untappd_ibu.toString().replace(/[^0-9.]/g, '')).toFixed(0)} IBU` : <span className="na-text">N/A IBU</span>}
+                                            {beer.untappd_ibu ? `${beer.untappd_ibu} IBU` : <span className="na-text">IBU N/A</span>}
                                         </div>
                                     </div>
                                 </div>
                             </td>
                             <td className="col-rating">
                                 <div className="rating-box">
-                                    {beer.untappd_url ? (
-                                        <a href={beer.untappd_url} target="_blank" rel="noopener noreferrer" className="untappd-badge-link">
-                                            <span className="untappd-header">UNTAPPD ↗</span>
-                                            {beer.untappd_rating ? (
-                                                <span className="untappd-badge">{Number(beer.untappd_rating).toFixed(2)}</span>
-                                            ) : (
-                                                <span className="untappd-badge na">N/A</span>
-                                            )}
+                                    {beer.untappd_rating ? (
+                                        <a href={beer.untappd_url || '#'} target="_blank" rel="noopener noreferrer" className="untappd-badge-link">
+                                            <span className="untappd-badge">{Number(beer.untappd_rating).toFixed(2)}</span>
+                                            {beer.untappd_rating_count && <span className="rating-count">({beer.untappd_rating_count})</span>}
                                         </a>
                                     ) : (
-                                        beer.untappd_rating ? (
-                                            <div className="untappd-badge-container">
-                                                <span className="untappd-header">UNTAPPD</span>
-                                                <span className="untappd-badge">{Number(beer.untappd_rating).toFixed(2)}</span>
-                                            </div>
-                                        ) : (
-                                            <span className="na-text">N/A</span>
-                                        )
-                                    )}
-                                    {beer.untappd_rating_count > 0 && (
-                                        <span className="rating-count">({beer.untappd_rating_count})</span>
-                                    )}
-                                    {beer.untappd_fetched_at && (
-                                        <span className="fetched-date">{formatSimpleDate(beer.untappd_fetched_at)}</span>
+                                        <span className="na-text">N/A</span>
                                     )}
                                 </div>
                             </td>
                             <td className="col-shop">
                                 <div className="shop-list-flat">
-                                    <div className="shop-item-flat">
-                                        <a href={beer.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
-                                            <div className="shop-info-primary">
-                                                <span className="price-text">
-                                                    {formatPrice(beer.price)}
-                                                </span>
-                                                <span className="shop-name-text">{beer.shop}</span>
-                                                {beer.stock_status && (
-                                                    <span className={`stock-dot ${beer.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={beer.stock_status}>
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="shop-info-secondary">
-                                                <span className="check-date">
-                                                    {formatSimpleDate(beer.first_seen)}
-                                                </span>
-                                                <span className="external-link-arrow">↗</span>
-                                            </div>
-                                        </a>
-                                    </div>
+                                    <a href={beer.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
+                                        <div className="shop-info-primary">
+                                            <span className="price-text">{formatPrice(beer.price)}</span>
+                                            <span className="shop-name-text">{beer.shop}</span>
+                                        </div>
+                                        <div className="shop-info-secondary">
+                                            <span className="check-date">{formatSimpleDate(beer.first_seen)}</span>
+                                            <span className="external-link-arrow">↗</span>
+                                        </div>
+                                    </a>
                                 </div>
                             </td>
                         </tr>
                     ))}
-                    {beers.length === 0 && (
+                    {beers.length === 0 && !loading && (
                         <tr>
                             <td colSpan="5" style={{ textAlign: 'center', padding: '2rem' }}>
-                                No beers found matching your criteria.
+                                No beers found.
                             </td>
                         </tr>
                     )}

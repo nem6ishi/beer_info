@@ -105,64 +105,46 @@ function HomeContent() {
 
     // Data Fetching
     const fetchBeers = useCallback(async () => {
-        // console.log("[Fetch] fetchBeers called. isReady:", router.isReady);
+        if (!router.isReady) return;
 
-        if (!router.isReady) {
-            // console.log("[Fetch] Router not ready, aborting.");
-            return;
-        }
-
-        // console.log("Fetching beers with query:", JSON.stringify(router.query));
-        setLoading(true)
-        setError(null)
+        setLoading(true);
+        setError(null);
 
         try {
-            // Timeout logic (Polyfill-ish: Check if AbortController exists)
-            let controller = null;
-            let timeoutId = null;
-            let signal = undefined;
-
-            if (typeof AbortController !== 'undefined') {
-                controller = new AbortController();
-                timeoutId = setTimeout(() => controller.abort(), 10000);
-                signal = controller.signal;
-            }
-
-            const currentParams = router.query
+            const currentParams = router.query;
             const params = new URLSearchParams({
                 page: currentParams.page || '1',
                 limit: currentParams.limit || '20',
                 search: currentParams.search || '',
                 sort: currentParams.sort || 'newest',
-            })
-            if (currentParams.shop) params.append('shop', currentParams.shop)
+            });
+            if (currentParams.shop) params.append('shop', currentParams.shop);
 
-            const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
-            filterKeys.forEach(key => { if (currentParams[key]) params.append(key, currentParams[key]) })
+            // Add filters if present
+            ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
+                .forEach(key => { if (currentParams[key]) params.append(key, currentParams[key]) });
 
-            const res = await fetch(`/api/beers?${params}`, { signal })
+            // Simple fetch without AbortController complexity for max compatibility
+            const res = await fetch(`/api/beers?${params}`);
 
-            if (timeoutId) clearTimeout(timeoutId);
+            if (!res.ok) throw new Error('Failed to load beers');
 
-            if (!res.ok) throw new Error('Failed to load beers')
-            const data = await res.json()
-
-            // console.log('Fetched:', data.beers?.length);
-            setBeers(data.beers || [])
-            setTotalPages(data.pagination.totalPages)
-            setTotalItems(data.pagination.total)
+            const data = await res.json();
+            setBeers(data.beers || []);
+            setTotalPages(data.pagination.totalPages);
+            setTotalItems(data.pagination.total);
         } catch (err) {
             console.error('Fetch error:', err);
-            setError(err.message)
+            setError('Failed to load data. Please try again.');
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }, [router.isReady, router.query])
+    }, [router.isReady, router.query]);
 
     // Fetch on URL change
     useEffect(() => {
-        fetchBeers()
-    }, [fetchBeers])
+        fetchBeers();
+    }, [fetchBeers]);
 
     // Helper to update URL
     const updateURL = (newParams, pathname = '/') => {
