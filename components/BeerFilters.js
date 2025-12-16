@@ -18,8 +18,10 @@ export default function BeerFilters({
     onToggleFilter,
     onReset,
     onFilterChange,
+    onFilterChange,
     viewMode = 'individual', // 'individual' or 'grouped'
-    onViewModeChange
+    onViewModeChange,
+    onRefresh
 }) {
     return (
         <>
@@ -150,6 +152,13 @@ export default function BeerFilters({
                     title="Reset all filters"
                 >
                     Reset
+                </button>
+                <button
+                    className="reset-btn-small refresh-btn"
+                    onClick={onRefresh}
+                    title="Refresh List"
+                >
+                    ↻
                 </button>
             </div>
 

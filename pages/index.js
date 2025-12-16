@@ -326,6 +326,7 @@ export default function Home() {
                     onFilterChange={handleFilterChange}
                     viewMode="individual"
                     onViewModeChange={handleViewModeChange}
+                    onRefresh={fetchBeers}
                 />
 
                 <BeerTable
