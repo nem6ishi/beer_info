@@ -8,8 +8,6 @@ import BeerFilters from '../components/BeerFilters'
 
 // Debug Logger Removed
 
-import React from 'react'
-
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);

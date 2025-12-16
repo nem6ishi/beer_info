@@ -23,6 +23,11 @@ def extract_product_data(item):
         href = link_tag.get('href')
         product_url = f"https://beer-chouseiya.shop{href}" if href.startswith('/') else href
         
+        # Normalize URL to remove pagination suffix (e.g. /all_items/page1/order/)
+        # Keep only up to /shopdetail/ID/
+        if "/shopdetail/" in product_url:
+            product_url = re.sub(r'(/shopdetail/[^/]+/).*', r'\1', product_url)
+        
         image_url = None
         if img_tag:
             src = img_tag.get('src')
