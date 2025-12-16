@@ -8,29 +8,44 @@ import BeerFilters from '../components/BeerFilters'
 
 // Debug Logger
 const DebugLogger = () => {
-    const [logs, setLogs] = useState([]);
     useEffect(() => {
+        const logContainer = document.getElementById('debug-log-container');
+        const appendLog = (type, args) => {
+            if (logContainer) {
+                const div = document.createElement('div');
+                div.style.borderBottom = '1px solid #333';
+                div.style.color = type === 'error' ? '#ff6b6b' : '#eee';
+                div.innerText = `[${type}] ` + args.map(a => String(a)).join(' ');
+                logContainer.appendChild(div);
+            }
+        };
+
         const originalLog = console.log;
         const originalError = console.error;
+
         console.log = (...args) => {
             originalLog(...args);
-            setLogs(prev => [...prev, { type: 'log', msg: args.map(a => String(a)).join(' ') }].slice(-20));
+            appendLog('log', args);
         };
         console.error = (...args) => {
             originalError(...args);
-            setLogs(prev => [...prev, { type: 'error', msg: args.map(a => String(a)).join(' ') }].slice(-20));
+            appendLog('error', args);
         };
 
-        // Initial log to prove it's working
-        console.log("DebugLogger active. UserAgent:", navigator.userAgent);
+        // Heartbeat to check if JS is alive
+        const interval = setInterval(() => {
+            console.log("Heartbeat: JS is running");
+        }, 2000);
+
+        console.log("DebugLogger Direct-DOM active. UA:", navigator.userAgent);
 
         return () => {
             console.log = originalLog;
             console.error = originalError;
+            clearInterval(interval);
         };
     }, []);
 
-    // Always render, even if empty (show status)
     return (
         <div style={{
             position: 'fixed', bottom: 0, left: 0, right: 0,
@@ -39,13 +54,10 @@ const DebugLogger = () => {
             fontSize: '10px', padding: '5px', zIndex: 9999,
             pointerEvents: 'none'
         }}>
-            <div style={{ borderBottom: '1px solid #444', marginBottom: '5px' }}>Debug Console (v2)</div>
-            {logs.length === 0 && <div>Waiting for logs...</div>}
-            {logs.map((L, i) => (
-                <div key={i} style={{ color: L.type === 'error' ? '#ff6b6b' : '#eee', borderBottom: '1px solid #333' }}>
-                    [{L.type}] {L.msg}
-                </div>
-            ))}
+            <div style={{ borderBottom: '1px solid #444', marginBottom: '5px' }}>Debug Console (Direct DOM)</div>
+            <div id="debug-log-container">
+                <div>Waiting for logs... (DOM mode)</div>
+            </div>
         </div>
     );
 };
