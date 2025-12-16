@@ -17,29 +17,36 @@ export default function Document() {
                     height: '150px', overflowY: 'auto',
                     background: 'rgba(50,0,0,0.9)', color: '#fff',
                     fontSize: '10px', padding: '5px', zIndex: 10000,
-                    pointerEvents: 'none', display: 'none'
-                }}></div>
+                    pointerEvents: 'none'
+                }}>
+                    <div>Global Debugger Active.</div>
+                </div>
                 <script dangerouslySetInnerHTML={{
                     __html: `
+                        // Print UA immediately
+                        var log = document.getElementById('safari-debug-log');
+                        if (log) {
+                            var div = document.createElement('div');
+                            div.textContent = 'UA: ' + navigator.userAgent;
+                            log.appendChild(div);
+                        }
+
                         window.onerror = function(msg, url, line, col, error) {
-                            var log = document.getElementById('safari-debug-log');
                             if (log) {
-                                log.style.display = 'block';
                                 var div = document.createElement('div');
                                 div.style.borderBottom = '1px solid #666';
                                 div.style.padding = '2px';
+                                div.style.color = '#ff9999';
                                 div.textContent = 'Global Error: ' + msg + ' (' + line + ':' + col + ')';
                                 log.appendChild(div);
                             }
                         };
-                        // Also catch unhandled promise rejections if supported
                         window.onunhandledrejection = function(event) {
-                             var log = document.getElementById('safari-debug-log');
                              if (log) {
-                                log.style.display = 'block';
                                 var div = document.createElement('div');
                                 div.style.borderBottom = '1px solid #666';
                                 div.style.padding = '2px';
+                                div.style.color = '#ff9999';
                                 div.textContent = 'Unhandled Rejection: ' + event.reason;
                                 log.appendChild(div);
                              }
