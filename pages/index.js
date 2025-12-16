@@ -20,12 +20,17 @@ const DebugLogger = () => {
             originalError(...args);
             setLogs(prev => [...prev, { type: 'error', msg: args.map(a => String(a)).join(' ') }].slice(-20));
         };
+
+        // Initial log to prove it's working
+        console.log("DebugLogger active. UserAgent:", navigator.userAgent);
+
         return () => {
             console.log = originalLog;
             console.error = originalError;
         };
     }, []);
-    if (logs.length === 0) return null;
+
+    // Always render, even if empty (show status)
     return (
         <div style={{
             position: 'fixed', bottom: 0, left: 0, right: 0,
@@ -34,8 +39,10 @@ const DebugLogger = () => {
             fontSize: '10px', padding: '5px', zIndex: 9999,
             pointerEvents: 'none'
         }}>
+            <div style={{ borderBottom: '1px solid #444', marginBottom: '5px' }}>Debug Console (v2)</div>
+            {logs.length === 0 && <div>Waiting for logs...</div>}
             {logs.map((L, i) => (
-                <div key={i} style={{ color: L.type === 'error' ? '#ff6b6b' : '#eee' }}>
+                <div key={i} style={{ color: L.type === 'error' ? '#ff6b6b' : '#eee', borderBottom: '1px solid #333' }}>
                     [{L.type}] {L.msg}
                 </div>
             ))}
@@ -77,6 +84,7 @@ export default function Home() {
 
 function HomeContent() {
     const router = useRouter()
+    console.log("[Render] HomeContent rendering. isReady:", router.isReady);
 
     // State for data
     const [beers, setBeers] = useState([])
@@ -142,9 +150,14 @@ function HomeContent() {
 
     // Data Fetching
     const fetchBeers = useCallback(async () => {
-        if (!router.isReady) return
+        console.log("[Fetch] fetchBeers called. isReady:", router.isReady);
 
-        console.log("Fetching beers...", router.query);
+        if (!router.isReady) {
+            console.log("[Fetch] Router not ready, aborting.");
+            return;
+        }
+
+        console.log("Fetching beers with query:", JSON.stringify(router.query));
         setLoading(true)
         setError(null)
 
