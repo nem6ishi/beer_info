@@ -1,5 +1,5 @@
 import Head from 'next/head'
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import BeerTable from '../components/BeerTable'

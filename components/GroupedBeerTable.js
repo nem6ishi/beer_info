@@ -43,101 +43,109 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                     </tr>
                 </thead>
                 <tbody>
-                    {groups.map(group => (
-                        <tr key={group.untappd_url || group.url}>
-                            <td className="col-img">
-                                <div className="beer-image-wrapper">
-                                    <img
-                                        src={group.beer_image}
-                                        alt={group.beer_name}
-                                        loading="lazy"
-                                        onError={(e) => { e.target.src = 'https://placehold.co/100x100?text=No+Image'; }}
-                                    />
-                                </div>
-                            </td>
-                            <td className="col-name">
-                                <div className="beer-name-group">
-                                    <div className="brewery-name">
-                                        {group.brewery || 'Unknown Brewery'}
+                    {groups.map(group => {
+                        // Sort items by price to find cheapest. Clone array to avoid mutating prop.
+                        const sortedItems = [...(group.items || [])].sort((a, b) => (a.price_value || Infinity) - (b.price_value || Infinity));
+                        const cheapestItem = sortedItems[0];
+                        // Use cheapest item's image, fallback to group image
+                        const displayImage = (cheapestItem && cheapestItem.image) ? cheapestItem.image : group.beer_image;
+
+                        return (
+                            <tr key={group.untappd_url || group.url}>
+                                <td className="col-img">
+                                    <div className="beer-image-wrapper">
+                                        <img
+                                            src={displayImage}
+                                            alt={group.beer_name}
+                                            loading="lazy"
+                                            onError={(e) => { e.target.src = 'https://placehold.co/100x100?text=No+Image'; }}
+                                        />
                                     </div>
-                                    <div className="beer-name">
-                                        {group.beer_name || 'Unknown Beer'}
-                                    </div>
-                                </div>
-                            </td>
-                            <td className="col-beer-style">
-                                <div className="style-specs-group">
-                                    {group.style ? (
-                                        <span className="beer-style-text">{group.style}</span>
-                                    ) : (
-                                        <span className="na-text">Top Style N/A</span>
-                                    )}
-                                    <div className="stats-row">
-                                        <div className="stat-item">
-                                            {group.abv ? `${group.abv.toString().includes('%') ? Number(group.abv.replace('%', '')).toFixed(1) : Number(group.abv).toFixed(1)}% ABV` : <span className="na-text">N/A ABV</span>}
+                                </td>
+                                <td className="col-name">
+                                    <div className="beer-name-group">
+                                        <div className="brewery-name">
+                                            {group.brewery || 'Unknown Brewery'}
                                         </div>
-                                        <span className="separator">•</span>
-                                        <div className="stat-item">
-                                            {group.ibu ? `${Number(group.ibu.toString().replace(/[^0-9.]/g, '')).toFixed(0)} IBU` : <span className="na-text">N/A IBU</span>}
+                                        <div className="beer-name">
+                                            {group.beer_name || 'Unknown Beer'}
                                         </div>
                                     </div>
-                                </div>
-                            </td>
-                            <td className="col-rating">
-                                <div className="rating-box">
-                                    {group.untappd_url ? (
-                                        <a href={group.untappd_url} target="_blank" rel="noopener noreferrer" className="untappd-badge-link">
-                                            <span className="untappd-header">UNTAPPD ↗</span>
-                                            {group.rating ? (
-                                                <span className="untappd-badge">{Number(group.rating).toFixed(2)}</span>
-                                            ) : (
-                                                <span className="untappd-badge na">N/A</span>
-                                            )}
-                                        </a>
-                                    ) : (
-                                        <div className="untappd-badge-container">
-                                            <span className="untappd-header">UNTAPPD</span>
-                                            <span className="untappd-badge na">N/A</span>
+                                </td>
+                                <td className="col-beer-style">
+                                    <div className="style-specs-group">
+                                        {group.style ? (
+                                            <span className="beer-style-text">{group.style}</span>
+                                        ) : (
+                                            <span className="na-text">Top Style N/A</span>
+                                        )}
+                                        <div className="stats-row">
+                                            <div className="stat-item">
+                                                {group.abv ? `${group.abv.toString().includes('%') ? Number(group.abv.replace('%', '')).toFixed(1) : Number(group.abv).toFixed(1)}% ABV` : <span className="na-text">N/A ABV</span>}
+                                            </div>
+                                            <span className="separator">•</span>
+                                            <div className="stat-item">
+                                                {group.ibu ? `${Number(group.ibu.toString().replace(/[^0-9.]/g, '')).toFixed(0)} IBU` : <span className="na-text">N/A IBU</span>}
+                                            </div>
                                         </div>
-                                    )}
-                                    {group.rating_count > 0 && (
-                                        <span className="rating-count">({group.rating_count})</span>
-                                    )}
-                                    {group.untappd_updated_at && (
-                                        <span className="fetched-date">{formatSimpleDate(group.untappd_updated_at)}</span>
-                                    )}
-                                </div>
-                            </td>
-                            <td className="col-shop">
-                                <div className="shop-list-flat">
-                                    {group.items.sort((a, b) => (a.price_value || Infinity) - (b.price_value || Infinity)).map((item, idx) => (
-                                        <div key={idx} className="shop-item-flat">
-                                            <a href={item.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
-                                                <div className="shop-info-primary">
-                                                    <span className="price-text">
-                                                        {formatPrice(item.price)}
-                                                    </span>
-                                                    <span className="shop-name-text">{item.shop}</span>
-                                                    {item.stock_status && (
-                                                        <span className={`stock-dot ${item.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={item.stock_status}>
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="shop-info-secondary">
-                                                    {item.last_seen && (
-                                                        <span className="check-date">
-                                                            {formatSimpleDate(item.last_seen)}
-                                                        </span>
-                                                    )}
-                                                    <span className="external-link-arrow">↗</span>
-                                                </div>
+                                    </div>
+                                </td>
+                                <td className="col-rating">
+                                    <div className="rating-box">
+                                        {group.untappd_url ? (
+                                            <a href={group.untappd_url} target="_blank" rel="noopener noreferrer" className="untappd-badge-link">
+                                                <span className="untappd-header">UNTAPPD ↗</span>
+                                                {group.rating ? (
+                                                    <span className="untappd-badge">{Number(group.rating).toFixed(2)}</span>
+                                                ) : (
+                                                    <span className="untappd-badge na">N/A</span>
+                                                )}
                                             </a>
-                                        </div>
-                                    ))}
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
+                                        ) : (
+                                            <div className="untappd-badge-container">
+                                                <span className="untappd-header">UNTAPPD</span>
+                                                <span className="untappd-badge na">N/A</span>
+                                            </div>
+                                        )}
+                                        {group.rating_count > 0 && (
+                                            <span className="rating-count">({group.rating_count})</span>
+                                        )}
+                                        {group.untappd_updated_at && (
+                                            <span className="fetched-date">{formatSimpleDate(group.untappd_updated_at)}</span>
+                                        )}
+                                    </div>
+                                </td>
+                                <td className="col-shop">
+                                    <div className="shop-list-flat">
+                                        {sortedItems.map((item, idx) => (
+                                            <div key={idx} className="shop-item-flat">
+                                                <a href={item.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
+                                                    <div className="shop-info-primary">
+                                                        <span className="price-text">
+                                                            {formatPrice(item.price)}
+                                                        </span>
+                                                        <span className="shop-name-text">{item.shop}</span>
+                                                        {item.stock_status && (
+                                                            <span className={`stock-dot ${item.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={item.stock_status}>
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="shop-info-secondary">
+                                                        {item.last_seen && (
+                                                            <span className="check-date">
+                                                                {formatSimpleDate(item.last_seen)}
+                                                            </span>
+                                                        )}
+                                                        <span className="external-link-arrow">↗</span>
+                                                    </div>
+                                                </a>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </td>
+                            </tr>
+                        );
+                    })}
                     {groups.length === 0 && (
                         <tr>
                             <td colSpan="5" style={{ textAlign: 'center', padding: '2rem' }}>
