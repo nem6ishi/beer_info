@@ -2,15 +2,15 @@ import Head from 'next/head'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import BeerTable from '../components/BeerTable'
+import GroupedBeerTable from '../components/GroupedBeerTable'
 import Pagination from '../components/Pagination'
 import BeerFilters from '../components/BeerFilters'
 
-export default function Home() {
+export default function GroupedBeers() {
     const router = useRouter()
 
     // State for data
-    const [beers, setBeers] = useState([])
+    const [groups, setGroups] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [totalPages, setTotalPages] = useState(0)
@@ -52,7 +52,7 @@ export default function Home() {
                 max_ibu: router.query.max_ibu || '',
                 min_rating: router.query.min_rating || '',
                 stock_filter: router.query.stock_filter || '',
-                untappd_status: router.query.untappd_status || ''
+                missing_untappd: router.query.missing_untappd || ''
             })
 
             // Fetch styles
@@ -74,14 +74,13 @@ export default function Home() {
     }, [router.isReady])
 
     // Data Fetching
-    const fetchBeers = useCallback(async () => {
+    const fetchGroups = useCallback(async () => {
         if (!router.isReady) return
 
         setLoading(true)
         setError(null)
         try {
             // Use router.query directly to ensure we fetch what matches the URL
-            // ... (rest of logic)
             const currentParams = router.query
             const params = new URLSearchParams({
                 page: currentParams.page || '1',
@@ -93,17 +92,16 @@ export default function Home() {
                 params.append('shop', currentParams.shop)
             }
             // Append advanced filters
-            const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
+            const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'missing_untappd']
             filterKeys.forEach(key => {
                 if (currentParams[key]) params.append(key, currentParams[key])
             })
 
-            const res = await fetch(`/api/beers?${params}`)
-            if (!res.ok) throw new Error('Failed to load beers')
+            const res = await fetch(`/api/grouped-beers?${params}`)
+            if (!res.ok) throw new Error('Failed to load grouped beers')
             const data = await res.json()
 
-            console.log('Fetched beers:', data.beers?.length, data.pagination);
-            setBeers(data.beers || [])
+            setGroups(data.groups || [])
             setTotalPages(data.pagination.totalPages)
             setTotalItems(data.pagination.total)
         } catch (err) {
@@ -117,11 +115,11 @@ export default function Home() {
 
     // Fetch on URL change
     useEffect(() => {
-        fetchBeers()
-    }, [fetchBeers])
+        fetchGroups()
+    }, [fetchGroups])
 
     // Helper to update URL
-    const updateURL = (newParams, pathname = '/') => {
+    const updateURL = (newParams, pathname = '/grouped') => {
         const query = { ...router.query, ...newParams }
 
         // Cleanup defaults to keep URL clean
@@ -131,7 +129,7 @@ export default function Home() {
         if (!query.search) delete query.search
         if (!query.shop) delete query.shop
         // Clean up empty filters
-        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
+        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'missing_untappd']
         filterKeys.forEach(key => {
             if (!query[key]) delete query[key]
         })
@@ -142,7 +140,7 @@ export default function Home() {
     // Filter Logic
     const activeFilterCount = (() => {
         if (!router.isReady) return 0
-        const keys = ['limit', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter', 'untappd_status'] // Limit acts like a filter param
+        const keys = ['limit', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter', 'missing_untappd'] // Limit acts like a filter param
         return keys.filter(k => !!router.query[k] && k !== 'limit' && k !== 'sort' && k !== 'page').length // Exclude structural params from badge count
     })()
 
@@ -150,8 +148,8 @@ export default function Home() {
     const handleFilterChange = (key, value) => {
         setTempFilters(prev => ({ ...prev, [key]: value }))
 
-        // If it's a select or checkbox (Stock, Untappd Status), update URL immediately
-        if (key === 'stock_filter' || key === 'untappd_status') {
+        // If it's a select or checkbox (Stock, Missing Untappd), update URL immediately
+        if (key === 'stock_filter' || key === 'missing_untappd') {
             updateURL({ [key]: value, page: '1' })
         }
     }
@@ -193,7 +191,7 @@ export default function Home() {
             max_ibu: '',
             min_rating: '',
             stock_filter: '',
-            untappd_status: ''
+            missing_untappd: ''
         }
         setTempFilters(resetState)
         setSearchInput('')
@@ -205,7 +203,7 @@ export default function Home() {
             max_ibu: '',
             min_rating: '',
             stock_filter: '',
-            untappd_status: '',
+            missing_untappd: '',
             shop: '',
             style_filter: '',
             brewery_filter: '',
@@ -249,10 +247,13 @@ export default function Home() {
             window.scrollTo({ top: 0, behavior: 'smooth' })
         }
     }
+
+    // View Toggle Handler
     const handleViewModeChange = (mode) => {
-        if (mode === 'grouped') {
-            updateURL({}, '/grouped')
+        if (mode === 'individual') {
+            updateURL({}, '/')
         }
+        // If already grouped, do nothing (stay here)
     }
 
     return (
@@ -260,14 +261,9 @@ export default function Home() {
             <Head>
                 <meta charSet="UTF-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                <title>Craft Beer Alert Japan</title>
-                <meta name="description" content="Discover premium craft beers collected from the best Japanese shops." />
+                <title>Grouped Beers - Craft Beer Alert Japan</title>
+                <meta name="description" content="Compare prices and find where to buy your favorite craft beers." />
             </Head>
-
-            <div className="background-globes">
-                <div className="globe globe-1"></div>
-                <div className="globe globe-2"></div>
-            </div>
 
             <header className="glass-header">
                 <div className="container header-content">
@@ -324,12 +320,12 @@ export default function Home() {
                     onToggleFilter={() => setIsFilterOpen(!isFilterOpen)}
                     onReset={resetFilters}
                     onFilterChange={handleFilterChange}
-                    viewMode="individual"
+                    viewMode="grouped"
                     onViewModeChange={handleViewModeChange}
                 />
 
-                <BeerTable
-                    beers={beers}
+                <GroupedBeerTable
+                    groups={groups}
                     loading={loading}
                     error={error}
                 />

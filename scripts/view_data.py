@@ -34,22 +34,22 @@ def main():
         print("\n📊 Database Statistics\n" + "="*50)
         
         # Total beers
-        total = supabase.table('beers').select('id', count='exact').execute()
+        total = supabase.table('beer_info_view').select('url', count='exact').execute()
         print(f"Total beers: {total.count:,}")
         
         # Beers by shop
         shops = ['BEER VOLTA', 'ちょうせいや', '一期一会～る']
         print("\nBeers by shop:")
         for shop in shops:
-            result = supabase.table('beers').select('id', count='exact').eq('shop', shop).execute()
+            result = supabase.table('beer_info_view').select('url', count='exact').eq('shop', shop).execute()
             print(f"  {shop}: {result.count:,}")
         
         # Beers with first_seen
-        with_ts = supabase.table('beers').select('id', count='exact').not_.is_('first_seen', 'null').execute()
+        with_ts = supabase.table('beer_info_view').select('url', count='exact').not_.is_('first_seen', 'null').execute()
         print(f"\nBeers with first_seen: {with_ts.count:,}")
         
         # Beers with Untappd data
-        with_untappd = supabase.table('beers').select('id', count='exact').not_.is_('untappd_rating', 'null').execute()
+        with_untappd = supabase.table('beer_info_view').select('url', count='exact').not_.is_('untappd_rating', 'null').execute()
         print(f"Beers with Untappd rating: {with_untappd.count:,}")
         
     elif command == 'recent':
@@ -57,7 +57,7 @@ def main():
         limit = int(sys.argv[2]) if len(sys.argv) > 2 else 10
         print(f"\n🆕 Most Recent {limit} Beers (by first_seen)\n" + "="*50)
         
-        result = supabase.table('beers').select('name, shop, price, first_seen').not_.is_('first_seen', 'null').order('first_seen', desc=True).limit(limit).execute()
+        result = supabase.table('beer_info_view').select('name, shop, price, first_seen').not_.is_('first_seen', 'null').order('first_seen', desc=True).limit(limit).execute()
         
         for i, beer in enumerate(result.data, 1):
             print(f"\n{i}. [{beer['shop']}] {beer['name'][:60]}")
@@ -76,7 +76,7 @@ def main():
         
         print(f"\n🏪 {shop_name} - First {limit} Beers\n" + "="*50)
         
-        result = supabase.table('beers').select('name, price, stock_status, first_seen').eq('shop', shop_name).order('first_seen', desc=True).limit(limit).execute()
+        result = supabase.table('beer_info_view').select('name, price, stock_status, first_seen').eq('shop', shop_name).order('first_seen', desc=True).limit(limit).execute()
         
         for i, beer in enumerate(result.data, 1):
             print(f"\n{i}. {beer['name'][:60]}")
@@ -94,7 +94,7 @@ def main():
         query = sys.argv[2]
         print(f"\n🔍 Search Results for '{query}'\n" + "="*50)
         
-        result = supabase.table('beers').select('name, shop, price, stock_status, url').ilike('name', f'%{query}%').limit(20).execute()
+        result = supabase.table('beer_info_view').select('name, shop, price, stock_status, url').ilike('name', f'%{query}%').limit(20).execute()
         
         if not result.data:
             print("No results found.")

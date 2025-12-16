@@ -1,9 +1,67 @@
-import requests
-from bs4 import BeautifulSoup
+import logging
 import urllib.parse
 from datetime import datetime
-from typing import Optional, Dict
-import time
+from typing import Optional, TypedDict, List
+import requests
+from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
+
+class UntappdBeerDetails(TypedDict, total=False):
+    untappd_beer_name: str
+    untappd_brewery_name: str
+    untappd_style: str
+    untappd_abv: str
+    untappd_ibu: str
+    untappd_rating: str
+    untappd_rating_count: str
+    untappd_label: str
+    untappd_fetched_at: str
+
+COMMON_SUFFIXES = [
+    " IPA", " Hazy IPA", " Double IPA", " DIPA", " Triple IPA", " TIPA", 
+    " Pale Ale", " Stout", " Imperial Stout", " Lager", " Pilsner", " Sour", 
+    " Gose", " Porter", " Ale", " Wheat", " Saison", " Barleywine"
+]
+# Sort by length desc to remove longest match first
+COMMON_SUFFIXES.sort(key=len, reverse=True)
+
+def strip_beer_suffix(beer_name: str) -> Optional[str]:
+    """
+    Strips common beer style suffixes from the beer name.
+    Returns the stripped name if a suffix was found, otherwise None.
+    """
+    lower_name = beer_name.lower()
+    for suffix in COMMON_SUFFIXES:
+        if lower_name.endswith(suffix.lower()):
+            stripped = beer_name[:-len(suffix)].strip()
+            logger.info(f"Detected suffix '{suffix}'. Stripped to: '{stripped}'")
+            return stripped
+    return None
+
+def validate_brewery_match(result_element: BeautifulSoup, expected_brewery: str) -> bool:
+    """
+    Checks if the brewery name in the search result matches the expected brewery.
+    Uses a simple case-insensitive substring/inclusion check.
+    """
+    if not expected_brewery:
+        return True # logic: if we don't know the brewery, we accept the result (legacy behavior or fallback)
+        
+    brewery_tag = result_element.select_one('.brewery')
+    if not brewery_tag:
+        return False
+        
+    result_brewery = brewery_tag.get_text(strip=True)
+    
+    # Simple normalization
+    rb_norm = result_brewery.lower()
+    eb_norm = expected_brewery.lower()
+    
+    # Check if one is contained in the other
+    match = (rb_norm in eb_norm) or (eb_norm in rb_norm)
+    if not match:
+        logger.debug(f"Validation failed: Result brewery '{result_brewery}' != Expected '{expected_brewery}'")
+    return match
 
 def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None) -> Optional[str]:
     """
@@ -15,13 +73,12 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
         beer_name_jp (str): Name of the beer in Japanese (optional fallback).
         
     Returns:
-        Optional[str]: A direct beer page URL (e.g. https://untappd.com/b/...) if found,
-                       otherwise the Untappd search result page URL, or None if inputs are empty.
+        Optional[str]: A direct beer page URL if found, otherwise the search result page URL.
     """
     if not brewery_name and not beer_name and not beer_name_jp:
         return None
 
-    def search_untappd(query: str) -> Optional[str]:
+    def search_untappd(query: str, validate_brewery: str = None) -> Optional[str]:
         """Helper to perform a single search attempt."""
         encoded_query = urllib.parse.quote(query)
         url = f"https://untappd.com/search?q={encoded_query}"
@@ -37,103 +94,87 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
                 soup = BeautifulSoup(resp.text, 'lxml')
                 results = soup.select('.beer-item')
                 
-                if results:
-                    first_res = results[0]
-                    name_tag = first_res.select_one('.name a')
-                    
+                # Check top 3 results
+                for res in results[:3]:
+                    name_tag = res.select_one('.name a')
                     if name_tag:
                         href = name_tag.get('href')
                         if href and "/b/" in href:
-                            full_url = f"https://untappd.com{href}"
-                            return full_url
+                            if validate_brewery:
+                                if validate_brewery_match(res, validate_brewery):
+                                    return f"https://untappd.com{href}"
+                            else:
+                                return f"https://untappd.com{href}"
+                                
         except Exception as e:
-            print(f"[Untappd] Search error: {e}")
+            logger.error(f"Search error for '{query}': {e}")
         
         return None
 
-    # Primary Search: beer_name + brewery_name (prefer English)
+    # Primary Search: beer_name + brewery_name
     parts = []
     if beer_name: parts.append(beer_name)
     if brewery_name: parts.append(brewery_name)
     
     search_query = " ".join(parts)
-    print(f"[Untappd] Searching: {search_query}")
+    logger.info(f"Searching: {search_query}")
     
-    result = search_untappd(search_query)
+    # We pass brewery_name for validation since we are explicitly searching for it
+    result = search_untappd(search_query, validate_brewery=brewery_name)
     if result:
-        print(f"[Untappd] Found direct link: {result}")
+        logger.info(f"Found direct link: {result}")
         return result
     
     # Fallback Search: beer_name only
+    # Only do this if we actually have a brewery name to validate against, 
+    # otherwise searching for just "Pale Ale" is useless.
     if beer_name and brewery_name:
-        print(f"[Untappd] Fallback search: {beer_name}")
-        result = search_untappd(beer_name)
+        logger.info(f"Fallback search (Beer Name Only): {beer_name}")
+        # CRITICAL: Must validate brewery here, otherwise we get random matching beer
+        result = search_untappd(beer_name, validate_brewery=brewery_name)
         if result:
-            print(f"[Untappd] Found direct link (fallback): {result}")
+            logger.info(f"Found direct link (fallback): {result}")
             return result
             
     # Advanced Fallback: Strip common style suffixes
-    # Sometimes "SomeBeer IPA" doesn't hit, but "SomeBeer" does (and returns the IPA)
-    COMMON_SUFFIXES = [
-        " IPA", " Hazy IPA", " Double IPA", " DIPA", " Triple IPA", " TIPA", 
-        " Pale Ale", " Stout", " Imperial Stout", " Lager", " Pilsner", " Sour", 
-        " Gose", " Porter", " Ale", " Wheat", " Saison", " Barleywine"
-    ]
-    
-    # Sort by length desc to remove longest match first (e.g. "Imperial Stout" before "Stout")
-    COMMON_SUFFIXES.sort(key=len, reverse=True)
-    
     if beer_name:
-        stripped_name = beer_name
-        found_suffix = False
-        
-        # Case insensitive check
-        lower_name = beer_name.lower()
-        
-        for suffix in COMMON_SUFFIXES:
-            if lower_name.endswith(suffix.lower()):
-                # Strip it (case insensitive way)
-                stripped_name = beer_name[:-len(suffix)].strip()
-                found_suffix = True
-                print(f"[Untappd] Detected suffix '{suffix}'. Stripped to: '{stripped_name}'")
-                break
-        
-        if found_suffix and stripped_name:
+        stripped_name = strip_beer_suffix(beer_name)
+        if stripped_name:
             # Try 1: {Stripped} {Brewery}
             query = f"{stripped_name} {brewery_name}" if brewery_name else stripped_name
-            print(f"[Untappd] Retrying with stripped name: {query}")
-            result = search_untappd(query)
+            logger.info(f"Retrying with stripped name: {query}")
+            result = search_untappd(query, validate_brewery=brewery_name)
             if result:
-                print(f"[Untappd] Found direct link (stripped+brewery): {result}")
+                logger.info(f"Found direct link (stripped+brewery): {result}")
                 return result
                 
-            # Try 2: {Stripped} only
+            # Try 2: {Stripped} only (with validation)
             if brewery_name:
-                print(f"[Untappd] Retrying with stripped name only: {stripped_name}")
-                result = search_untappd(stripped_name)
+                logger.info(f"Retrying with stripped name only: {stripped_name}")
+                result = search_untappd(stripped_name, validate_brewery=brewery_name)
                 if result:
-                    print(f"[Untappd] Found direct link (stripped only): {result}")
+                    logger.info(f"Found direct link (stripped only): {result}")
                     return result
 
     # Japanese Name Fallback
     if beer_name_jp:
-        # Sometimes JP name works better (e.g. "Space Colony" vs "スペースコロニー") - actually EN is better usually,
-        # but sometimes the EN extraction is empty or wrong, or Untappd has JP name registered (rare but happens).
-        print(f"[Untappd] Retrying with Japanese name: {beer_name_jp}")
-        result = search_untappd(beer_name_jp)
+        logger.info(f"Retrying with Japanese name: {beer_name_jp}")
+        # Validation might be hard with EN brewery name vs JP result, 
+        # but often JP results have EN brewery name in Untappd too. 
+        # We'll try strictly if we have brewery name, otherwise permissive.
+        result = search_untappd(beer_name_jp, validate_brewery=brewery_name)
         if result:
-            print(f"[Untappd] Found direct link (JP name): {result}")
+            logger.info(f"Found direct link (JP name): {result}")
             return result
-
+            
     # Final Fallback: Return search URL
-    # Use whatever available for the query param
     final_query = search_query if search_query.strip() else (beer_name or beer_name_jp or "")
     encoded_query = urllib.parse.quote(final_query)
     fallback_url = f"https://untappd.com/search?q={encoded_query}"
-    print("[Untappd] No direct link found. Returning search URL.")
+    logger.info("No direct link found. Returning search URL.")
     return fallback_url
 
-def scrape_beer_details(url: str) -> Dict[str, str]:
+def scrape_beer_details(url: str) -> UntappdBeerDetails:
     """
     Scrapes detailed info from a specific Untappd beer URL.
     
@@ -141,22 +182,14 @@ def scrape_beer_details(url: str) -> Dict[str, str]:
         url (str): The valid Untappd beer page URL.
         
     Returns:
-        Dict[str, str]: Dictionary containing:
-            - untappd_beer_name
-            - untappd_brewery_name
-            - untappd_style
-            - untappd_abv
-            - untappd_ibu
-            - untappd_rating
-            - untappd_rating_count
-            - untappd_fetched_at (ISO format datetime string)
-            Returns empty dict on failure.
+        UntappdBeerDetails: Dictionary containing beer details.
+                            Returns empty dict on failure.
     """
-    details = {}
+    details: UntappdBeerDetails = {}
     if not url or "untappd.com/b/" not in url:
         return details
 
-    print(f"[Untappd] Scraping details from: {url}")
+    logger.info(f"Scraping details from: {url}")
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
@@ -164,7 +197,7 @@ def scrape_beer_details(url: str) -> Dict[str, str]:
     try:
         resp = requests.get(url, headers=headers, timeout=10)
         if resp.status_code != 200:
-            print(f"[Untappd] Failed to load details. Status: {resp.status_code}")
+            logger.warning(f"Failed to load details. Status: {resp.status_code}")
             return details
             
         soup = BeautifulSoup(resp.text, 'lxml')
@@ -179,6 +212,11 @@ def scrape_beer_details(url: str) -> Dict[str, str]:
         style_tag = soup.select_one('.name .style')
         if style_tag: details['untappd_style'] = style_tag.get_text(strip=True)
         
+        # Label Image
+        label_tag = soup.select_one('.label img')
+        if label_tag and label_tag.has_attr('src'):
+            details['untappd_label'] = label_tag['src']
+        
         # Details Block (ABV, IBU, Rating, Count)
         abv_tag = soup.select_one('.details .abv')
         if abv_tag: 
@@ -190,12 +228,10 @@ def scrape_beer_details(url: str) -> Dict[str, str]:
             
         rating_tag = soup.select_one('.details .num')
         if rating_tag:
-            # Format is usually "(3.75)"
             details['untappd_rating'] = rating_tag.get_text(strip=True).strip('()')
             
         raters_tag = soup.select_one('.details .raters')
         if raters_tag:
-            # Remove both "Rating" and "Ratings", and clean up parentheses
             count_text = raters_tag.get_text(strip=True)
             count_text = count_text.replace(' Ratings', '').replace(' Rating', '')
             count_text = count_text.strip('()')
@@ -205,11 +241,12 @@ def scrape_beer_details(url: str) -> Dict[str, str]:
         details['untappd_fetched_at'] = datetime.now().isoformat()
 
     except Exception as e:
-        print(f"[Untappd] Detail scrape error: {e}")
+        logger.error(f"Detail scrape error: {e}")
         
     return details
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     # Integration test
     test_url = "https://untappd.com/b/inkhorn-brewing-uguisu/6441649"
     # print(get_untappd_url("Inkhorn Brewing", "UGUISU"))

@@ -77,9 +77,11 @@ export default async function handler(req, res) {
             query = query.ilike('stock_status', '%In Stock%')
         }
 
-        // Filter by Missing Untappd
-        if (missing_untappd === 'true') {
+        // Filter by Untappd Status
+        if (req.query.untappd_status === 'missing') {
             query = query.or('untappd_url.is.null,untappd_url.ilike.%/search?%')
+        } else if (req.query.untappd_status === 'linked') {
+            query = query.not('untappd_url', 'is', null).not('untappd_url', 'ilike', '%/search?%')
         }
 
         // Sorting
