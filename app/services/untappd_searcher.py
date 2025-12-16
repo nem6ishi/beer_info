@@ -18,6 +18,12 @@ class UntappdBeerDetails(TypedDict, total=False):
     untappd_label: str
     untappd_fetched_at: str
 
+
+BREWERY_ALIASES = {
+    "鬼伝説": ["Wakasaimo"],
+    "Oni Densetsu": ["Wakasaimo"],
+}
+
 COMMON_SUFFIXES = [
     " IPA", " Hazy IPA", " Double IPA", " DIPA", " Triple IPA", " TIPA", 
     " Pale Ale", " Stout", " Imperial Stout", " Lager", " Pilsner", " Sour", 
@@ -59,6 +65,13 @@ def validate_brewery_match(result_element: BeautifulSoup, expected_brewery: str)
     
     # Check if one is contained in the other
     match = (rb_norm in eb_norm) or (eb_norm in rb_norm)
+
+    # Check aliases
+    if not match and expected_brewery in BREWERY_ALIASES:
+        for alias in BREWERY_ALIASES[expected_brewery]:
+            if alias.lower() in rb_norm:
+                return True
+
     if not match:
         logger.debug(f"Validation failed: Result brewery '{result_brewery}' != Expected '{expected_brewery}'")
     return match
@@ -112,18 +125,19 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
         return None
 
     # Primary Search: beer_name + brewery_name
-    parts = []
-    if beer_name: parts.append(beer_name)
-    if brewery_name: parts.append(brewery_name)
-    
-    search_query = " ".join(parts)
-    logger.info(f"Searching: {search_query}")
-    
-    # We pass brewery_name for validation since we are explicitly searching for it
-    result = search_untappd(search_query, validate_brewery=brewery_name)
-    if result:
-        logger.info(f"Found direct link: {result}")
-        return result
+    if beer_name:
+        parts = []
+        parts.append(beer_name)
+        if brewery_name: parts.append(brewery_name)
+        
+        search_query = " ".join(parts)
+        logger.info(f"Searching: {search_query}")
+        
+        # We pass brewery_name for validation since we are explicitly searching for it
+        result = search_untappd(search_query, validate_brewery=brewery_name)
+        if result:
+            logger.info(f"Found direct link: {result}")
+            return result
     
     # Fallback Search: beer_name only
     # Only do this if we actually have a brewery name to validate against, 

@@ -69,6 +69,14 @@ async def process_beer_missing(beer, supabase, offline=False):
     # Extract brewery and beer names
     brewery = beer.get('brewery_name_en') or beer.get('brewery_name_jp')
     beer_name = beer.get('beer_name_en') or beer.get('beer_name_jp')
+
+    if not brewery or not beer_name:
+        import re
+        match = re.search(r'【(.*?)/(.*?)】', beer.get('name', ''))
+        if match:
+             beer_name = match.group(1)
+             brewery = match.group(2)
+             logger.info(f"  🔧 Parsed from title: {brewery} - {beer_name}")
     
     if not brewery or not beer_name:
         logger.warning(f"  ⚠️  Missing brewery or beer name - skipping")
@@ -219,16 +227,19 @@ async def commit_updates(beer, supabase, untappd_payload, gemini_updates, scrape
     return untappd_payload or scraped_updates
 
 
-async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: str = None):
+async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: str = None, name_filter: str = None):
     """
     Enrich beers with Untappd data.
     mode: 'missing' (default) or 'refresh'
     shop_filter: Optional shop name to filter by
+    name_filter: Optional beer name substring to filter by
     """
     logger.info("=" * 70)
     logger.info(f"🍺 Untappd Enrichment (Mode: {mode.upper()})")
     if shop_filter:
         logger.info(f"🏪 Shop Filter: {shop_filter}")
+    if name_filter:
+        logger.info(f"🔍 Name Filter: {name_filter}")
     logger.info("=" * 70)
     logger.info(f"Batch size: {limit}")
     
@@ -251,6 +262,9 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
             
             if shop_filter:
                 query = query.eq('shop', shop_filter)
+
+            if name_filter:
+                query = query.ilike('name', f'%{name_filter}%')
                 
             response = query.order('first_seen', desc=True) \
                 .limit(batch_size) \
@@ -265,6 +279,9 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
 
             if shop_filter:
                 query = query.eq('shop', shop_filter)
+
+            if name_filter:
+                query = query.ilike('name', f'%{name_filter}%')
 
             response = query.order('untappd_fetched_at', desc=False) \
                 .limit(batch_size) \
@@ -287,16 +304,16 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
             else:
                  consecutive_sold_out = 0
                  
-            if consecutive_sold_out >= 30:
+            if consecutive_sold_out >= 30 and not name_filter:
                 logger.info(f"\n🛑 Stopping refresh: {consecutive_sold_out} consecutive sold-out items detected.")
                 logging.info(f"  (Processing stopped to conserve resources on old/sold-out items)")
                 return
 
-            untappd_url = beer.get('untappd_url')
-            
-            if untappd_url in processed_urls:
+            # Track by product URL to avoid duplicates in batch, not Untappd URL (which might be None)
+            product_url = beer.get('url')
+            if product_url in processed_urls:
                 continue
-            processed_urls.add(untappd_url)
+            processed_urls.add(product_url)
 
             name_display = beer.get('name', beer.get('beer_name', 'Unknown'))
             logger.info(f"\n{'='*70}")
@@ -338,7 +355,8 @@ if __name__ == "__main__":
     parser.add_argument('--limit', type=int, default=1000, help='Batch size (default 1000)')
     parser.add_argument('--mode', choices=['missing', 'refresh'], default='missing', help="Enrichment mode")
     parser.add_argument('--shop_filter', type=str, default=None, help="Process only specific shop")
+    parser.add_argument('--name_filter', type=str, default=None, help="Process only beers matching name")
     
     args = parser.parse_args()
     
-    asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode, shop_filter=args.shop_filter))
+    asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode, shop_filter=args.shop_filter, name_filter=args.name_filter))
