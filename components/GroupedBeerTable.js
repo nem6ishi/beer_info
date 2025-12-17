@@ -69,7 +69,7 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                 <td className="col-name">
                                     <BeerInfoCell
                                         brewery={group.brewery}
-                                        beer={group.untappd_url ? group.beer_name : (cheapestItem?.name || group.beer_name)}
+                                        beer={(group.untappd_url && !group.untappd_url.includes('/search')) ? group.beer_name : (cheapestItem?.name || group.beer_name)}
                                         logo={group.brewery_logo}
                                         location={group.brewery_location}
                                         type={group.brewery_type}

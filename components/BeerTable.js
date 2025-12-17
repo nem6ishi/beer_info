@@ -43,7 +43,7 @@ export default function BeerTable({ beers, loading, error }) {
                             <td className="col-name">
                                 <BeerInfoCell
                                     brewery={beer.untappd_brewery_name || beer.brewery_name_en || beer.brewery_name_jp}
-                                    beer={beer.untappd_url ? (beer.untappd_beer_name || beer.beer_name_jp || beer.beer_name_en || beer.name) : beer.name}
+                                    beer={(beer.untappd_url && !beer.untappd_url.includes('/search')) ? (beer.untappd_beer_name || beer.beer_name_jp || beer.beer_name_en || beer.name) : beer.name}
                                     logo={beer.brewery_logo}
                                     location={beer.brewery_location}
                                     type={beer.brewery_type}
