@@ -45,97 +45,96 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     sys.exit(1)
 
 
-async def enrich_breweries(limit: int = 50, force: bool = False):
+async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: list = None):
     logger.info("=" * 70)
     logger.info(f"🏭 Brewery Enrichment (Limit: {limit}, Force: {force})")
+    if target_urls:
+         logger.info(f"🎯 Target: {len(target_urls)} specific breweries")
     logger.info("=" * 70)
     
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     # 1. Get distinct brewery URLs from untappd_data
-    # Note: .select('untappd_brewery_url', count='exact').not_.is_('untappd_brewery_url', 'null') doesn't distinct easily in API without RPC?
-    # Actually Supabase JS/Py client supports modifiers but distinct is tricky. 
-    # Use RPC if available, or just fetch all (cached?) or efficient query.
-    # We'll fetch all unique non-null brewery URLs.
-    # Since we don't have a distinct helper easily, we page through or just get all (assuming not millions).
+    unique_urls = []
     
-    logger.info("  🔍 Collecting unique brewery URLs from beer data...")
-    
-    # Simple pagination to get distinct URLs locally (inefficient for large datasets but fine for <10k beers)
-    # Ideally should create a view or RPC: `SELECT DISTINCT untappd_brewery_url FROM untappd_data WHERE ...`
-    
-    # Let's try to search specifically for ones we haven't processed.
-    # For now, fetching all brewery URLs from untappd_data is okay if dataset is small.
-    
-    res = supabase.table('untappd_data').select('untappd_brewery_url, brewery_name').not_.is_('untappd_brewery_url', 'null').execute()
-    
-    if not res.data:
-        logger.info("  ⚠️  No brewery URLs found in untappd_data. Have you enriched beers with brewery links yet?")
-        return
+    if target_urls:
+        unique_urls = list(set(target_urls))
+        logger.info(f"  🎯 Processing {len(unique_urls)} provided brewery URLs...")
+    else:
+        logger.info("  🔍 Collecting unique brewery URLs from beer data...")
+        # Paginate if needed, but for now grab distinct
+        # Supabase doesn't support distinct easily on select without rpc, so we fetch and set
+        res = supabase.table('untappd_data').select('untappd_brewery_url, brewery_name').not_.is_('untappd_brewery_url', 'null').execute()
+        
+        # Simple list of URLs
+        data = res.data
+        if not data:
+            logger.info("  ✨ No brewery URLs found in untappd_data.")
+            return
 
-    # Map URL to Name (for logging)
-    url_to_name = {item['untappd_brewery_url']: item['brewery_name'] for item in res.data}
-    unique_urls = list(url_to_name.keys())
+        unique_urls = list(set([item['untappd_brewery_url'] for item in data if item.get('untappd_brewery_url')]))
+        logger.info(f"  found {len(unique_urls)} unique brewery URLs.")
     
-    logger.info(f"  found {len(unique_urls)} unique brewery URLs.")
-    
-    processed_count = 0
+    total_processed = 0
     
     for url in unique_urls:
-        if processed_count >= limit:
+        if total_processed >= limit:
             break
             
-        brewery_name = url_to_name[url]
-        
-        # Check if exists in breweries table and is fresh
+        # Check if exists in breweries table
         existing = supabase.table('breweries').select('*').eq('untappd_url', url).execute()
         
-        if existing.data and not force:
-            # Check freshness
-            updated_at = existing.data[0].get('updated_at')
-            if updated_at:
-                last_update = parser.parse(updated_at)
-                if datetime.now(timezone.utc) - last_update < timedelta(days=7):
-                    # Skip if updated recently
-                    # logger.info(f"  ⏭️  Skipping {brewery_name} (Updated recently)")
-                    continue
-
-        logger.info(f"\n🏭 Processing [{processed_count + 1}/{limit}]: {brewery_name}")
-        logger.info(f"  🔗 {url}")
+        should_process = False
         
-        try:
-            # Scrape
+        if not existing.data:
+            should_process = True
+        else:
+            if force:
+                should_process = True
+            else:
+                 # Check freshness
+                updated_at = existing.data[0].get('updated_at')
+                if updated_at:
+                    try:
+                        last_update = parser.parse(updated_at)
+                    except NameError:
+                        from dateutil import parser
+                        last_update = parser.parse(updated_at)
+                        
+                    if datetime.now(timezone.utc) - last_update < timedelta(days=7):
+                        continue
+                else:
+                    should_process = True
+        
+        if should_process:
+            logger.info(f"  🔄 Enriching: {url}")
             await asyncio.sleep(2) # Rate limit
             details = scrape_brewery_details(url)
             
             if details:
-                # Prepare payload
                 payload = {
-                    'untappd_url': url,
-                    'name_en': details.get('brewery_name'), # Assuming EN scraper
-                    'location': details.get('location'),
-                    'brewery_type': details.get('brewery_type'),
-                    'website': details.get('website'),
-                    'logo_url': details.get('logo_url'),
-                    'stats': details.get('stats'),
-                    'updated_at': datetime.now(timezone.utc).isoformat()
+                     'untappd_url': url,
+                     'name_en': details.get('brewery_name'),
+                     'location': details.get('location'),
+                     'brewery_type': details.get('brewery_type'),
+                     'website': details.get('website'),
+                     'logo_url': details.get('logo_url'),
+                     'stats': details.get('stats'),
+                     'updated_at': datetime.now(timezone.utc).isoformat()
                 }
                 
-                # Upsert based on untappd_url
-                # Note: 'breweries' table primary key is UUID, but we have UNIQUE constraint on untappd_url (hopefully added in schema)
-                # We need to perform Upsert on untappd_url. Supabase-py upsert usually requires matching primary key or specified constraints.
-                # If we rely on untappd_url being UNIQUE, we can use on_conflict.
-                
-                res = supabase.table('breweries').upsert(payload, on_conflict='untappd_url').execute()
-                logger.info(f"  ✅ Enriched: {details.get('brewery_name')}")
-                processed_count += 1
+                try:
+                    supabase.table('breweries').upsert(payload, on_conflict='untappd_url').execute()
+                    logger.info(f"  ✅ Saved: {details.get('brewery_name')}")
+                    total_processed += 1
+                except Exception as e:
+                    logger.error(f"  ❌ Error saving: {e}")
             else:
-                logger.warning("  ⚠️  Failed to scrape details")
-                
-        except Exception as e:
-            logger.error(f"  ❌ Error processing {brewery_name}: {e}")
+                logger.warning(f"  ⚠️ Failed to scrape: {url}")
+        else:
+            pass
 
-    logger.info(f"\n✨ Brewery enrichment completed. Processed {processed_count} breweries.")
+    logger.info(f"\n✨ Brewery enrichment completed. Processed {total_processed} breweries.")
 
 if __name__ == "__main__":
     import argparse

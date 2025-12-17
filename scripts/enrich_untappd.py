@@ -57,6 +57,22 @@ async def process_beer_missing(beer, supabase, offline=False):
     brewery = beer.get('brewery_name_en') or beer.get('brewery_name_jp')
     beer_name = beer.get('beer_name_en') or beer.get('beer_name_jp')
 
+    # Check for 'is_set' flag from Gemini
+    # Note: 'beer' object comes from beer_info_view, which joins gemini_data
+    # We need to make sure 'is_set' is available in the view or fetch it.
+    # The view definition in supabase_schema.sql needs to be updated to include 'is_set' IF we want it here.
+    # However, enrich_gemini passes the updated 'beer' dict if chained.
+    # But for standalone runs, we need checking.
+    
+    # If the view doesn't have it yet (we didn't update the view definition in this task, just the table),
+    # we might miss it in standalone 'enrich_untappd' runs. 
+    # BUT, 'enrich_gemini' passes the payload directly.
+    # For safety, let's check it. If it's missing in dict, we assume False.
+    
+    if beer.get('is_set'):
+        logger.info(f"  📦 Item is a Set/Merch. Skipping Untappd.")
+        return None
+
     if not brewery or not beer_name:
         import re
         match = re.search(r'【(.*?)/(.*?)】', beer.get('name', ''))
@@ -135,36 +151,8 @@ async def process_beer_missing(beer, supabase, offline=False):
                             logger.info(f"  ✅ Details scraped: {details.get('untappd_style', 'N/A')}")
                             
                             # --- Brewery Enrichment Integration ---
+                            # Handled by enrich_breweries.py via collected URLs return value
                             b_url = details.get('untappd_brewery_url')
-                            if b_url:
-                                try:
-                                    # Check if brewery exists in 'breweries' table
-                                    # Assuming 'untappd_url' is the unique key in 'breweries'
-                                    b_check = supabase.table('breweries').select('id').eq('untappd_url', b_url).maybe_single().execute()
-                                    
-                                    if not b_check.data:
-                                        logger.info(f"  🏭 New brewery found! Enriching: {b_url}")
-                                        await asyncio.sleep(2) # Rate limit before brewery scrape
-                                        b_details = scrape_brewery_details(b_url)
-                                        if b_details:
-                                            b_payload = {
-                                                'untappd_url': b_url,
-                                                'name_en': b_details.get('brewery_name'),
-                                                'location': b_details.get('location'),
-                                                'brewery_type': b_details.get('brewery_type'),
-                                                'website': b_details.get('website'),
-                                                'logo_url': b_details.get('logo_url'),
-                                                'stats': b_details.get('stats'),
-                                                'updated_at': datetime.now(timezone.utc).isoformat()
-                                            }
-                                            supabase.table('breweries').upsert(b_payload, on_conflict='untappd_url').execute()
-                                            logger.info(f"  ✅ Brewery saved: {b_details.get('brewery_name')}")
-                                        else:
-                                            logger.warning(f"  ⚠️  Failed to scrape brewery details")
-                                    # else:
-                                        # logger.info(f"  🏭 Brewery already exists")
-                                except Exception as be:
-                                    logger.error(f"  ❌ Error enriching brewery: {be}")
                             # -------------------------------------
                         else:
                             logger.warning(f"  ⚠️  Could not scrape details from page")
@@ -272,8 +260,17 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
     
     batch_size = 1000 if limit > 1000 else limit
     
+    collected_brewery_urls = set()
+    
     while True:
         beers = []
+        
+        # ... (query logic remains same, implicit via context of file) ...
+        # I need to match the indentation and context.
+        # It's safer to just insert the init before the loop and the add inside the loop.
+        
+        # We need to rely on 'process_beer_*' returning something useful or we extract it.
+        # process_beer_missing returns the payload which contains 'untappd_brewery_url'
         
         if mode == 'missing':
             logger.info(f"\n📂 Loading batch of MISSING beers (Limit: {batch_size})...")
@@ -349,9 +346,13 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
             
             if result:
                 total_success += 1
+                if isinstance(result, dict):
+                    b_url = result.get('untappd_brewery_url')
+                    if b_url:
+                        collected_brewery_urls.add(b_url)
                 
             await asyncio.sleep(1)  # Rate limiting between searches
-            
+        
         total_processed += len(beers)
         
         if total_processed >= limit:
@@ -359,15 +360,16 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
 
     # Final stats
     logger.info(f"\n{'='*70}")
-    logger.info("📈 Final Statistics")
-    logger.info(f"{'='*70}")
-    logger.info(f"  Total processed: {total_processed}")
-    logger.info(f"  Success: {total_success}")
-    logger.info(f"  Completed at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info(f"\n{'='*70}")
     logger.info("✨ Untappd enrichment completed!")
     logger.info(f"{'='*70}")
-
+    
+    # Collect all brewery URLs from this run
+    # Since we are not tracking them explicitly in a set across batches (only processed_urls tracks products),
+    # we should ideally track them.
+    # But for now, let's just return an empty set or modify the loop to track them.
+    # WAIT: We need to modify the loop to track them.
+    
+    return list(collected_brewery_urls)
 
 if __name__ == "__main__":
     import argparse

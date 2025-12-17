@@ -139,6 +139,7 @@ class GeminiExtractor:
         prompt = f"""
         Extract the brewery name and beer name from the following product title string.
         Separate them into Japanese and English versions if present.
+        Also determine if this product is a "set" (multiple different beers, a variety pack, or a glass/merch set) or a single beer product (even if it's a 4-pack of the SAME beer, it counts as a single beer product for enrichment purposes).
         Product Title: "{product_name}"{brewery_hint}
 
         Guidelines:
@@ -148,12 +149,14 @@ class GeminiExtractor:
         - Use your knowledge to identify known breweries (e.g., "FETISH CLUB", "UCHU BREWING", "West Coast Brewing").
         - "NAMACHAN" or "NAMACHAん" refers to "Namachan Brewing". Do NOT confuse it with "Black Tide" even if "Black" appears in the beer name.
         - If multiple breweries are listed (e.g., collaboration), prioritize and extract the FIRST listed brewery.
+        - **Set Detection**: Set "is_set" to true if the product contains multiple DIFFERENT beers (e.g., "Drinking Comparison Set", "Variety Pack", "3 types set") or if it is NOT a beer (e.g. "Glass", "T-shirt"). A 6-pack of the SAME beer is NOT a set (is_set=false).
 
         Return ONLY a raw JSON string (no markdown formatting, no code blocks) with strictly these keys:
         - "brewery_name_jp" (Japanese brewery name, or null)
         - "brewery_name_en" (English brewery name, or null)
         - "beer_name_jp" (Japanese beer name, or null)
         - "beer_name_en" (English beer name, or null)
+        - "is_set" (boolean, true if it is a set/variety pack/merch, false otherwise)
         
         Examples:
         1. Input: "【TECHNO PILS/FETISH CLUB】"
@@ -162,7 +165,8 @@ class GeminiExtractor:
              "brewery_name_jp": null,
              "brewery_name_en": "FETISH CLUB",
              "beer_name_jp": null,
-             "beer_name_en": "TECHNO PILS"
+             "beer_name_en": "TECHNO PILS",
+             "is_set": false
            }}
 
         2. Input: "Theory of Clarity / Inkhorn Brewing"
@@ -171,25 +175,38 @@ class GeminiExtractor:
              "brewery_name_jp": "インクホーン",
              "brewery_name_en": "Inkhorn Brewing",
              "beer_name_jp": null,
-             "beer_name_en": "Theory of Clarity"
+             "beer_name_en": "Theory of Clarity",
+             "is_set": false
            }}
 
-        3. Input: "ナマチャン やみつきエール ブラックペッパー / NAMACHAN American IPA w/Black Paper"
+        3. Input: "おまかせ6本セット / Random 6 Bottle Set"
            Output:
            {{
-             "brewery_name_jp": "NAMACHAん",
-             "brewery_name_en": "Namachan Brewing",
-             "beer_name_jp": "やみつきエール ブラックペッパー",
-             "beer_name_en": "Yamitsuki Ale Black Pepper"
+             "brewery_name_jp": null,
+             "brewery_name_en": null,
+             "beer_name_jp": "おまかせ6本セット",
+             "beer_name_en": "Random 6 Bottle Set",
+             "is_set": true
            }}
 
-        4. Input: "メッソレム x オーバークリーク ファウンドデッド... / MESSOREM x Obercreek Found Dead At the Silo 2025 ≪12/20-21入荷≫"
+        4. Input: "WCB オリジナルグラス / WCB Original Glass"
            Output:
            {{
-             "brewery_name_jp": "メッソレム",
-             "brewery_name_en": "MESSOREM",
-             "beer_name_jp": "ファウンドデッド",
-             "beer_name_en": "Found Dead At the Silo 2025"
+             "brewery_name_jp": "West Coast Brewing",
+             "brewery_name_en": "West Coast Brewing",
+             "beer_name_jp": "オリジナルグラス",
+             "beer_name_en": "Original Glass",
+             "is_set": true
+           }}
+
+        5. Input: "ブラックタイド x ヤッホーブルーイング ブラックデーモン / BLACK TIDE x Yoho Brewing Black Demon ≪12/20-21入荷予定≫"
+           Output:
+           {{
+             "brewery_name_jp": "ブラックタイド",
+             "brewery_name_en": "BLACK TIDE BREWING",
+             "beer_name_jp": "ブラックデーモン",
+             "beer_name_en": "Black Demon",
+             "is_set": false
            }}
         """
 
@@ -201,7 +218,8 @@ class GeminiExtractor:
                     "brewery_name_jp": data.get("brewery_name_jp"),
                     "brewery_name_en": data.get("brewery_name_en"),
                     "beer_name_jp": data.get("beer_name_jp"),
-                    "beer_name_en": data.get("beer_name_en")
+                    "beer_name_en": data.get("beer_name_en"),
+                    "is_set": data.get("is_set", False)
                 }
         except Exception as e:
             print(f"[Gemini] Extraction failed: {e}")
@@ -210,7 +228,8 @@ class GeminiExtractor:
             "brewery_name_jp": None, 
             "brewery_name_en": None, 
             "beer_name_jp": None, 
-            "beer_name_en": None
+            "beer_name_en": None,
+            "is_set": False
         }
 
 # Usage Example:

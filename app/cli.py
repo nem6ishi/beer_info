@@ -22,17 +22,20 @@ def main():
     enrich_parser = subparsers.add_parser("enrich", help="Run full enrichment pipeline (Gemini -> Untappd -> Breweries)")
     enrich_parser.add_argument("--limit", type=int, help="Limit number of items to enrich per step", default=50)
     enrich_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
+    enrich_parser.add_argument("--keyword", type=str, help="Filter enrichment by partial name match", default=None)
 
     # Enrich Gemini only
     enrich_gemini_parser = subparsers.add_parser("enrich-gemini", help="Run Gemini enrichment only")
     enrich_gemini_parser.add_argument("--limit", type=int, help="Limit number of items to enrich", default=50)
     enrich_gemini_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
+    enrich_gemini_parser.add_argument("--keyword", type=str, help="Filter enrichment by partial name match", default=None)
     
     # Enrich Untappd only
     enrich_untappd_parser = subparsers.add_parser("enrich-untappd", help="Run Untappd enrichment only")
     enrich_untappd_parser.add_argument("--limit", type=int, help="Limit number of items to enrich", default=50)
     enrich_untappd_parser.add_argument("--mode", choices=['missing', 'refresh'], default='missing', help="Enrichment mode: 'missing' for new items, 'refresh' for existing items")
     enrich_untappd_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
+    enrich_untappd_parser.add_argument("--name_filter", type=str, help="Filter enrichment by partial name match", default=None)
 
     # Sync command
     subparsers.add_parser("sync", help="Download Supabase data to local JSON")
@@ -54,22 +57,28 @@ def main():
             print("🚀 Starting Full Enrichment Pipeline...")
             
             print("\n--- Step 1: Gemini Enrichment ---")
-            await enrich_gemini(limit=args.limit, shop_filter=args.shop)
+            # enrich_gemini uses 'keyword_filter'
+            await enrich_gemini(limit=args.limit, shop_filter=args.shop, keyword_filter=args.keyword)
             
             print("\n--- Step 2: Untappd Enrichment ---")
-            await enrich_untappd(limit=args.limit, mode='missing', shop_filter=args.shop)
+            # enrich_untappd uses 'name_filter' and returns a list of brewery URLs found
+            found_brewery_urls = await enrich_untappd(limit=args.limit, mode='missing', shop_filter=args.shop, name_filter=args.keyword)
             
-            print("\n--- Step 3: Brewery Enrichment ---")
-            # enrich_breweries does not support shop_filter, as it works on breweries found in untappd_data
-            await enrich_breweries(limit=args.limit)
+            if found_brewery_urls:
+                print(f"\n--- Step 3: Brewery Enrichment (Targeting {len(found_brewery_urls)} breweries) ---")
+                # enrich_breweries now supports target_urls
+                await enrich_breweries(limit=args.limit, target_urls=found_brewery_urls)
+            else:
+                print("\n--- Step 3: Brewery Enrichment (Skipped) ---")
+                print("ℹ️  No new brewery URLs found to enrich.")
 
         asyncio.run(run_pipeline())
     elif args.command == "enrich-gemini":
         from scripts.enrich_gemini import enrich_gemini
-        asyncio.run(enrich_gemini(limit=args.limit, shop_filter=args.shop))
+        asyncio.run(enrich_gemini(limit=args.limit, shop_filter=args.shop, keyword_filter=args.keyword))
     elif args.command == "enrich-untappd":
         from scripts.enrich_untappd import enrich_untappd
-        asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode, shop_filter=args.shop))
+        asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode, shop_filter=args.shop, name_filter=args.name_filter))
     elif args.command == "sync":
         from scripts.sync_local import sync_from_supabase
         sync_from_supabase()

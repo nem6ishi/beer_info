@@ -173,6 +173,8 @@ async def enrich_gemini(limit: int = 50, shop_filter: str = None, keyword_filter
                             print(f"     Brewery (EN): {enriched_info.get('brewery_name_en')}")
                             print(f"     Brewery (JP): {enriched_info.get('brewery_name_jp')}")
                             print(f"     Beer (EN):    {enriched_info.get('beer_name_en')}")
+                            if enriched_info.get('is_set'):
+                                print(f"     📦 Set Detected: YES (Skipping Untappd)")
                             
                             # Store enrichment data
                             gemini_payload = {
@@ -181,6 +183,7 @@ async def enrich_gemini(limit: int = 50, shop_filter: str = None, keyword_filter
                                 'brewery_name_jp': enriched_info.get('brewery_name_jp'),
                                 'beer_name_en': enriched_info.get('beer_name_en'),
                                 'beer_name_jp': enriched_info.get('beer_name_jp'),
+                                'is_set': enriched_info.get('is_set', False),
                                 'payload': enriched_info.get('raw_response'), # Save raw for debugging
                                 'updated_at': datetime.now(timezone.utc).isoformat()
                             }
@@ -210,12 +213,16 @@ async def enrich_gemini(limit: int = 50, shop_filter: str = None, keyword_filter
             
             # Chain Untappd processing if successful
             if updates:
-                try:
-                     print("  🔗 Chaining Untappd enrichment...")
-                     # Note: process_beer handles its own DB updates (to untappd_data/scraped_beers)
-                     await process_beer_missing(beer, supabase, offline=offline)
-                except Exception as e:
-                    total_errors += 1
+                # If it's a set, we do NOT chain Untappd
+                if isinstance(updates, dict) and updates.get('is_set'):
+                     print("  ⏭️  Skipping Untappd enrichment (Item is a Set/Merch)")
+                else:
+                    try:
+                         print("  🔗 Chaining Untappd enrichment...")
+                         # Note: process_beer handles its own DB updates (to untappd_data/scraped_beers)
+                         await process_beer_missing(beer, supabase, offline=offline)
+                    except Exception as e:
+                        total_errors += 1
             else:
                  pass
                  
