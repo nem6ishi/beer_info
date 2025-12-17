@@ -113,13 +113,13 @@ export default async function handler(req, res) {
                     // Representative data (use the first one encountered)
                     // Since query is ordered by first_seen DESC, this will be the NEWEST item.
                     untappd_url: key,
-                    beer_name: item.untappd_beer_name || item.beer_name_en || item.name, // Prefer Untappd > Enriched > Raw
+                    beer_name: item.untappd_beer_name || item.name, // Prefer Untappd > Raw
                     beer_image: item.untappd_image || item.image,
                     style: item.untappd_style || item.style,
                     abv: item.untappd_abv,
                     ibu: item.untappd_ibu,
                     rating: item.untappd_rating,
-                    brewery: item.untappd_brewery_name || item.brewery_name_en || item.brewery_name_jp,
+                    brewery: item.untappd_brewery_name,
                     brewery_logo: item.brewery_logo,
                     brewery_location: item.brewery_location,
                     brewery_type: item.brewery_type,

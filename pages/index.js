@@ -297,7 +297,7 @@ function HomeContent() {
 
             <footer className="footer">
                 <div className="container">
-                    <p>&copy; 2025 Craft Beer Watch Japan. Data sourced from Beervolta &amp; Chouseiya.</p>
+                    <p>&copy; 2025 Craft Beer Watch Japan.</p>
                 </div>
             </footer>
         </>
