@@ -147,6 +147,7 @@ class GeminiExtractor:
         - If the title follows "【A/B】", A is typically the Beer Name and B is the Brewery Name.
         - Use your knowledge to identify known breweries (e.g., "FETISH CLUB", "UCHU BREWING", "West Coast Brewing").
         - "NAMACHAN" or "NAMACHAん" refers to "Namachan Brewing". Do NOT confuse it with "Black Tide" even if "Black" appears in the beer name.
+        - If multiple breweries are listed (e.g., collaboration), prioritize and extract the FIRST listed brewery.
 
         Return ONLY a raw JSON string (no markdown formatting, no code blocks) with strictly these keys:
         - "brewery_name_jp" (Japanese brewery name, or null)
