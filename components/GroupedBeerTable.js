@@ -1,23 +1,10 @@
+import BeerInfoCell from './cells/BeerInfoCell';
+import RatingCell from './cells/RatingCell';
 import React from 'react'
 
+import { formatPrice, formatSimpleDate } from './utils/formatters';
+
 export default function GroupedBeerTable({ groups, loading, error }) {
-
-    const formatPrice = (price) => {
-        if (!price) return '¥-';
-        const num = typeof price === 'number' ? price : parseInt(price.replace(/[^0-9]/g, ''), 10);
-        if (isNaN(num)) return price;
-        return `¥${num.toLocaleString()}`;
-    }
-
-    // Simplified date formatter
-    const formatSimpleDate = (isoString) => {
-        if (!isoString) return '-';
-        try {
-            const date = new Date(isoString.replace(' ', 'T'));
-            if (isNaN(date.getTime())) return '-';
-            return `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
-        } catch (e) { return '-'; }
-    }
 
     if (error) return <div className="status-message error">Error: {error}</div>
 
@@ -41,7 +28,31 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                     {groups.map(group => {
                         const sortedItems = [...(group.items || [])].sort((a, b) => (a.price_value || Infinity) - (b.price_value || Infinity));
                         const cheapestItem = sortedItems[0];
-                        const displayImage = (cheapestItem && cheapestItem.image) ? cheapestItem.image : group.beer_image;
+
+                        // Image selection logic:
+                        // 1. Untappd image if available and NOT default
+                        // 2. Cheapest shop item image
+                        // 3. Any shop item image
+                        // 4. Placeholder (never show Untappd default)
+
+                        let displayImage = group.beer_image;
+                        const isDefaultUntappd = !displayImage || (displayImage && displayImage.includes('badge-beer-default'));
+
+                        if (isDefaultUntappd) {
+                            // Try cheapest first
+                            if (cheapestItem && cheapestItem.image) {
+                                displayImage = cheapestItem.image;
+                            } else {
+                                // Try finding ANY item with an image
+                                const itemWithImage = sortedItems.find(i => i.image);
+                                if (itemWithImage) {
+                                    displayImage = itemWithImage.image;
+                                } else {
+                                    // No shop images found. Force placeholder/empty so we don't show the Untappd default.
+                                    displayImage = ''; // This will trigger onError or show nothing, better than default
+                                }
+                            }
+                        }
 
                         return (
                             <tr key={group.untappd_url || group.url}>
@@ -56,14 +67,13 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                     </div>
                                 </td>
                                 <td className="col-name">
-                                    <div className="beer-name-group">
-                                        <div className="brewery-name">
-                                            {group.brewery || 'Unknown Brewery'}
-                                        </div>
-                                        <div className="beer-name">
-                                            {group.beer_name || 'Unknown Beer'}
-                                        </div>
-                                    </div>
+                                    <BeerInfoCell
+                                        brewery={group.brewery}
+                                        beer={group.beer_name}
+                                        logo={group.brewery_logo}
+                                        location={group.brewery_location}
+                                        type={group.brewery_type}
+                                    />
                                 </td>
                                 <td className="col-beer-style">
                                     <div className="style-specs-group">
@@ -82,19 +92,11 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                     </div>
                                 </td>
                                 <td className="col-rating">
-                                    <div className="rating-box">
-                                        {group.untappd_url ? (
-                                            <a href={group.untappd_url} target="_blank" rel="noopener noreferrer" className="untappd-badge-link">
-                                                <span className="untappd-header">UNTAPPD ↗</span>
-                                                <span className={group.rating ? "untappd-badge" : "untappd-badge na"}>
-                                                    {group.rating ? Number(group.rating).toFixed(2) : "N/A"}
-                                                </span>
-                                            </a>
-                                        ) : (
-                                            <span className="na-text">N/A</span>
-                                        )}
-                                        {group.rating_count > 0 && <span className="rating-count">({group.rating_count})</span>}
-                                    </div>
+                                    <RatingCell
+                                        rating={group.rating}
+                                        count={group.rating_count}
+                                        url={group.untappd_url}
+                                    />
                                 </td>
                                 <td className="col-shop">
                                     <div className="shop-list-flat">

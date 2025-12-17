@@ -1,25 +1,10 @@
+import BeerInfoCell from './cells/BeerInfoCell';
+import RatingCell from './cells/RatingCell';
 import React from 'react'
 
+import { formatPrice, formatSimpleDate } from './utils/formatters';
+
 export default function BeerTable({ beers, loading, error }) {
-
-    const formatPrice = (price) => {
-        if (!price) return '¥-';
-        // Simple numeric cleanup
-        const num = typeof price === 'number' ? price : parseInt(price.replace(/[^0-9]/g, ''), 10);
-        if (isNaN(num)) return price;
-        return `¥${num.toLocaleString()}`;
-    }
-
-    // Simplified date formatter
-    const formatSimpleDate = (isoString) => {
-        if (!isoString) return '-';
-        try {
-            // Safari friendly date parsing
-            const date = new Date(isoString.replace(' ', 'T'));
-            if (isNaN(date.getTime())) return '-';
-            return `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
-        } catch (e) { return '-'; }
-    }
 
     if (error) return <div className="status-message error">Error: {error}</div>
 
@@ -56,14 +41,13 @@ export default function BeerTable({ beers, loading, error }) {
                                 </div>
                             </td>
                             <td className="col-name">
-                                <div className="beer-name-group">
-                                    <div className="brewery-name">
-                                        {beer.untappd_brewery_name || beer.brewery_name_en || beer.brewery_name_jp || ''}
-                                    </div>
-                                    <div className="beer-name">
-                                        {beer.untappd_beer_name || beer.beer_name_jp || beer.beer_name_en || beer.name}
-                                    </div>
-                                </div>
+                                <BeerInfoCell
+                                    brewery={beer.untappd_brewery_name || beer.brewery_name_en || beer.brewery_name_jp}
+                                    beer={beer.untappd_beer_name || beer.beer_name_jp || beer.beer_name_en || beer.name}
+                                    logo={beer.brewery_logo}
+                                    location={beer.brewery_location}
+                                    type={beer.brewery_type}
+                                />
                             </td>
                             <td className="col-beer-style">
                                 <div className="style-specs-group">
@@ -82,16 +66,11 @@ export default function BeerTable({ beers, loading, error }) {
                                 </div>
                             </td>
                             <td className="col-rating">
-                                <div className="rating-box">
-                                    {beer.untappd_rating ? (
-                                        <a href={beer.untappd_url || '#'} target="_blank" rel="noopener noreferrer" className="untappd-badge-link">
-                                            <span className="untappd-badge">{Number(beer.untappd_rating).toFixed(2)}</span>
-                                            {beer.untappd_rating_count && <span className="rating-count">({beer.untappd_rating_count})</span>}
-                                        </a>
-                                    ) : (
-                                        <span className="na-text">N/A</span>
-                                    )}
-                                </div>
+                                <RatingCell
+                                    rating={beer.untappd_rating}
+                                    count={beer.untappd_rating_count}
+                                    url={beer.untappd_url}
+                                />
                             </td>
                             <td className="col-shop">
                                 <div className="shop-list-flat">

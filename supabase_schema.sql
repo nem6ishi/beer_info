@@ -39,16 +39,27 @@ CREATE TABLE IF NOT EXISTS untappd_data (
   rating TEXT,
   rating_count TEXT,
   image_url TEXT,
+  untappd_brewery_url TEXT, -- Link to brewery page
   fetched_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. breweries: Reference table for hints
+-- 4. breweries: Reference table for hints & enriched info
 CREATE TABLE IF NOT EXISTS breweries (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name_en TEXT,
   name_jp TEXT,
   aliases TEXT[],
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  
+  -- Enriched Data
+  untappd_url TEXT UNIQUE,
+  location TEXT,
+  brewery_type TEXT,
+  website TEXT,
+  stats JSONB, -- {total_beers, unique_users, monthly_checkins, rating_count}
+  logo_url TEXT,
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 5. Indices for Performance
@@ -91,11 +102,19 @@ SELECT
   NULLIF(regexp_replace(u.rating, '[^0-9.]', '', 'g'), '')::numeric as untappd_rating,
   NULLIF(regexp_replace(u.rating_count, '[^0-9.]', '', 'g'), '')::numeric as untappd_rating_count,
   u.image_url as untappd_image,
-  u.fetched_at as untappd_fetched_at
+  u.untappd_brewery_url, -- Link key
+  u.fetched_at as untappd_fetched_at,
+  
+  -- Enriched Brewery Data
+  b.location as brewery_location,
+  b.brewery_type,
+  b.logo_url as brewery_logo,
+  b.id as brewery_id
 
 FROM scraped_beers s
 LEFT JOIN gemini_data g ON s.url = g.url
-LEFT JOIN untappd_data u ON s.untappd_url = u.untappd_url;
+LEFT JOIN untappd_data u ON s.untappd_url = u.untappd_url
+LEFT JOIN breweries b ON u.untappd_brewery_url = b.untappd_url;
 
 
 -- 7. Row Level Security (RLS) policies

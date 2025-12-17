@@ -120,6 +120,9 @@ export default async function handler(req, res) {
                     ibu: item.untappd_ibu,
                     rating: item.untappd_rating,
                     brewery: item.untappd_brewery_name || item.brewery_name_en || item.brewery_name_jp,
+                    brewery_logo: item.brewery_logo,
+                    brewery_location: item.brewery_location,
+                    brewery_type: item.brewery_type,
                     untappd_updated_at: item.untappd_fetched_at, // Add timestamp
                     rating_count: item.untappd_rating_count,
                     // Aggregate data
@@ -140,7 +143,8 @@ export default async function handler(req, res) {
                 url: item.url,
                 stock_status: item.stock_status,
                 last_seen: item.last_seen,
-                first_seen: item.first_seen
+                first_seen: item.first_seen,
+                image: item.image // Add image for fallback logic
             })
 
             // Update stats

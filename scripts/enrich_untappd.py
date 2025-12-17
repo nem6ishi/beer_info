@@ -16,28 +16,14 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.services.untappd_searcher import get_untappd_url, scrape_beer_details, UntappdBeerDetails
+from app.services.untappd_searcher import get_untappd_url, scrape_beer_details, scrape_brewery_details, UntappdBeerDetails
 # from app.services.brewery_manager import BreweryManager
 
 # Configure Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%H:%M:%S'
-)
-logger = logging.getLogger("enrich_untappd")
+from scripts.utils.script_utils import setup_script
 
-# Load environment variables
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-load_dotenv(env_path)
-
-# Get credentials
-SUPABASE_URL = os.getenv('SUPABASE_URL') or os.getenv('NEXT_PUBLIC_SUPABASE_URL')
-SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    logger.error("Error: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
-    sys.exit(1)
+# Setup Supabase and Logging
+supabase, logger = setup_script("enrich_untappd")
 
 
 def map_details_to_payload(details: UntappdBeerDetails):
@@ -51,6 +37,7 @@ def map_details_to_payload(details: UntappdBeerDetails):
         'rating': details.get('untappd_rating'),
         'rating_count': details.get('untappd_rating_count'),
         'image_url': details.get('untappd_label'), # Map 'untappd_label' -> 'image_url'
+        'untappd_brewery_url': details.get('untappd_brewery_url'), # Map brewery URL
         'fetched_at': datetime.now(timezone.utc).isoformat()
     }
 
@@ -146,6 +133,39 @@ async def process_beer_missing(beer, supabase, offline=False):
                             untappd_payload.update(mapped)
                             untappd_payload['untappd_url'] = untappd_url # Ensure PK is set
                             logger.info(f"  ✅ Details scraped: {details.get('untappd_style', 'N/A')}")
+                            
+                            # --- Brewery Enrichment Integration ---
+                            b_url = details.get('untappd_brewery_url')
+                            if b_url:
+                                try:
+                                    # Check if brewery exists in 'breweries' table
+                                    # Assuming 'untappd_url' is the unique key in 'breweries'
+                                    b_check = supabase.table('breweries').select('id').eq('untappd_url', b_url).maybe_single().execute()
+                                    
+                                    if not b_check.data:
+                                        logger.info(f"  🏭 New brewery found! Enriching: {b_url}")
+                                        await asyncio.sleep(2) # Rate limit before brewery scrape
+                                        b_details = scrape_brewery_details(b_url)
+                                        if b_details:
+                                            b_payload = {
+                                                'untappd_url': b_url,
+                                                'name_en': b_details.get('brewery_name'),
+                                                'location': b_details.get('location'),
+                                                'brewery_type': b_details.get('brewery_type'),
+                                                'website': b_details.get('website'),
+                                                'logo_url': b_details.get('logo_url'),
+                                                'stats': b_details.get('stats'),
+                                                'updated_at': datetime.now(timezone.utc).isoformat()
+                                            }
+                                            supabase.table('breweries').upsert(b_payload, on_conflict='untappd_url').execute()
+                                            logger.info(f"  ✅ Brewery saved: {b_details.get('brewery_name')}")
+                                        else:
+                                            logger.warning(f"  ⚠️  Failed to scrape brewery details")
+                                    # else:
+                                        # logger.info(f"  🏭 Brewery already exists")
+                                except Exception as be:
+                                    logger.error(f"  ❌ Error enriching brewery: {be}")
+                            # -------------------------------------
                         else:
                             logger.warning(f"  ⚠️  Could not scrape details from page")
                             untappd_payload['fetched_at'] = datetime.now(timezone.utc).isoformat()

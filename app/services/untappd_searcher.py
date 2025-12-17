@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class UntappdBeerDetails(TypedDict, total=False):
     untappd_beer_name: str
     untappd_brewery_name: str
+    untappd_brewery_url: str # New field
     untappd_style: str
     untappd_abv: str
     untappd_ibu: str
@@ -17,6 +18,15 @@ class UntappdBeerDetails(TypedDict, total=False):
     untappd_rating_count: str
     untappd_label: str
     untappd_fetched_at: str
+
+class UntappdBreweryDetails(TypedDict, total=False):
+    brewery_name: str
+    location: str
+    brewery_type: str
+    website: str
+    logo_url: str
+    stats: dict # {total, unique, monthly, ratings}
+    fetched_at: str
 
 
 BREWERY_ALIASES = {
@@ -188,16 +198,10 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
     logger.info("No direct link found. Returning search URL.")
     return fallback_url
 
+
 def scrape_beer_details(url: str) -> UntappdBeerDetails:
     """
     Scrapes detailed info from a specific Untappd beer URL.
-    
-    Args:
-        url (str): The valid Untappd beer page URL.
-        
-    Returns:
-        UntappdBeerDetails: Dictionary containing beer details.
-                            Returns empty dict on failure.
     """
     details: UntappdBeerDetails = {}
     if not url or "untappd.com/b/" not in url:
@@ -221,8 +225,17 @@ def scrape_beer_details(url: str) -> UntappdBeerDetails:
         if name_tag: details['untappd_beer_name'] = name_tag.get_text(strip=True)
         
         brewery_tag = soup.select_one('.name .brewery')
-        if brewery_tag: details['untappd_brewery_name'] = brewery_tag.get_text(strip=True)
-        
+        if brewery_tag: 
+            details['untappd_brewery_name'] = brewery_tag.get_text(strip=True)
+            # Extract Brewery URL
+            brewery_link = brewery_tag.select_one('a')
+            if brewery_link and brewery_link.get('href'):
+                href = brewery_link.get('href')
+                if href.startswith('/'):
+                    details['untappd_brewery_url'] = f"https://untappd.com{href}"
+                else:
+                    details['untappd_brewery_url'] = href
+
         style_tag = soup.select_one('.name .style')
         if style_tag: details['untappd_style'] = style_tag.get_text(strip=True)
         
@@ -258,6 +271,124 @@ def scrape_beer_details(url: str) -> UntappdBeerDetails:
         logger.error(f"Detail scrape error: {e}")
         
     return details
+
+
+def scrape_brewery_details(url: str) -> UntappdBreweryDetails:
+    """
+    Scrapes detailed info from a specific Untappd brewery URL.
+    """
+    details: UntappdBreweryDetails = {}
+    if not url:
+        return details
+        
+    logger.info(f"Scraping brewery details from: {url}")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            logger.warning(f"Failed to load brewery details. Status: {resp.status_code}")
+            return details
+            
+        soup = BeautifulSoup(resp.text, 'lxml')
+        
+        # Try finding the name directly (H1 is usually the name)
+        name_tag = soup.select_one('h1')
+        if name_tag:
+            details['brewery_name'] = name_tag.get_text(strip=True)
+            
+            # The structure is usually:
+            # <div class="basic">
+            #   <h1>Wakasaimo Honpo</h1>
+            #   <p class="brewery">Toyako, Hokkaido Japan</p>
+            #   <p class="style">Micro Brewery</p>
+            # </div>
+            
+            parent = name_tag.parent
+            if parent:
+                # Location often in a <p class="brewery"> or just <p>
+                # Using class-agnostic p tag search based on position
+                p_tags = parent.select('p')
+                for p in p_tags:
+                    text = p.get_text(strip=True)
+                    # Simple heuristic: If it looks like a location (Japan, US, etc) or has a map icon?
+                    # Or relying on order: 1st is location, 2nd is type
+                    # Untappd usually puts location first
+                    if not details.get('location') and any(c.isalpha() for c in text): 
+                         details['location'] = text
+                    elif not details.get('brewery_type') and details.get('location') and text != details.get('location'):
+                         details['brewery_type'] = text
+        
+        # Logo
+        # .logo img is often the site header logo. The brewery logo is usually in div.label or div.basic
+        logo_img = soup.select_one('.label img') or soup.select_one('.basic img') or soup.select_one('.logo img')
+        if logo_img: details['logo_url'] = logo_img.get('src')
+        
+        # Website / Socials - usually in .social
+        socials = soup.select('.social a')
+        for link in socials:
+            text = link.get_text(strip=True).lower()
+            href = link.get('href')
+            if 'website' in text or 'globe' in str(link): # sometimes icon
+                details['website'] = href
+        
+        # Stats - usually in .stats
+        stats_container = soup.select_one('.stats')
+        if stats_container:
+            stats = {}
+            stat_items = stats_container.select('.item')
+            for item in stat_items:
+                label = item.select_one('.title')
+                value = item.select_one('.count')
+                if label and value:
+                    l_text = label.get_text(strip=True).lower()
+                    v_text = value.get_text(strip=True).replace(',', '')
+                    if 'total' in l_text: stats['total_beers'] = v_text
+                    elif 'unique' in l_text: stats['unique_users'] = v_text
+                    elif 'monthly' in l_text: stats['monthly_checkins'] = v_text
+                    elif 'ratings' in l_text: stats['rating_count'] = v_text
+            details['stats'] = stats
+            
+        details['fetched_at'] = datetime.now().isoformat()
+        
+    except Exception as e:
+        logger.error(f"Brewery scrape error: {e}")
+        
+    return details
+
+def search_brewery(query: str) -> Optional[str]:
+    """
+    Searches for a brewery on Untappd and returns the brewery page URL.
+    """
+    encoded_query = urllib.parse.quote(query)
+    url = f"https://untappd.com/search?q={encoded_query}&type=brewery"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, 'lxml')
+            # Results are usually in .beer-item regardless of type, but struct differs
+            # Brewery results: <div class="beer-item"> ... <p class="name"><a href="/w/brewery-name/123">Brewery Name</a></p>
+            
+            results = soup.select('.beer-item')
+            for res in results[:1]: # Take first match
+                name_tag = res.select_one('.name a')
+                if name_tag:
+                    href = name_tag.get('href')
+                    # format: /w/slug/id OR /vanity_slug
+                    if href and "/b/" not in href:
+                         return f"https://untappd.com{href}"
+                         
+    except Exception as e:
+        logger.error(f"Brewery search error for '{query}': {e}")
+        
+    return None
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
