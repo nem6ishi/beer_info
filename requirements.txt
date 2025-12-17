@@ -5,3 +5,4 @@ supabase
 requests
 google-genai
 python-dotenv
+python-dateutil
