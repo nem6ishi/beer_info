@@ -182,6 +182,15 @@ class GeminiExtractor:
              "beer_name_jp": "やみつきエール ブラックペッパー",
              "beer_name_en": "Yamitsuki Ale Black Pepper"
            }}
+
+        4. Input: "メッソレム x オーバークリーク ファウンドデッド... / MESSOREM x Obercreek Found Dead At the Silo 2025 ≪12/20-21入荷≫"
+           Output:
+           {{
+             "brewery_name_jp": "メッソレム",
+             "brewery_name_en": "MESSOREM",
+             "beer_name_jp": "ファウンドデッド",
+             "beer_name_en": "Found Dead At the Silo 2025"
+           }}
         """
 
         try:
