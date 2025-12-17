@@ -103,6 +103,19 @@ class BreweryManager:
         """Generate common aliases for a brewery name."""
         aliases = []
         
+        # Stop words that should NEVER be an alias on their own
+        STOP_WORDS = {
+            'black', 'white', 'red', 'blue', 'green', 'yellow', 'gold', 'silver',
+            'west', 'east', 'north', 'south', 'central',
+            'company', 'co.', 'corp.', 'ltd.', 'inc.',
+            'the', 'a', 'an', 'my', 'our', 'your',
+            'new', 'old', 'big', 'small', 'great', 'best',
+            'beer', 'brewery', 'brewing', 'craft', 'ale', 'lager', 'ipa',
+            'top', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+            'el', 'la', 'le', 'les', 'de', 'du', 'des', 'van', 'von',
+            'st.', 'saint', 'mt.', 'mount'
+        }
+        
         if name_en:
             base_name = name_en
             for suffix in [' Brewing', ' Brewery', ' Beer', ' Co.', ' Company']:
@@ -112,7 +125,10 @@ class BreweryManager:
             
             words = base_name.split()
             if len(words) > 1:
-                aliases.append(words[0])
+                potential_alias = words[0]
+                # Filter out stop words and very short aliases
+                if potential_alias.lower() not in STOP_WORDS and len(potential_alias) > 2:
+                    aliases.append(potential_alias)
         
         if name_jp:
             aliases.append(name_jp)
