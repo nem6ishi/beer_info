@@ -16,6 +16,7 @@ import sys
 import logging
 import urllib.parse
 from datetime import datetime, timezone, timedelta
+from dateutil import parser
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -93,7 +94,7 @@ async def enrich_breweries(limit: int = 50, force: bool = False):
             # Check freshness
             updated_at = existing.data[0].get('updated_at')
             if updated_at:
-                last_update = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+                last_update = parser.parse(updated_at)
                 if datetime.now(timezone.utc) - last_update < timedelta(days=7):
                     # Skip if updated recently
                     # logger.info(f"  ⏭️  Skipping {brewery_name} (Updated recently)")
