@@ -10,7 +10,12 @@ from scripts.utils.script_utils import setup_script
 def check_untappd_data():
     supabase, logger = setup_script("CheckUntappd")
     
-    untappd_url = "https://untappd.com/b/and-beer-tamiru-tadesse-coffee-ale/6488346"
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('url', nargs='?', help='Untappd URL to check', default="https://untappd.com/b/and-beer-tamiru-tadesse-coffee-ale/6488346")
+    args = parser.parse_args()
+
+    untappd_url = args.url
     
     logger.info(f"Checking untappd_data for {untappd_url}...")
     
@@ -19,8 +24,8 @@ def check_untappd_data():
     if response.data:
         data = response.data[0]
         print(f"---")
-        print(f"Beer Name: {data.get('beer_name')}")
-        print(f"Brewery Name: {data.get('brewery_name')}")
+        print(f"Beer Name: {data.get('untappd_beer_name')}") # Corrected key
+        print(f"Brewery Name: {data.get('untappd_brewery_name')}") # Corrected key
         print(f"Untappd Brewery URL: {data.get('untappd_brewery_url')}")
         
         if data.get('untappd_brewery_url'):

@@ -124,15 +124,27 @@ function HomeContent() {
             ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
                 .forEach(key => { if (currentParams[key]) params.append(key, currentParams[key]) });
 
-            // Simple fetch without AbortController complexity for max compatibility
-            const res = await fetch(`/api/beers?${params}`);
+            // Fetch with timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 sec timeout
 
-            if (!res.ok) throw new Error('Failed to load beers');
+            try {
+                const res = await fetch(`/api/beers?${params}`, { signal: controller.signal });
+                clearTimeout(timeoutId);
 
-            const data = await res.json();
-            setBeers(data.beers || []);
-            setTotalPages(data.pagination.totalPages);
-            setTotalItems(data.pagination.total);
+                if (!res.ok) throw new Error('Failed to load beers');
+
+                const data = await res.json();
+                setBeers(data.beers || []);
+                setTotalPages(data.pagination.totalPages);
+                setTotalItems(data.pagination.total);
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    setError('Request timed out. Please try again.');
+                } else {
+                    throw err;
+                }
+            }
         } catch (err) {
             console.error('Fetch error:', err);
             setError('Failed to load data. Please try again.');

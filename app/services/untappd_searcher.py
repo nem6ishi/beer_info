@@ -135,11 +135,18 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
         
         return None
 
-    # Primary Search: beer_name + brewery_name
+    # Primary Search: beer_name + brewery_name (or alias)
     if beer_name:
         parts = []
         parts.append(beer_name)
-        if brewery_name: parts.append(brewery_name)
+        
+        search_brewery_name = brewery_name
+        if brewery_name and brewery_name in BREWERY_ALIASES:
+            # Use the first alias (English) for better search results
+            search_brewery_name = BREWERY_ALIASES[brewery_name][0]
+            logger.info(f"Using alias for search: {brewery_name} -> {search_brewery_name}")
+            
+        if search_brewery_name: parts.append(search_brewery_name)
         
         search_query = " ".join(parts)
         logger.info(f"Searching: {search_query}")
