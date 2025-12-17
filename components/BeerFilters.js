@@ -65,7 +65,11 @@ export default function BeerFilters({
                     <button className="dropdown-toggle" style={{ display: 'none' }}>Breweries</button>
                     <label className="sort-label">Breweries:</label>
                     <MultiSelectDropdown
-                        options={availableBreweries.map(b => ({ label: b, value: b }))}
+                        options={availableBreweries.map(b => ({
+                            label: b.name,
+                            value: b.name,
+                            flag: b.flag
+                        }))}
                         selectedValues={brewery_filter ? brewery_filter.split(',') : []}
                         onChange={(vals) => onMultiSelectChange('brewery_filter', vals)}
                         placeholder="Select Breweries"

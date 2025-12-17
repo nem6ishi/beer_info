@@ -32,6 +32,7 @@ class UntappdBreweryDetails(TypedDict, total=False):
 BREWERY_ALIASES = {
     "鬼伝説": ["Wakasaimo"],
     "Oni Densetsu": ["Wakasaimo"],
+    "ヨロッコ": ["Yorocco Beer"],
 }
 
 COMMON_SUFFIXES = [
@@ -226,9 +227,12 @@ def scrape_beer_details(url: str) -> UntappdBeerDetails:
         
         brewery_tag = soup.select_one('.name .brewery')
         if brewery_tag: 
-            details['untappd_brewery_name'] = brewery_tag.get_text(strip=True)
-            # Extract Brewery URL
+            # Prefer text from the link itself to avoid "Subsidiary of..." text
             brewery_link = brewery_tag.select_one('a')
+            if brewery_link:
+                details['untappd_brewery_name'] = brewery_link.get_text(strip=True)
+            else:
+                details['untappd_brewery_name'] = brewery_tag.get_text(strip=True)
             if brewery_link and brewery_link.get('href'):
                 href = brewery_link.get('href')
                 if href.startswith('/'):
@@ -313,6 +317,10 @@ def scrape_brewery_details(url: str) -> UntappdBreweryDetails:
                 p_tags = parent.select('p')
                 for p in p_tags:
                     text = p.get_text(strip=True)
+                    # Skip subsidiary info
+                    if "Subsidiary of" in text:
+                        continue
+                        
                     # Simple heuristic: If it looks like a location (Japan, US, etc) or has a map icon?
                     # Or relying on order: 1st is location, 2nd is type
                     # Untappd usually puts location first

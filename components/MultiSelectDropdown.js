@@ -67,7 +67,7 @@ export default function MultiSelectDropdown({ options, selectedValues, onChange,
                                         checked={selectedValues.includes(option.value)}
                                         onChange={() => handleToggle(option.value)}
                                     />
-                                    <span>{option.label}</span>
+                                    <span>{option.flag && <span style={{ marginRight: '8px' }}>{option.flag}</span>}{option.label}</span>
                                 </label>
                             ))
                         ) : (

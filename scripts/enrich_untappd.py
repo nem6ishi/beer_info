@@ -264,7 +264,8 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
     logger.info(f"Batch size: {limit}")
     
     # Create Supabase client
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    # supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) # Global 'supabase' used
+
     
     total_processed = 0
     total_success = 0
