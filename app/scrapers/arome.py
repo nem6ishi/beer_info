@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 import time
 import requests
@@ -9,6 +10,9 @@ from typing import List, Dict, Optional
 from requests.adapters import HTTPAdapter
 from urllib3.poolmanager import PoolManager
 from urllib3.util import ssl_ as ssl_util
+
+# Early stop threshold for existing items
+SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '30'))
 
 # Arome Search URL Template (Simplified)
 SEARCH_URL_TEMPLATE = "https://www.arome.jp/products/list.php?category_id=0&disp_number=100&pageno={page}"
@@ -183,11 +187,20 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
     """
     Scrapes products from Arome.
     Matches the signature of other scrapers for easy integration.
+    
+    Args:
+        limit: Maximum number of items to scrape
+        existing_urls: Set of existing URLs. If provided, tracks consecutive existing items.
+        full_scrape: If True, ignore sold-out threshold and scrape everything.
     """
     products = []
     page = 1
+    consecutive_existing = 0  # Track consecutive existing items
+    early_stop = False
     
     print(f"[Arome] Starting scrape...")
+    if existing_urls is not None:
+        print(f"[Arome] New product mode: Will stop after {SOLD_OUT_THRESHOLD} consecutive existing items")
     
     # Create a session with the legacy SSL adapter
     session = requests.Session()
@@ -236,8 +249,23 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
                             print(f"[Arome] Updated name: '{full_name}'")
                             product_data["name"] = full_name
                         await asyncio.sleep(0.5) # Be polite when hitting details
+                    
+                    # Check if this is an existing item (for new product mode)
+                    if existing_urls is not None:
+                        if product_data["url"] in existing_urls:
+                            consecutive_existing += 1
+                            # Check for early stop
+                            if not full_scrape and consecutive_existing >= SOLD_OUT_THRESHOLD:
+                                print(f"[Arome] ⚠️ Stopping: {consecutive_existing} consecutive existing items found.")
+                                early_stop = True
+                                break
+                        else:
+                            consecutive_existing = 0  # Reset counter on new item
                         
                     products.append(product_data)
+            
+            if early_stop:
+                break
             
             if limit and len(products) >= limit:
                 print(f"[Arome] Limit reached ({limit}). Stopping.")
