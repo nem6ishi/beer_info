@@ -93,8 +93,12 @@ async def process_beer_missing(beer, supabase, offline=False):
             try:
                 persistence = supabase.table('gemini_data').select('untappd_url').eq('url', beer['url']).maybe_single().execute()
                 if persistence.data and persistence.data.get('untappd_url'):
-                    untappd_url = persistence.data['untappd_url']
-                    logger.info(f"  ✅ [Persistence] Found link in gemini_data: {untappd_url}")
+                    p_url = persistence.data['untappd_url']
+                    if '/search?' not in p_url:
+                        untappd_url = p_url
+                        logger.info(f"  ✅ [Persistence] Found link in gemini_data: {untappd_url}")
+                    else:
+                        logger.info(f"  🔄 [Persistence] Found search URL in gemini_data, will re-search: {p_url}")
             except Exception as e:
                 logger.error(f"  ⚠️ Error checking persistence: {e}")
 
