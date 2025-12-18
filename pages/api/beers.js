@@ -19,7 +19,8 @@ export default async function handler(req, res) {
             min_rating,
             style_filter,
             stock_filter,
-            missing_untappd
+            missing_untappd,
+            set_mode
         } = req.query
 
         const pageNum = parseInt(page, 10)
@@ -80,8 +81,18 @@ export default async function handler(req, res) {
         // Filter by Untappd Status
         if (req.query.untappd_status === 'missing') {
             query = query.or('untappd_url.is.null,untappd_url.ilike.%/search?%')
+            // Exclude sets from 'missing' list (they often don't have links mostly)
+            query = query.or('is_set.is.null,is_set.eq.false')
         } else if (req.query.untappd_status === 'linked') {
             query = query.not('untappd_url', 'is', null).not('untappd_url', 'ilike', '%/search?%')
+        }
+
+        // Filter by Set Mode
+        if (set_mode === 'individual') {
+            // is_set is typically false or null
+            query = query.or('is_set.is.null,is_set.eq.false')
+        } else if (set_mode === 'set') {
+            query = query.eq('is_set', true)
         }
 
         // Sorting

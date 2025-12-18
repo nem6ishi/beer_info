@@ -1353,3 +1353,20 @@ h1 {
     /* Greyed out for out of stock */
     border: 1px solid #ddd;
 }
+/* Set Product Badge */
+.set-badge-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+.set-badge {
+    background-color: #f0f0f0;
+    color: #444;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border: 1px solid #ddd;
+    white-space: nowrap;
+}

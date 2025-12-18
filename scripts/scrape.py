@@ -17,7 +17,7 @@ load_dotenv(env_path)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.scrapers import beervolta, chouseiya, ichigo_ichie
+from app.scrapers import beervolta, chouseiya, ichigo_ichie, arome
 
 # Get Supabase credentials
 SUPABASE_URL = os.getenv('SUPABASE_URL') or os.getenv('NEXT_PUBLIC_SUPABASE_URL')
@@ -115,8 +115,8 @@ async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scr
     existing_urls = set(existing_data.keys())
     print(f"  Loaded {len(existing_data)} existing beers (Complete)")
     
-    scraper_names = ['beervolta', 'chouseiya', 'ichigo_ichie']
-    display_names = ['BeerVolta', 'Chouseiya', 'Ichigo Ichie']
+    scraper_names = ['beervolta', 'chouseiya', 'ichigo_ichie', 'arome']
+    display_names = ['BeerVolta', 'Chouseiya', 'Ichigo Ichie', 'Arome']
 
     # Run scrapers in parallel
     print("\n🔍 Running scrapers in parallel...")
@@ -124,6 +124,7 @@ async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scr
         beervolta.scrape_beervolta(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
         chouseiya.scrape_chouseiya(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
         ichigo_ichie.scrape_ichigo_ichie(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
+        arome.scrape_arome(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape), # Arome
         return_exceptions=True
     )
     
@@ -131,7 +132,12 @@ async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scr
     scraper_results = []
     
     for i, res in enumerate(results):
-        display_name = display_names[i]
+        # Handle index carefully if list length changes
+        if i >= len(display_names):
+             # Just in case
+             display_name = f"Scraper {i}"
+        else:
+             display_name = display_names[i]
         
         items = []
         

@@ -92,11 +92,17 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                     </div>
                                 </td>
                                 <td className="col-rating">
-                                    <RatingCell
-                                        rating={group.rating}
-                                        count={group.rating_count}
-                                        url={group.untappd_url}
-                                    />
+                                    {group.is_set ? (
+                                        <div className="set-badge-container">
+                                            <span className="set-badge">📦 Set Product</span>
+                                        </div>
+                                    ) : (
+                                        <RatingCell
+                                            rating={group.rating}
+                                            count={group.rating_count}
+                                            url={group.untappd_url}
+                                        />
+                                    )}
                                 </td>
                                 <td className="col-shop">
                                     <div className="shop-list-flat">

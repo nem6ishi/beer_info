@@ -149,6 +149,8 @@ class GeminiExtractor:
         - Use your knowledge to identify known breweries (e.g., "FETISH CLUB", "UCHU BREWING", "West Coast Brewing").
         - "NAMACHAN" or "NAMACHAん" refers to "Namachan Brewing". Do NOT confuse it with "Black Tide" even if "Black" appears in the beer name.
         - If multiple breweries are listed (e.g., collaboration), prioritize and extract the FIRST listed brewery.
+        - **NOISE REMOVAL**: Strictly REMOVE any text related to "Arrival Date" (e.g., "12/18（木）入荷予定", "≪12/20-21入荷≫"), "Sold Out", "One per person", "Air Import" (空輸) from the extracted names. Return ONLY the clean name.
+        - **Product vs Style**: If a name contains both a product name and a style (e.g., "Porter Cask Finish (1t IPA)"), prioritize the PRODUCT NAME ("Porter Cask Finish"). Do NOT include the style description in the name unless it is part of the actual name. "1t IPA" is often a style description in Shiga Kogen context, NOT the name if "Porter" is present.
         - **Set Detection**: Set "is_set" to true if the product contains multiple DIFFERENT beers (e.g., "Drinking Comparison Set", "Variety Pack", "3 types set") or if it is NOT a beer (e.g. "Glass", "T-shirt"). A 6-pack of the SAME beer is NOT a set (is_set=false).
 
         Return ONLY a raw JSON string (no markdown formatting, no code blocks) with strictly these keys:

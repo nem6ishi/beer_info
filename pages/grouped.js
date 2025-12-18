@@ -29,7 +29,9 @@ export default function GroupedBeers() {
         min_ibu: '',
         max_ibu: '',
         min_rating: '',
-        stock_filter: ''
+        min_rating: '',
+        stock_filter: '',
+        set_mode: ''
     })
 
     // Derived state from URL (defaults)
@@ -52,7 +54,9 @@ export default function GroupedBeers() {
                 max_ibu: router.query.max_ibu || '',
                 min_rating: router.query.min_rating || '',
                 stock_filter: router.query.stock_filter || '',
-                missing_untappd: router.query.missing_untappd || ''
+                stock_filter: router.query.stock_filter || '',
+                missing_untappd: router.query.missing_untappd || '',
+                set_mode: router.query.set_mode || ''
             })
 
             // Fetch styles
@@ -93,7 +97,7 @@ export default function GroupedBeers() {
             if (currentParams.shop) params.append('shop', currentParams.shop);
 
             // Add filters
-            ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'missing_untappd']
+            ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'missing_untappd', 'set_mode']
                 .forEach(key => { if (currentParams[key]) params.append(key, currentParams[key]) });
 
             const res = await fetch(`/api/grouped-beers?${params}`);
@@ -128,7 +132,7 @@ export default function GroupedBeers() {
         if (!query.search) delete query.search
         if (!query.shop) delete query.shop
         // Clean up empty filters
-        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'missing_untappd']
+        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'missing_untappd', 'set_mode']
         filterKeys.forEach(key => {
             if (!query[key]) delete query[key]
         })
@@ -139,7 +143,7 @@ export default function GroupedBeers() {
     // Filter Logic
     const activeFilterCount = (() => {
         if (!router.isReady) return 0
-        const keys = ['limit', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter', 'missing_untappd'] // Limit acts like a filter param
+        const keys = ['limit', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter', 'missing_untappd', 'set_mode'] // Limit acts like a filter param
         return keys.filter(k => !!router.query[k] && k !== 'limit' && k !== 'sort' && k !== 'page').length // Exclude structural params from badge count
     })()
 
@@ -190,7 +194,10 @@ export default function GroupedBeers() {
             max_ibu: '',
             min_rating: '',
             stock_filter: '',
-            missing_untappd: ''
+            min_rating: '',
+            stock_filter: '',
+            missing_untappd: '',
+            set_mode: ''
         }
         setTempFilters(resetState)
         setSearchInput('')
@@ -203,6 +210,7 @@ export default function GroupedBeers() {
             min_rating: '',
             stock_filter: '',
             missing_untappd: '',
+            set_mode: '',
             shop: '',
             style_filter: '',
             brewery_filter: '',

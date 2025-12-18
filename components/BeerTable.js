@@ -66,11 +66,17 @@ export default function BeerTable({ beers, loading, error }) {
                                 </div>
                             </td>
                             <td className="col-rating">
-                                <RatingCell
-                                    rating={beer.untappd_rating}
-                                    count={beer.untappd_rating_count}
-                                    url={beer.untappd_url}
-                                />
+                                {beer.is_set ? (
+                                    <div className="set-badge-container">
+                                        <span className="set-badge">📦 Set Product</span>
+                                    </div>
+                                ) : (
+                                    <RatingCell
+                                        rating={beer.untappd_rating}
+                                        count={beer.untappd_rating_count}
+                                        url={beer.untappd_url}
+                                    />
+                                )}
                             </td>
                             <td className="col-shop">
                                 <div className="shop-list-flat">

@@ -52,7 +52,8 @@ export default function BeerFilters({
                         options={[
                             { value: 'BEER VOLTA', label: 'BEER VOLTA' },
                             { value: 'ちょうせいや', label: 'ちょうせいや' },
-                            { value: '一期一会～る', label: '一期一会～る' }
+                            { value: '一期一会～る', label: '一期一会～る' },
+                            { value: 'Arome', label: 'Arome' }
                         ]}
                         selectedValues={shop ? shop.split(',') : []}
                         onChange={(vals) => onMultiSelectChange('shop', vals)}
@@ -239,6 +240,22 @@ export default function BeerFilters({
                                 >
                                     <option value="">All</option>
                                     <option value="in_stock">In Stock Only</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Set Product Filter */}
+                        <div className="filter-item">
+                            <label>Product Type</label>
+                            <div className="select-wrapper full-width">
+                                <select
+                                    className="filter-select"
+                                    value={tempFilters.set_mode || ''}
+                                    onChange={(e) => onFilterChange('set_mode', e.target.value)}
+                                >
+                                    <option value="">All Products</option>
+                                    <option value="individual">Individual Beers Only</option>
+                                    <option value="set">Sets Only</option>
                                 </select>
                             </div>
                         </div>

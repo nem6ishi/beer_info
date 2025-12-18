@@ -276,7 +276,8 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
             logger.info(f"\n📂 Loading batch of MISSING beers (Limit: {batch_size})...")
             query = supabase.table('beer_info_view') \
                 .select('*') \
-                .is_('untappd_url', None)
+                .is_('untappd_url', None) \
+                .or_('is_set.is.null,is_set.eq.false')
             
             if shop_filter:
                 query = query.eq('shop', shop_filter)

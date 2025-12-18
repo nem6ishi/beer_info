@@ -19,7 +19,8 @@ export default async function handler(req, res) {
             min_rating,
             style_filter,
             stock_filter,
-            missing_untappd
+            missing_untappd,
+            set_mode
         } = req.query
 
         const pageNum = parseInt(page, 10)
@@ -81,6 +82,14 @@ export default async function handler(req, res) {
             query = query.ilike('stock_status', '%In Stock%')
         }
 
+        // Filter by Set Mode
+        if (set_mode === 'individual') {
+            // is_set is typically false or null
+            query = query.or('is_set.is.null,is_set.eq.false')
+        } else if (set_mode === 'set') {
+            query = query.eq('is_set', true)
+        }
+
         // Note: missing_untappd filter is ignored/irrelevant here as we enforce presence of untappd_url
 
         // Fetch ALL matching data (no pagination in DB query)
@@ -125,6 +134,7 @@ export default async function handler(req, res) {
                     brewery_type: item.brewery_type,
                     untappd_updated_at: item.untappd_fetched_at, // Add timestamp
                     rating_count: item.untappd_rating_count,
+                    is_set: item.is_set, // Pass Set flag
                     // Aggregate data
                     items: [],
                     // Sort key helpers

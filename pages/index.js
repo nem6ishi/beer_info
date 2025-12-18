@@ -73,7 +73,8 @@ function HomeContent() {
         untappd_status: '',
         shop: '',
         brewery_filter: '',
-        style_filter: ''
+        style_filter: '',
+        set_mode: ''
     })
 
     // Derived state from URL (defaults)
@@ -95,7 +96,8 @@ function HomeContent() {
                 untappd_status: router.query.untappd_status || '',
                 shop: router.query.shop || '',
                 brewery_filter: router.query.brewery_filter || '',
-                style_filter: router.query.style_filter || ''
+                style_filter: router.query.style_filter || '',
+                set_mode: router.query.set_mode || ''
             })
 
             fetch('/api/styles').then(res => res.json()).then(d => d.styles && setAvailableStyles(d.styles)).catch(console.error)
@@ -121,7 +123,7 @@ function HomeContent() {
             if (currentParams.shop) params.append('shop', currentParams.shop);
 
             // Add filters if present
-            ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
+            ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status', 'set_mode']
                 .forEach(key => { if (currentParams[key]) params.append(key, currentParams[key]) });
 
             // Fetch with timeout
@@ -167,14 +169,14 @@ function HomeContent() {
         if (query.sort === 'newest') delete query.sort
         if (!query.search) delete query.search
         if (!query.shop) delete query.shop
-        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status']
+        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status', 'set_mode']
         filterKeys.forEach(key => { if (!query[key]) delete query[key] })
         router.push({ pathname, query }, undefined, { scroll: false })
     }
 
     const activeFilterCount = (() => {
         if (!router.isReady) return 0
-        const keys = ['min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter', 'untappd_status']
+        const keys = ['min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter', 'untappd_status', 'set_mode']
         return keys.filter(k => !!router.query[k]).length
     })()
 
@@ -190,7 +192,7 @@ function HomeContent() {
     const resetFilters = () => {
         setSearchInput('')
         setTempFilters({
-            min_abv: '', max_abv: '', min_ibu: '', max_ibu: '', min_rating: '', stock_filter: '', untappd_status: '', shop: '', brewery_filter: '', style_filter: ''
+            min_abv: '', max_abv: '', min_ibu: '', max_ibu: '', min_rating: '', stock_filter: '', untappd_status: '', shop: '', brewery_filter: '', style_filter: '', set_mode: ''
         })
         router.push({ pathname: '/', query: {} }, undefined, { scroll: false })
     }

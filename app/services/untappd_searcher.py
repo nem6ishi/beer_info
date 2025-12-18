@@ -33,12 +33,17 @@ BREWERY_ALIASES = {
     "鬼伝説": ["Wakasaimo"],
     "Oni Densetsu": ["Wakasaimo"],
     "ヨロッコ": ["Yorocco Beer"],
+    "Shiga Kogen": ["Tamamura Honten"],
+    "Shiga Kogen Beer": ["Tamamura Honten"],
+    "志賀高原": ["Tamamura Honten"],
+    "CRAFT ROCK": ["CRAFTROCK"],
+    "CRAFT ROCK Brewing": ["CRAFTROCK Brewing"],
 }
 
 COMMON_SUFFIXES = [
-    " IPA", " Hazy IPA", " Double IPA", " DIPA", " Triple IPA", " TIPA", 
+    " IPA", " Hazy IPA", " Double IPA", " DIPA", " Triple IPA", " TIPA", " NEIPA", " West Coast IPA", " Session IPA", " DDH IPA", " TDH IPA",
     " Pale Ale", " Stout", " Imperial Stout", " Lager", " Pilsner", " Sour", 
-    " Gose", " Porter", " Ale", " Wheat", " Saison", " Barleywine"
+    " Gose", " Porter", " Ale", " Wheat", " Saison", " Barleywine", " Lambic", " Gueuze", " Fruit Beer"
 ]
 # Sort by length desc to remove longest match first
 COMMON_SUFFIXES.sort(key=len, reverse=True)
@@ -56,13 +61,19 @@ def strip_beer_suffix(beer_name: str) -> Optional[str]:
             return stripped
     return None
 
+def normalize_for_comparison(text: str) -> str:
+    """Removes whitespace and non-alphanumeric characters for fuzzy comparison."""
+    if not text:
+        return ""
+    return "".join(c.lower() for c in text if c.isalnum())
+
 def validate_brewery_match(result_element: BeautifulSoup, expected_brewery: str) -> bool:
     """
     Checks if the brewery name in the search result matches the expected brewery.
-    Uses a simple case-insensitive substring/inclusion check.
+    Uses normalized comparison (ignoring spaces/punctuation) and aliases.
     """
     if not expected_brewery:
-        return True # logic: if we don't know the brewery, we accept the result (legacy behavior or fallback)
+        return True 
         
     brewery_tag = result_element.select_one('.brewery')
     if not brewery_tag:
@@ -70,22 +81,22 @@ def validate_brewery_match(result_element: BeautifulSoup, expected_brewery: str)
         
     result_brewery = brewery_tag.get_text(strip=True)
     
-    # Simple normalization
-    rb_norm = result_brewery.lower()
-    eb_norm = expected_brewery.lower()
+    # 1. Normalization Check
+    rb_norm = normalize_for_comparison(result_brewery)
+    eb_norm = normalize_for_comparison(expected_brewery)
     
-    # Check if one is contained in the other
-    match = (rb_norm in eb_norm) or (eb_norm in rb_norm)
-
-    # Check aliases
-    if not match and expected_brewery in BREWERY_ALIASES:
+    if rb_norm in eb_norm or eb_norm in rb_norm:
+        return True
+        
+    # 2. Alias Check
+    if expected_brewery in BREWERY_ALIASES:
         for alias in BREWERY_ALIASES[expected_brewery]:
-            if alias.lower() in rb_norm:
+            alias_norm = normalize_for_comparison(alias)
+            if alias_norm in rb_norm:
                 return True
 
-    if not match:
-        logger.debug(f"Validation failed: Result brewery '{result_brewery}' != Expected '{expected_brewery}'")
-    return match
+    logger.debug(f"Validation failed: Result '{result_brewery}' ({rb_norm}) != Expected '{expected_brewery}' ({eb_norm})")
+    return False
 
 def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None) -> Optional[str]:
     """

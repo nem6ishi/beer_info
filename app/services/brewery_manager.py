@@ -111,7 +111,7 @@ class BreweryManager:
             'the', 'a', 'an', 'my', 'our', 'your',
             'new', 'old', 'big', 'small', 'great', 'best',
             'beer', 'brewery', 'brewing', 'craft', 'ale', 'lager', 'ipa',
-            'top', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+            'top', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'triple',
             'el', 'la', 'le', 'les', 'de', 'du', 'des', 'van', 'von',
             'st.', 'saint', 'mt.', 'mount'
         }
