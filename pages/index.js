@@ -227,7 +227,7 @@ function HomeContent() {
             <header className="glass-header">
                 <div className="container header-content">
                     <h1>
-                        <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+                        <Link href="/" onClick={resetFilters} style={{ textDecoration: 'none', color: 'inherit' }}>
                             Craft Beer Alert Japan
                         </Link>
                     </h1>
