@@ -293,8 +293,9 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
         elif mode == 'refresh':
             logger.info(f"\n📂 Loading batch of REFRESH beers (Limit: {batch_size})...")
             query = supabase.table('beer_info_view') \
-                .select('name, untappd_url, stock_status, untappd_fetched_at') \
-                .not_.is_('untappd_url', None)
+                .select('url, name, untappd_url, stock_status, untappd_fetched_at') \
+                .not_.is_('untappd_url', None) \
+                .neq('stock_status', 'Sold Out')  # Only refresh In Stock items
 
             if shop_filter:
                 query = query.eq('shop', shop_filter)
@@ -314,19 +315,9 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
             break
         
         processed_urls = set() # Track unique URLs in this batch to avoid redundant refreshes
-        consecutive_sold_out = 0
         
         # Process beers
         for i, beer in enumerate(beers, 1):
-            if beer.get('stock_status') == 'Sold Out':
-                 consecutive_sold_out += 1
-            else:
-                 consecutive_sold_out = 0
-                 
-            if consecutive_sold_out >= 30 and not name_filter:
-                logger.info(f"\n🛑 Stopping refresh: {consecutive_sold_out} consecutive sold-out items detected.")
-                logging.info(f"  (Processing stopped to conserve resources on old/sold-out items)")
-                return
 
             # Track by product URL to avoid duplicates in batch, not Untappd URL (which might be None)
             product_url = beer.get('url')
