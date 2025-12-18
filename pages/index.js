@@ -292,6 +292,7 @@ function HomeContent() {
                     <Pagination
                         currentPage={page}
                         totalPages={totalPages}
+                        totalItems={totalItems}
                         onPageChange={handlePageChange}
                     />
                 )}
