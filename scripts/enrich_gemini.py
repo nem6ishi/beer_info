@@ -1,257 +1,27 @@
 #!/usr/bin/env python3
 """
-Gemini-only enrichment script for Supabase.
-Extracts brewery and beer names using Gemini API.
-This script processes beers that are missing English/Japanese brewery names,
-utilizing the Gemini model to parse product names.
+SHIM for backward compatibility.
+Logic moved to app/commands/enrich_gemini.py
 """
-import asyncio
-import os
 import sys
-from datetime import datetime, timezone
-from supabase import create_client, Client
-from dotenv import load_dotenv
+import os
+import asyncio
 
+# Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.services.gemini_extractor import GeminiExtractor
-from app.services.brewery_manager import BreweryManager
-try:
-    from scripts.enrich_untappd import process_beer_missing
-except ImportError:
-    # If running directly from scripts dir
-    from enrich_untappd import process_beer_missing
-
-# Load environment variables
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-load_dotenv(env_path)
-
-# Get credentials
-SUPABASE_URL = os.getenv('SUPABASE_URL') or os.getenv('NEXT_PUBLIC_SUPABASE_URL')
-SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("Error: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
-    sys.exit(1)
-
-if not GEMINI_API_KEY:
-    print("Error: GEMINI_API_KEY must be set")
-    sys.exit(1)
-
-
-async def enrich_gemini(limit: int = 50, shop_filter: str = None, keyword_filter: str = None, offline: bool = False, force_reprocess: bool = False):
-    """
-    Enrich beers with Gemini extraction only.
-    Loops until all eligible beers are processed.
-    """
-    print("=" * 70)
-    print("🤖 Gemini Enrichment (Supabase)")
-    if offline:
-        print("📴 OFFLINE MODE: Skipping API calls. Only verifying/chaining existing data.")
-    print("=" * 70)
-    target_msg = f"Target: All beers without Gemini data"
-    if shop_filter:
-        target_msg += f" (Shop: {shop_filter})"
-    if keyword_filter:
-        target_msg += f" (Keyword: {keyword_filter})"
-        
-    print(f"{target_msg} (Batch size: {limit})")
-    print(f"Started at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    # Create Supabase client
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    
-    # Initialize extractor and brewery manager once
-    extractor = GeminiExtractor()
-    if not offline and not extractor.client:
-        print("\n❌ Error: Gemini API key not configured")
-        return
-    
-    brewery_manager = BreweryManager()
-    print(f"📚 Loaded {len(brewery_manager.breweries)} known breweries as hints")
-    
-    # Initial count check
-    print(f"🔍 Checking for unprocessed items...")
-    count_query = supabase.table('beer_info_view').select('count', count='exact', head=True)
-
-    if offline:
-        count_query = count_query.not_.is_('brewery_name_en', 'null').is_('untappd_url', 'null')
-    else:
-        # If force, we process everything matching filter, so count all
-        if not force_reprocess:
-             count_query = count_query.or_('brewery_name_en.is.null,untappd_url.is.null')
-
-    if shop_filter:
-        count_query = count_query.eq('shop', shop_filter)
-        
-    if keyword_filter:
-        count_query = count_query.ilike('name', f'%{keyword_filter}%')
-        
-    count_res = count_query.execute()
-    total_remaining = count_res.count
-    
-    print(f"📊 Total items needing enrichment: {total_remaining}")
-    
-    if total_remaining == 0:
-        print("✨ No items need enrichment. Exiting.")
-        return
-
-    total_processed = 0
-    total_enriched = 0
-    total_errors = 0
-    
-    
-    while True:
-        if total_processed >= limit:
-            print(f"\n✋ Reached limit of {limit} items. Stopping.")
-            break
-
-        # Calculate remaining items to process
-        remaining = limit - total_processed
-        current_batch_size = min(100, remaining) # Cap batch size to Avoid massive fetches
-
-        # Get beers that need Gemini enrichment OR Untappd enrichment
-        print(f"\n📂 Loading candidates from beer_info_view (Batch Target: {current_batch_size})...")
-        
-        query = supabase.table('beer_info_view').select('*')
-        
-        if offline:
-            query = query.not_.is_('brewery_name_en', 'null').is_('untappd_url', 'null')
-        else:
-            if not force_reprocess:
-                query = query.or_('brewery_name_en.is.null,untappd_url.is.null')
-        
-        if shop_filter:
-            query = query.eq('shop', shop_filter)
-            
-        if keyword_filter:
-            query = query.ilike('name', f'%{keyword_filter}%')
-            
-        response = query.order('first_seen', desc=True) \
-            .limit(current_batch_size) \
-            .execute()
-            
-        beers = response.data
-        print(f"  Found {len(beers)} beers in this batch")
-        
-        if not beers:
-            print("\n✨ No more beers found matching criteria!")
-            break
-            
-        # Process batch
-        for i, beer in enumerate(beers, 1):
-            print(f"\n{'='*70}")
-            current_count = total_processed + i
-            print(f"[Batch Item {i}/{len(beers)} | Total {current_count}/{limit}] Processing: {beer.get('name', 'Unknown')[:60]}")
-            print(f"{'='*70}")
-            
-            updates = {}
-            # Re-enrich if either English brewery or beer name is missing OR if forcing
-            need_gemini = force_reprocess or (not beer.get('brewery_name_en') or not beer.get('beer_name_en'))
-            
-            try:
-                if need_gemini:
-                    if offline:
-                         # Offline mode strictly chains, does not call Gemini
-                         # But if logic brought us here (force or missing), we can't do much without Gemini
-                         # Unless we rely on what we have.
-                         updates = False 
-                    else:
-                        # Check for known brewery hint in the beer name
-                        known_brewery = None
-                        brewery_match = brewery_manager.find_brewery_in_text(beer['name'])
-                        if brewery_match:
-                            known_brewery = brewery_match.get('name_en')
-                            print(f"  🏭 Found known brewery hint: {known_brewery}")
-                        
-                        print("  🤖 Calling Gemini API...")
-                        enriched_info = await extractor.extract_info(beer['name'], known_brewery=known_brewery)
-                        
-                        if enriched_info:
-                            print("  ✅ Gemini Extraction Success:")
-                            print(f"     Brewery (EN): {enriched_info.get('brewery_name_en')}")
-                            print(f"     Brewery (JP): {enriched_info.get('brewery_name_jp')}")
-                            print(f"     Beer (EN):    {enriched_info.get('beer_name_en')}")
-                            if enriched_info.get('is_set'):
-                                print(f"     📦 Set Detected: YES (Skipping Untappd)")
-                            
-                            # Store enrichment data
-                            gemini_payload = {
-                                'url': beer['url'], # Key
-                                'brewery_name_en': enriched_info.get('brewery_name_en'),
-                                'brewery_name_jp': enriched_info.get('brewery_name_jp'),
-                                'beer_name_en': enriched_info.get('beer_name_en'),
-                                'beer_name_jp': enriched_info.get('beer_name_jp'),
-                                'is_set': enriched_info.get('is_set', False),
-                                'payload': enriched_info.get('raw_response'), # Save raw for debugging
-                                'updated_at': datetime.now(timezone.utc).isoformat()
-                            }
-
-                            # Upsert to gemini_data table
-                            try:
-                                supabase.table('gemini_data').upsert(gemini_payload).execute()
-                                print(f"  💾 Saved to gemini_data table")
-                            except Exception as e:
-                                 print(f"  ❌ Error saving to gemini_data: {e}")
-                                 continue
-
-                            # Merge for Untappd step (process_beer expects these in the beer dict or separate db fetch)
-                            # We update the 'beer' object in memory so process_beer has the info
-                            beer.update(gemini_payload)
-                            updates = gemini_payload # Marker that we have updates
-                            total_enriched += 1
-                        else:
-                            print("  ⚠️  Gemini returned no info")
-                else:
-                    print("  ✅ Gemini data already exists. Skipping extraction.")
-                    updates = True # Mark as "proceed to chain"
-            
-            except Exception as e:
-                print(f"  ❌ Error during Gemini processing: {e}")
-                total_errors += 1
-            
-            # Chain Untappd processing if successful
-            if updates:
-                # If it's a set, we do NOT chain Untappd
-                if isinstance(updates, dict) and updates.get('is_set'):
-                     print("  ⏭️  Skipping Untappd enrichment (Item is a Set/Merch)")
-                else:
-                    try:
-                         print("  🔗 Chaining Untappd enrichment...")
-                         # Note: process_beer handles its own DB updates (to untappd_data/scraped_beers)
-                         await process_beer_missing(beer, supabase, offline=offline)
-                    except Exception as e:
-                        total_errors += 1
-            else:
-                 pass
-                 
-        total_processed += len(beers)
-        
-    # Final stats
-    print(f"\n{'='*70}")
-    print("📈 Final Statistics")
-    print(f"{'='*70}")
-    print(f"  Total processed: {total_processed}")
-    print(f"  Gemini enriched: {total_enriched}")
-    print(f"  Errors: {total_errors}")
-    print(f"\n  Completed at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    print(f"\n{'='*70}")
-    print("✨ Gemini enrichment completed!")
-    print(f"{'='*70}")
-
+from app.commands.enrich_gemini import enrich_gemini as _enrich_main
 
 if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='Enrich beer data with Gemini in Supabase')
     parser.add_argument('--limit', type=int, default=1000, help='Batch size (default 1000)')
-    parser.add_argument('--offline', action='store_true', help='Offline mode: Skip API calls, only verify/chain existing data')
+    parser.add_argument('--offline', action='store_true', help='Offline mode')
     parser.add_argument('--shop', type=str, help='Filter by shop name')
     parser.add_argument('--keyword', type=str, help='Filter by product name keyword')
-    parser.add_argument('--force', action='store_true', help='Force re-process even if data exists')
+    parser.add_argument('--force', action='store_true', help='Force re-process')
     
     args = parser.parse_args()
     
-    asyncio.run(enrich_gemini(limit=args.limit, offline=args.offline, shop_filter=args.shop, keyword_filter=args.keyword, force_reprocess=args.force))
+    asyncio.run(_enrich_main(limit=args.limit, offline=args.offline, shop_filter=args.shop, keyword_filter=args.keyword, force_reprocess=args.force))
