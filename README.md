@@ -38,16 +38,7 @@ This is the cloud-deployed version of the Craft Beer Watch Japan service, using:
    - `SUPABASE_SERVICE_KEY`: Your service_role key (for scripts)
    - `GEMINI_API_KEY`: Your Google Gemini API key
 
-4. **Migrate existing data** (one-time)
-   ```bash
-   # If migrating from old structure or local
-   pip install supabase
-   export SUPABASE_URL="your-url"
-   export SUPABASE_SERVICE_KEY="your-service-key"
-   # See scripts/maintenance/ for useful migration scripts
-   ```
-
-5. **Install dependencies**
+4. **Install dependencies**
    ```bash
    # Node.js (for frontend/API)
    npm install
@@ -57,7 +48,7 @@ This is the cloud-deployed version of the Craft Beer Watch Japan service, using:
    uv sync
    ```
 
-6. **Run locally**
+5. **Run locally**
    ```bash
    npm run dev
    ```
@@ -95,20 +86,22 @@ This is the cloud-deployed version of the Craft Beer Watch Japan service, using:
 
 ## 🛠️ Development
 
-### Local CLI (for testing)
+### CLI Usage
+
+We use a central CLI for all management tasks.
 
 ```bash
 # Scrape to Supabase
-uv run python -m app.cli scrape [--limit N]
+uv run cli.py scrape --limit 100 --new
 
-# Enrich with Gemini only (extract brewery/beer names)
-uv run python -m app.cli enrich-gemini [--limit 50]
+# Enrich with Gemini (extract info)
+uv run cli.py enrich gemini --limit 50 --offline
 
-# Enrich with Untappd only (for beers that have Gemini data)
-uv run python -m app.cli enrich-untappd [--limit 50]
+# Enrich with Untappd (for items with extracted info)
+uv run cli.py enrich untappd --limit 50 --mode missing
 
-# Full enrichment (Gemini + Untappd combined - for backwards compatibility)
-uv run python -m app.cli enrich [--limit 50]
+# Enrich Breweries (update brewery details from Untappd)
+uv run cli.py enrich breweries --limit 50
 ```
 
 ### Project Structure
@@ -116,28 +109,17 @@ uv run python -m app.cli enrich [--limit 50]
 ```
 /
 ├── .github/workflows/      # GitHub Actions
-│   ├── scrape.yml          # Scheduled scraping
-│   └── enrich.yml          # Scheduled enrichment
-├── app/                    # Python backend logic
+├── app/                    # Python Backend
+│   ├── commands/           # Command logic (Scrape, Enrich)
+│   ├── core/               # Config, DB, Logging
 │   ├── scrapers/           # Site scrapers
-│   └── services/           # Business logic
+│   └── services/           # Service modules (Gemini, Untappd)
+├── cli.py                  # CLI Entry Point
 ├── lib/                    # Next.js utilities
-│   └── supabase.js         # Supabase client
 ├── pages/                  # Next.js pages
-│   ├── index.js            # Frontend
-│   └── api/                # API routes
 ├── public/                 # Static assets
-├── scripts/                # Utility scripts
-│   ├── archive/            # Old/Review scripts
-│   ├── diagnostics/        # Check/Debug scripts
-│   ├── maintenance/        # Migration/Cleanup scripts
-│   ├── scrape.py           # Main scraping script
-│   ├── enrich_gemini.py    # Main Gemini enrichment script
-│   └── enrich_untappd.py   # Main Untappd enrichment script
-├── sql/                    # SQL Database Files
-│   ├── archive/            # Old/Review scripts
-├── supabase_schema.sql     # Main Database schema definition
-└── vercel.json             # Vercel config
+├── scripts/                # Utility scripts & backward compatibility shims
+└── sql/                    # SQL Database Files
 ```
 
 ## 📊 API Endpoints
@@ -146,9 +128,9 @@ uv run python -m app.cli enrich [--limit 50]
 
 ## 🔄 Data Flow
 
-1. **Scraping**: `scripts/scrape.py` fetches data from shops and upserts to `scraped_beers`.
-2. **Enrichment (Gemini)**: `scripts/enrich_gemini.py` reads `scraped_beers` (via view) and upserts metadata to `gemini_data`.
-3. **Enrichment (Untappd)**: `scripts/enrich_untappd.py` reads `gemini_data`/`scraped_beers` AND checks Untappd API, then upserts to `untappd_data`.
+1. **Scraping**: `app/commands/scrape.py` fetches data from shops and upserts to `scraped_beers`.
+2. **Enrichment (Gemini)**: `app/commands/enrich_gemini.py` reads `scraped_beers` AND uses Gemini API to extract metadata, saving to `gemini_data`.
+3. **Enrichment (Untappd)**: `app/commands/enrich_untappd.py` reads valid metadata and searches Untappd, saving to `untappd_data`.
 4. **Integration**: `beer_info_view` in Supabase joins these 3 tables to provide a unified "beers" view.
 5. **Frontend**: Next.js API (`/api/beers`) queries `beer_info_view` to serve the UI.
 
