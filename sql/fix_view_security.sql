@@ -22,7 +22,6 @@ SELECT
   g.brewery_name_en,
   g.brewery_name_jp,
   g.beer_name_en,
-  g.beer_name_en,
   g.beer_name_jp,
   g.is_set,
   
