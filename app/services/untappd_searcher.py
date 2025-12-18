@@ -38,6 +38,7 @@ BREWERY_ALIASES = {
     "志賀高原": ["Tamamura Honten"],
     "CRAFT ROCK": ["CRAFTROCK"],
     "CRAFT ROCK Brewing": ["CRAFTROCK Brewing"],
+    "麦雑穀工房": ["Zakkoku Koubou Microbrewery"],
 }
 
 COMMON_SUFFIXES = [
