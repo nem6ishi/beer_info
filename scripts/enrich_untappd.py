@@ -292,10 +292,16 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
             
         elif mode == 'refresh':
             logger.info(f"\n📂 Loading batch of REFRESH beers (Limit: {batch_size})...")
+            
+            # Calculate cutoff date (5 days ago)
+            from datetime import timedelta
+            cutoff_date = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+            
             query = supabase.table('beer_info_view') \
                 .select('url, name, untappd_url, stock_status, untappd_fetched_at') \
                 .not_.is_('untappd_url', None) \
-                .neq('stock_status', 'Sold Out')  # Only refresh In Stock items
+                .neq('stock_status', 'Sold Out') \
+                .or_(f'untappd_fetched_at.is.null,untappd_fetched_at.lt.{cutoff_date}')  # Only items not updated in 5+ days
 
             if shop_filter:
                 query = query.eq('shop', shop_filter)
@@ -303,7 +309,7 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
             if name_filter:
                 query = query.ilike('name', f'%{name_filter}%')
 
-            response = query.order('untappd_fetched_at', desc=False) \
+            response = query.order('untappd_fetched_at', desc=False, nullsfirst=True) \
                 .limit(batch_size) \
                 .execute()
             beers = response.data
