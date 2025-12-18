@@ -197,9 +197,7 @@ export default function GroupedBeers() {
             min_ibu: '',
             max_ibu: '',
             min_rating: '',
-            stock_filter: '',
-            min_rating: '',
-            stock_filter: '',
+            stock_filter: 'in_stock',
             missing_untappd: '',
             set_mode: ''
         }
