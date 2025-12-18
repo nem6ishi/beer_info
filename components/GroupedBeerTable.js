@@ -68,11 +68,11 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                 </td>
                                 <td className="col-name">
                                     <BeerInfoCell
-                                        brewery={group.brewery}
-                                        beer={(group.untappd_url && !group.untappd_url.includes('/search')) ? group.beer_name : (cheapestItem?.name || group.beer_name)}
-                                        logo={group.brewery_logo}
-                                        location={group.brewery_location}
-                                        type={group.brewery_type}
+                                        brewery={(group.untappd_url && !group.untappd_url.includes('/search') && !group.is_set) ? group.brewery : null}
+                                        beer={(group.untappd_url && !group.untappd_url.includes('/search') && !group.is_set) ? group.beer_name : (cheapestItem?.name || group.beer_name)}
+                                        logo={(group.untappd_url && !group.untappd_url.includes('/search') && !group.is_set) ? group.brewery_logo : null}
+                                        location={(group.untappd_url && !group.untappd_url.includes('/search') && !group.is_set) ? group.brewery_location : null}
+                                        type={(group.untappd_url && !group.untappd_url.includes('/search') && !group.is_set) ? group.brewery_type : null}
                                     />
                                 </td>
                                 <td className="col-beer-style">

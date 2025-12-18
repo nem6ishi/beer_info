@@ -236,7 +236,7 @@ export default function BeerFilters({
                                     value={tempFilters.stock_filter}
                                     onChange={(e) => onFilterChange('stock_filter', e.target.value)}
                                 >
-                                    <option value="">All</option>
+                                    <option value="all">All</option>
                                     <option value="in_stock">In Stock Only</option>
                                     <option value="sold_out">Sold Out Only</option>
                                 </select>

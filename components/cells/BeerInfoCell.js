@@ -48,26 +48,28 @@ export default function BeerInfoCell({ brewery, beer, logo, location, type }) {
 
     return (
         <div className="beer-name-group">
-            <div className="brewery-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-                {logo && (
-                    <img
-                        src={logo}
-                        alt={brewery}
-                        style={{ width: '24px', height: '24px', borderRadius: '4px', objectFit: 'contain' }}
-                        loading="lazy"
-                    />
-                )}
-                <div className="brewery-info" style={{ lineHeight: '1.2' }}>
-                    <div className="brewery-name" style={{ fontWeight: 'bold' }}>
-                        {brewery || 'Unknown Brewery'}
-                    </div>
-                    {location && (
-                        <div className="brewery-meta" style={{ fontSize: '0.75rem', color: '#666' }}>
-                            {location} {flag && <span style={{ marginLeft: '4px' }}>{flag}</span>}
-                        </div>
+            {brewery && (
+                <div className="brewery-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                    {logo && (
+                        <img
+                            src={logo}
+                            alt={brewery}
+                            style={{ width: '24px', height: '24px', borderRadius: '4px', objectFit: 'contain' }}
+                            loading="lazy"
+                        />
                     )}
+                    <div className="brewery-info" style={{ lineHeight: '1.2' }}>
+                        <div className="brewery-name" style={{ fontWeight: 'bold' }}>
+                            {brewery}
+                        </div>
+                        {location && (
+                            <div className="brewery-meta" style={{ fontSize: '0.75rem', color: '#666' }}>
+                                {location} {flag && <span style={{ marginLeft: '4px' }}>{flag}</span>}
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
             <div className="beer-name">
                 {beer || 'Unknown Beer'}
             </div>

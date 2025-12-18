@@ -61,7 +61,7 @@ function HomeContent() {
     const viewMode = 'individual';
     const handleViewModeChange = (mode) => {
         if (mode === 'grouped') {
-            router.push('/grouped');
+            updateURL({ page: '1' }, '/grouped');
         }
     }
 
@@ -141,7 +141,7 @@ function HomeContent() {
             if (currentParams.shop) params.append('shop', currentParams.shop);
 
             // Add filters if present
-            ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status', 'set_mode']
+            ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'untappd_status', 'set_mode']
                 .forEach(key => { if (currentParams[key]) params.append(key, currentParams[key]) });
 
             // Fetch with timeout

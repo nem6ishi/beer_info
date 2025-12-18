@@ -68,9 +68,9 @@ export default async function handler(req, res) {
         }
 
         if (stock_filter === 'in_stock') {
-            query = query.ilike('stock_status', '%In Stock%')
+            query = query.eq('stock_status', 'In Stock')
         } else if (stock_filter === 'sold_out') {
-            query = query.not('stock_status', 'ilike', '%In Stock%')
+            query = query.eq('stock_status', 'Sold Out')
         }
 
         // Filter by Untappd Status
@@ -146,9 +146,9 @@ export default async function handler(req, res) {
         if (min_rating) countQuery = countQuery.gte('untappd_rating', min_rating)
 
         if (stock_filter === 'in_stock') {
-            countQuery = countQuery.ilike('stock_status', '%In Stock%')
+            countQuery = countQuery.eq('stock_status', 'In Stock')
         } else if (stock_filter === 'sold_out') {
-            countQuery = countQuery.not('stock_status', 'ilike', '%In Stock%')
+            countQuery = countQuery.eq('stock_status', 'Sold Out')
         }
 
         if (style_filter) {
@@ -170,7 +170,7 @@ export default async function handler(req, res) {
             countQuery = countQuery.not('untappd_url', 'is', null).not('untappd_url', 'ilike', '%/search?%')
         }
 
-        const { data: countData } = await countQuery
+        const { data: countData } = await countQuery.limit(10000)
         const shopCounts = {};
         if (countData) {
             countData.forEach(item => {

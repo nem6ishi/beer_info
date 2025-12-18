@@ -49,6 +49,12 @@ def main():
     enrich_breweries_parser.add_argument("--force", action='store_true')
     enrich_breweries_parser.add_argument("--targets", nargs='+', help="Specific Untappd URLs")
 
+    # Update stock command
+    update_stock_parser = subparsers.add_parser("update-stock", help="Check and update stock status for existing items")
+    update_stock_parser.add_argument("--limit", type=int, default=None, help="Limit number of items to check")
+    update_stock_parser.add_argument("--shop", type=str, help="Filter by shop name", default=None)
+    update_stock_parser.add_argument("--sort-rating", action="store_true", help="Sort by Untappd Rating (DESC)")
+
     # Sync command
     subparsers.add_parser("sync", help="Download Supabase data to local JSON")
 
@@ -61,6 +67,10 @@ def main():
         from app.commands.scrape import scrape_to_supabase
         asyncio.run(scrape_to_supabase(limit=args.limit, new_only=args.new, full_scrape=args.full, reset_first_seen=args.reset_dates))
     
+    elif args.command == "update-stock":
+        from app.commands.update_stock import update_stock_status
+        asyncio.run(update_stock_status(limit=args.limit, shop_filter=args.shop, sort_rating=args.sort_rating))
+
     elif args.command == "enrich":
         # Import commands
         from app.commands.enrich_gemini import enrich_gemini

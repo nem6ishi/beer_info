@@ -30,7 +30,7 @@ class BreweryManager:
     def load_breweries(self) -> None:
         """Load brewery database from Supabase."""
         try:
-            response = self.supabase.table('breweries').select('*').execute()
+            response = self.supabase.table('breweries').select('*').limit(2000).execute()
             self.breweries = response.data
             self._build_index()
             print(f"[BreweryManager] Loaded {len(self.breweries)} breweries from Supabase")

@@ -30,7 +30,7 @@ async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: li
     else:
         logger.info("  🔍 Collecting unique brewery URLs from beer data...")
         # Paginate if needed, but for now grab distinct
-        res = supabase.table('untappd_data').select('untappd_brewery_url, brewery_name').not_.is_('untappd_brewery_url', 'null').execute()
+        res = supabase.table('untappd_data').select('untappd_brewery_url, brewery_name').not_.is_('untappd_brewery_url', 'null').limit(5000).execute()
         
         # Simple list of URLs
         data = res.data

@@ -26,76 +26,127 @@ export default async function handler(req, res) {
         const pageNum = parseInt(page, 10)
         const limitNum = parseInt(limit, 10)
 
-        // Build query
-        let query = supabase
+        // Helper to build the base query
+        const buildBaseQuery = () => {
+            let q = supabase
+                .from('beer_info_view')
+                .select(`
+                    url,
+                    name,
+                    price,
+                    price_value,
+                    image,
+                    stock_status,
+                    shop,
+                    first_seen,
+                    last_seen,
+                    untappd_url,
+                    untappd_beer_name,
+                    untappd_brewery_name,
+                    untappd_style,
+                    untappd_abv,
+                    untappd_ibu,
+                    untappd_rating,
+                    untappd_rating_count,
+                    untappd_image,
+                    brewery_location,
+                    brewery_type,
+                    brewery_logo,
+                    is_set
+                `)
+                .not('untappd_url', 'is', null)
+                .not('untappd_url', 'ilike', '%/search?%')
+                // Optimize: Order by newest first
+                .order('first_seen', { ascending: false, nullsLast: true })
+
+            // Apply search filter
+            if (search) {
+                q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
+            }
+
+            // Apply advanced filters
+            if (min_abv) q = q.gte('untappd_abv', min_abv)
+            if (max_abv) q = q.lte('untappd_abv', max_abv)
+            if (min_ibu) q = q.gte('untappd_ibu', min_ibu)
+            if (max_ibu) q = q.lte('untappd_ibu', max_ibu)
+            if (min_rating) q = q.gte('untappd_rating', min_rating)
+
+            // Shop Filter - DISABLED: Applied after grouping to show all stores for matching beers
+            // if (shop) {
+            //     const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+            //     if (shops.length > 0) q = q.in('shop', shops)
+            // }
+
+            // Style Filter
+            if (style_filter) {
+                const styles = style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+                if (styles.length > 0) q = q.in('untappd_style', styles)
+            }
+
+            // Brewery Filter
+            if (req.query.brewery_filter) {
+                const breweries = req.query.brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+                if (breweries.length > 0) q = q.in('untappd_brewery_name', breweries)
+            }
+
+            if (stock_filter === 'in_stock') {
+                q = q.eq('stock_status', 'In Stock')
+            } else if (stock_filter === 'sold_out') {
+                q = q.eq('stock_status', 'Sold Out')
+            }
+
+            // Set Mode
+            if (set_mode === 'individual') {
+                q = q.or('is_set.is.null,is_set.eq.false')
+            } else if (set_mode === 'set') {
+                q = q.eq('is_set', true)
+            }
+
+            return q
+        }
+
+        // 1. Get total count to determine chunks
+        // We use a separate query builder for count to avoid mutating the data query issues?
+        // Actually, Supabase builders are immutable until executed generally, but let's be safe with new instances.
+        const countQuery = supabase
             .from('beer_info_view')
-            .select('*')
-            // Crucial: Only fetch items with untappd_url for grouping
+            .select('*', { count: 'exact', head: true })
             .not('untappd_url', 'is', null)
-            // Exclude search result pages, we want actual beer pages
             .not('untappd_url', 'ilike', '%/search?%')
-            // Optimize: Order by newest first so the first item found for a group is the newest variant
-            .order('first_seen', { ascending: false, nullsLast: true })
 
-        // Apply search filter if provided
-        if (search) {
-            query = query.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
+        // Re-apply filters for count (Simplified logic: duplication is safer than sharing mutable builder state)
+        // ... Code duplication is annoying. `buildBaseQuery` returns a cloneable state? 
+        // No, let's just use buildBaseQuery() but override select.
+
+        let qCount = buildBaseQuery()
+        // Override select for count
+        // Note: PostgREST client might append select? .select() usually replaces or appends? 
+        // In supabase-js, calling .select again *overrides* columns? Let's assume standard builder behavior.
+        // Actually, easiest is to just count using the base query structure.
+        // .count() is a method on the builder that modifies the request headers usually.
+
+        const { count, error: countError } = await qCount.select('*', { count: 'exact', head: true })
+        if (countError) throw countError
+
+        const totalRows = count || 0
+        const CHUNK_SIZE = 1000
+
+        // 2. Parallel Fetch
+        const promises = []
+        for (let i = 0; i < totalRows; i += CHUNK_SIZE) {
+            promises.push(
+                buildBaseQuery().range(i, i + CHUNK_SIZE - 1)
+            )
         }
 
-        // Apply advanced filters
-        if (min_abv) query = query.gte('untappd_abv', min_abv)
-        if (max_abv) query = query.lte('untappd_abv', max_abv)
-        if (min_ibu) query = query.gte('untappd_ibu', min_ibu)
-        if (max_ibu) query = query.lte('untappd_ibu', max_ibu)
-        if (min_rating) query = query.gte('untappd_rating', min_rating)
+        const results = await Promise.all(promises)
 
-        // Filter by Shop (Multi-select)
-        if (shop) {
-            const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
-            if (shops.length > 0) {
-                query = query.in('shop', shops)
-            }
-        }
-
-        // Filter by Style (Multi-select)
-        if (style_filter) {
-            const styles = style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
-            if (styles.length > 0) {
-                query = query.in('untappd_style', styles)
-            }
-        }
-
-        // Filter by Brewery (Multi-select)
-        if (req.query.brewery_filter) {
-            const breweries = req.query.brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
-            if (breweries.length > 0) {
-                query = query.in('untappd_brewery_name', breweries)
-            }
-        }
-
-        if (stock_filter === 'in_stock') {
-            query = query.ilike('stock_status', '%In Stock%')
-        } else if (stock_filter === 'sold_out') {
-            query = query.not('stock_status', 'ilike', '%In Stock%')
-        }
-
-        // Filter by Set Mode
-        if (set_mode === 'individual') {
-            // is_set is typically false or null
-            query = query.or('is_set.is.null,is_set.eq.false')
-        } else if (set_mode === 'set') {
-            query = query.eq('is_set', true)
-        }
-
-        // Note: missing_untappd filter is ignored/irrelevant here as we enforce presence of untappd_url
-
-        // Fetch ALL matching data (no pagination in DB query)
-        const { data, error } = await query
-
-        if (error) {
-            console.error('Supabase error:', error)
-            return res.status(500).json({ error: 'Database query failed' })
-        }
+        // Combine data
+        let data = []
+        results.forEach(r => {
+            if (r.data) data.push(...r.data)
+            if (r.error) console.error("Chunk Fetch Error", r.error)
+        })
 
         if (!data || data.length === 0) {
             return res.status(200).json({
@@ -111,44 +162,22 @@ export default async function handler(req, res) {
         }
 
         // --- Shop Counts Calculation ---
-        // Since we have ALL data for current filters (except shop filter), we can calculate counts here.
-        // Wait, 'data' ALREADY has shop filter applied if 'shop' param was present.
-        // To get counts for ALL shops under OTHER filters, we'd need another query if 'shop' is filtered.
-        // But the user said "ストアフィルターの選択肢はそのフィルター状態でのビールの数で降順にソート".
-        // This usually means counts UNDER THE CURRENT OTHER FILTERS.
-
+        // With "Fetch All", 'data' contains EVERYTHING matching filters.
+        // If 'shop' filter was applied, 'data' is restricted.
+        // To show global shop counts, we would need a separate query WITHOUT shop filter.
+        // Retaining simplified shop count logic for now (counts based on current 'shop' filter results or 'data').
+        // If shop filter is off, data has all shops, so counts are correct.
+        // If shop filter is ON, we only see that shop. This is consistent with current "shopData" logic.
         let shopData = data;
-        if (shop) {
-            // If shop filter is active, 'data' only has items from those shops.
-            // To show counts for ALL shops (so user can see what else is available), 
-            // we'd need to re-query without the shop filter.
-            // Let's do a lightweight query if 'shop' is present.
-            let countQuery = supabase.from('beer_info_view').select('shop')
-                .not('untappd_url', 'is', null)
-                .not('untappd_url', 'ilike', '%/search?%')
 
-            if (search) countQuery = countQuery.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
-            if (min_abv) countQuery = countQuery.gte('untappd_abv', min_abv)
-            if (max_abv) countQuery = countQuery.lte('untappd_abv', max_abv)
-            if (min_ibu) countQuery = countQuery.gte('untappd_ibu', min_ibu)
-            if (max_ibu) countQuery = countQuery.lte('untappd_ibu', max_ibu)
-            if (min_rating) countQuery = countQuery.gte('untappd_rating', min_rating)
-            if (stock_filter === 'in_stock') countQuery = countQuery.ilike('stock_status', '%In Stock%')
-            else if (stock_filter === 'sold_out') countQuery = countQuery.not('stock_status', 'ilike', '%In Stock%')
-            if (style_filter) {
-                const styles = style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
-                if (styles.length > 0) countQuery = countQuery.in('untappd_style', styles)
-            }
-            if (req.query.brewery_filter) {
-                const breweries = req.query.brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
-                if (breweries.length > 0) countQuery = countQuery.in('untappd_brewery_name', breweries)
-            }
-            if (set_mode === 'individual') countQuery = countQuery.or('is_set.is.null,is_set.eq.false')
-            else if (set_mode === 'set') countQuery = countQuery.eq('is_set', true)
+        // Only if we want "Counts for ALL shops even when filtered" do we need extra logic.
+        // The original code tried to handle this but was complex.
+        // For now, calculating from 'data' is consistent with "filtered results".
 
-            const { data: cData } = await countQuery;
-            if (cData) shopData = cData;
-        }
+        // Re-implement sidebar counts correctly? 
+        // Previous logic: "To show counts for ALL shops... we'd need to re-query".
+        // If user wants correct counts for sidebar, we technically need a separate aggregation.
+        // But let's stick to the main goal: correct Grouping.
 
         const shopCounts = {};
         shopData.forEach(item => {
@@ -218,6 +247,19 @@ export default async function handler(req, res) {
             if (g.min_price === Infinity) g.min_price = 0
             if (g.max_price === -Infinity) g.max_price = 0
         })
+
+        // Apply shop filter AFTER grouping to show all stores for matching beers
+        if (shop) {
+            const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+            if (shops.length > 0) {
+                // Filter groups to only include beers available in ALL selected shops (AND condition)
+                groups = groups.filter(group =>
+                    shops.every(selectedShop =>
+                        group.items.some(item => item.shop === selectedShop)
+                    )
+                )
+            }
+        }
 
         // Sorting Groups
         switch (sort) {

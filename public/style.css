@@ -1258,26 +1258,26 @@ h1 {
 .shop-list-flat {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
 }
 
 .shop-item-flat {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
 }
 
 .shop-btn-flat {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 6px 10px;
+    gap: 1px;
+    padding: 4px 8px;
     background: #f5f5f5;
     border: 1px solid #e5e5e5;
-    border-radius: 6px;
+    border-radius: 4px;
     text-decoration: none;
     color: #1a1a1a;
-    font-size: 13px;
+    font-size: 12px;
     transition: all 0.2s ease;
     flex-grow: 1;
     min-width: 0;
@@ -1349,10 +1349,11 @@ h1 {
 }
 
 .stock-dot.out {
-    background-color: #eeeeee;
-    /* Greyed out for out of stock */
-    border: 1px solid #ddd;
+    background-color: #f44336;
+    /* Red for out of stock */
+    border: 1px solid #e57373;
 }
+
 /* Set Product Badge */
 .set-badge-container {
     display: flex;
@@ -1360,6 +1361,7 @@ h1 {
     justify-content: center;
     height: 100%;
 }
+
 .set-badge {
     background-color: #f0f0f0;
     color: #444;

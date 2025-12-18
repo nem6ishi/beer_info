@@ -42,11 +42,11 @@ export default function BeerTable({ beers, loading, error }) {
                             </td>
                             <td className="col-name">
                                 <BeerInfoCell
-                                    brewery={beer.untappd_brewery_name}
-                                    beer={(beer.untappd_url && !beer.untappd_url.includes('/search')) ? beer.untappd_beer_name : beer.name}
-                                    logo={beer.brewery_logo}
-                                    location={beer.brewery_location}
-                                    type={beer.brewery_type}
+                                    brewery={(beer.untappd_url && !beer.untappd_url.includes('/search') && !beer.is_set) ? beer.untappd_brewery_name : null}
+                                    beer={(beer.untappd_url && !beer.untappd_url.includes('/search') && !beer.is_set) ? beer.untappd_beer_name : beer.name}
+                                    logo={(beer.untappd_url && !beer.untappd_url.includes('/search') && !beer.is_set) ? beer.brewery_logo : null}
+                                    location={(beer.untappd_url && !beer.untappd_url.includes('/search') && !beer.is_set) ? beer.brewery_location : null}
+                                    type={(beer.untappd_url && !beer.untappd_url.includes('/search') && !beer.is_set) ? beer.brewery_type : null}
                                 />
                             </td>
                             <td className="col-beer-style">
@@ -84,9 +84,12 @@ export default function BeerTable({ beers, loading, error }) {
                                         <div className="shop-info-primary">
                                             <span className="price-text">{formatPrice(beer.price)}</span>
                                             <span className="shop-name-text">{beer.shop}</span>
+                                            {beer.stock_status && (
+                                                <span className={`stock-dot ${beer.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={beer.stock_status}></span>
+                                            )}
                                         </div>
                                         <div className="shop-info-secondary">
-                                            <span className="check-date">{formatSimpleDate(beer.first_seen)}</span>
+                                            <span className="check-date">{formatSimpleDate(beer.last_seen)}</span>
                                             <span className="external-link-arrow">↗</span>
                                         </div>
                                     </a>
