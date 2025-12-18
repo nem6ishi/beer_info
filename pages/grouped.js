@@ -11,6 +11,7 @@ export default function GroupedBeers() {
 
     // State for data
     const [groups, setGroups] = useState([])
+    const [shopCounts, setShopCounts] = useState({})
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [totalPages, setTotalPages] = useState(0)
@@ -30,7 +31,7 @@ export default function GroupedBeers() {
         max_ibu: '',
         min_rating: '',
         min_rating: '',
-        stock_filter: '',
+        stock_filter: 'in_stock',
         set_mode: ''
     })
 
@@ -41,6 +42,7 @@ export default function GroupedBeers() {
     const shop = router.query.shop || ''
     const style_filter = router.query.style_filter || ''
     const brewery_filter = router.query.brewery_filter || ''
+    const stock_filter = router.query.stock_filter || 'in_stock'
 
     // Initialize search input from URL once router is ready. 
     useEffect(() => {
@@ -53,8 +55,7 @@ export default function GroupedBeers() {
                 min_ibu: router.query.min_ibu || '',
                 max_ibu: router.query.max_ibu || '',
                 min_rating: router.query.min_rating || '',
-                stock_filter: router.query.stock_filter || '',
-                stock_filter: router.query.stock_filter || '',
+                stock_filter: router.query.stock_filter || 'in_stock',
                 missing_untappd: router.query.missing_untappd || '',
                 set_mode: router.query.set_mode || ''
             })
@@ -92,6 +93,7 @@ export default function GroupedBeers() {
                 limit: currentParams.limit || '20',
                 search: currentParams.search || '',
                 sort: currentParams.sort || 'newest',
+                stock_filter: currentParams.stock_filter || 'in_stock'
             });
 
             if (currentParams.shop) params.append('shop', currentParams.shop);
@@ -106,6 +108,7 @@ export default function GroupedBeers() {
 
             const data = await res.json();
             setGroups(data.groups || []);
+            setShopCounts(data.shopCounts || {}); // New state
             setTotalPages(data.pagination.totalPages);
             setTotalItems(data.pagination.total);
         } catch (err) {
@@ -131,6 +134,7 @@ export default function GroupedBeers() {
         if (query.sort === 'newest') delete query.sort
         if (!query.search) delete query.search
         if (!query.shop) delete query.shop
+        if (query.stock_filter === 'in_stock') delete query.stock_filter // Cleanup default
         // Clean up empty filters
         const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'missing_untappd', 'set_mode']
         filterKeys.forEach(key => {
@@ -312,6 +316,7 @@ export default function GroupedBeers() {
 
                 <BeerFilters
                     shop={shop}
+                    shopCounts={shopCounts}
                     brewery_filter={brewery_filter}
                     style_filter={style_filter}
                     sort={sort}

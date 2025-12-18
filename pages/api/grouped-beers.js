@@ -75,6 +75,8 @@ export default async function handler(req, res) {
 
         if (stock_filter === 'in_stock') {
             query = query.ilike('stock_status', '%In Stock%')
+        } else if (stock_filter === 'sold_out') {
+            query = query.not('stock_status', 'ilike', '%In Stock%')
         }
 
         // Filter by Set Mode
@@ -98,6 +100,7 @@ export default async function handler(req, res) {
         if (!data || data.length === 0) {
             return res.status(200).json({
                 groups: [],
+                shopCounts: {},
                 pagination: {
                     page: pageNum,
                     limit: limitNum,
@@ -106,6 +109,48 @@ export default async function handler(req, res) {
                 }
             })
         }
+
+        // --- Shop Counts Calculation ---
+        // Since we have ALL data for current filters (except shop filter), we can calculate counts here.
+        // Wait, 'data' ALREADY has shop filter applied if 'shop' param was present.
+        // To get counts for ALL shops under OTHER filters, we'd need another query if 'shop' is filtered.
+        // But the user said "ストアフィルターの選択肢はそのフィルター状態でのビールの数で降順にソート".
+        // This usually means counts UNDER THE CURRENT OTHER FILTERS.
+
+        let shopData = data;
+        if (shop) {
+            // If shop filter is active, 'data' only has items from those shops.
+            // To show counts for ALL shops (so user can see what else is available), 
+            // we'd need to re-query without the shop filter.
+            // Let's do a lightweight query if 'shop' is present.
+            let countQuery = supabase.from('beer_info_view').select('shop')
+            if (search) countQuery = countQuery.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
+            if (currentParams.min_abv) countQuery = countQuery.gte('abv', currentParams.min_abv)
+            if (currentParams.max_abv) countQuery = countQuery.lte('abv', currentParams.max_abv)
+            if (currentParams.min_ibu) countQuery = countQuery.gte('ibu', currentParams.min_ibu)
+            if (currentParams.max_ibu) countQuery = countQuery.lte('ibu', currentParams.max_ibu)
+            if (currentParams.min_rating) countQuery = countQuery.gte('untappd_rating', currentParams.min_rating)
+            if (stock_filter === 'in_stock') countQuery = countQuery.ilike('stock_status', '%In Stock%')
+            else if (stock_filter === 'sold_out') countQuery = countQuery.not('stock_status', 'ilike', '%In Stock%')
+            if (style_filter) {
+                const styles = style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+                if (styles.length > 0) countQuery = countQuery.in('untappd_style', styles)
+            }
+            if (req.query.brewery_filter) {
+                const breweries = req.query.brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+                if (breweries.length > 0) countQuery = countQuery.in('untappd_brewery_name', breweries)
+            }
+            if (set_mode === 'individual') countQuery = countQuery.or('is_set.is.null,is_set.eq.false')
+            else if (set_mode === 'set') countQuery = countQuery.eq('is_set', true)
+
+            const { data: cData } = await countQuery;
+            if (cData) shopData = cData;
+        }
+
+        const shopCounts = {};
+        shopData.forEach(item => {
+            shopCounts[item.shop] = (shopCounts[item.shop] || 0) + 1;
+        });
 
         // Grouping Logic
         const groupsMap = new Map()
@@ -219,6 +264,7 @@ export default async function handler(req, res) {
 
         return res.status(200).json({
             groups: paginatedGroups,
+            shopCounts,
             pagination: {
                 page: pageNum,
                 limit: limitNum,

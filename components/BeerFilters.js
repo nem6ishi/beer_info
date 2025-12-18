@@ -18,6 +18,7 @@ export default function BeerFilters({
     onToggleFilter,
     onReset,
     onFilterChange,
+    shopCounts = {},
 
     viewMode = 'individual', // 'individual' or 'grouped'
     onViewModeChange,
@@ -45,16 +46,13 @@ export default function BeerFilters({
                     </div>
                 </div>
 
-                {/* Shop Filter (Multi-Select) */}
                 <div className="filter-group-main">
                     <label className="sort-label">Store:</label>
                     <MultiSelectDropdown
-                        options={[
-                            { value: 'BEER VOLTA', label: 'BEER VOLTA' },
-                            { value: 'ちょうせいや', label: 'ちょうせいや' },
-                            { value: '一期一会～る', label: '一期一会～る' },
-                            { value: 'Arôme', label: 'Arôme' }
-                        ]}
+                        options={Object.entries(shopCounts)
+                            .map(([name, count]) => ({ value: name, label: `${name} (${count})`, count }))
+                            .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+                        }
                         selectedValues={shop ? shop.split(',') : []}
                         onChange={(vals) => onMultiSelectChange('shop', vals)}
                         placeholder="Select Stores"
@@ -240,6 +238,7 @@ export default function BeerFilters({
                                 >
                                     <option value="">All</option>
                                     <option value="in_stock">In Stock Only</option>
+                                    <option value="sold_out">Sold Out Only</option>
                                 </select>
                             </div>
                         </div>

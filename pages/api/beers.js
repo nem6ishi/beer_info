@@ -65,12 +65,12 @@ export default async function handler(req, res) {
             if (breweries.length > 0) {
                 query = query.in('untappd_brewery_name', breweries)
             }
-        } if (stock_filter === 'in_stock') {
-            // Assuming stock_status contains 'In Stock' or similar
-            // Using ilike to be safe, or check data. Usually it's 'In Stock' or 'Sold Out'
-            // Let's assume 'In Stock' for now based on style.css (.stock-badge.in-stock)
-            // But checking partial match
+        }
+
+        if (stock_filter === 'in_stock') {
             query = query.ilike('stock_status', '%In Stock%')
+        } else if (stock_filter === 'sold_out') {
+            query = query.not('stock_status', 'ilike', '%In Stock%')
         }
 
         // Filter by Untappd Status
@@ -131,8 +131,56 @@ export default async function handler(req, res) {
             return res.status(500).json({ error: 'Database query failed' })
         }
 
+        // --- Shop Counts Calculation ---
+        let countQuery = supabase
+            .from('beer_info_view')
+            .select('shop')
+
+        if (search) {
+            countQuery = countQuery.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
+        }
+        if (min_abv) countQuery = countQuery.gte('untappd_abv', min_abv)
+        if (max_abv) countQuery = countQuery.lte('untappd_abv', max_abv)
+        if (min_ibu) countQuery = countQuery.gte('untappd_ibu', min_ibu)
+        if (max_ibu) countQuery = countQuery.lte('untappd_ibu', max_ibu)
+        if (min_rating) countQuery = countQuery.gte('untappd_rating', min_rating)
+
+        if (stock_filter === 'in_stock') {
+            countQuery = countQuery.ilike('stock_status', '%In Stock%')
+        } else if (stock_filter === 'sold_out') {
+            countQuery = countQuery.not('stock_status', 'ilike', '%In Stock%')
+        }
+
+        if (style_filter) {
+            const styles = style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+            if (styles.length > 0) countQuery = countQuery.in('untappd_style', styles)
+        }
+        if (req.query.brewery_filter) {
+            const breweries = req.query.brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+            if (breweries.length > 0) countQuery = countQuery.in('untappd_brewery_name', breweries)
+        }
+        if (set_mode === 'individual') {
+            countQuery = countQuery.or('is_set.is.null,is_set.eq.false')
+        } else if (set_mode === 'set') {
+            countQuery = countQuery.eq('is_set', true)
+        }
+        if (req.query.untappd_status === 'missing') {
+            countQuery = countQuery.or('untappd_url.is.null,untappd_url.ilike.%/search?%')
+        } else if (req.query.untappd_status === 'linked') {
+            countQuery = countQuery.not('untappd_url', 'is', null).not('untappd_url', 'ilike', '%/search?%')
+        }
+
+        const { data: countData } = await countQuery
+        const shopCounts = {};
+        if (countData) {
+            countData.forEach(item => {
+                shopCounts[item.shop] = (shopCounts[item.shop] || 0) + 1;
+            });
+        }
+
         return res.status(200).json({
             beers: data || [],
+            shopCounts,
             pagination: {
                 page: pageNum,
                 limit: limitNum,

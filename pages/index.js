@@ -43,6 +43,7 @@ function HomeContent() {
 
     // State for data
     const [beers, setBeers] = useState([])
+    const [shopCounts, setShopCounts] = useState({})
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [totalPages, setTotalPages] = useState(0)
@@ -69,7 +70,7 @@ function HomeContent() {
         min_ibu: '',
         max_ibu: '',
         min_rating: '',
-        stock_filter: '',
+        stock_filter: 'in_stock',
         untappd_status: '',
         shop: '',
         brewery_filter: '',
@@ -81,6 +82,7 @@ function HomeContent() {
     const page = parseInt(router.query.page || '1', 10)
     const limit = router.query.limit || '20'
     const sort = router.query.sort || 'newest'
+    const stock_filter = router.query.stock_filter || 'in_stock'
 
     // Initialize search input from URL
     useEffect(() => {
@@ -92,7 +94,7 @@ function HomeContent() {
                 min_ibu: router.query.min_ibu || '',
                 max_ibu: router.query.max_ibu || '',
                 min_rating: router.query.min_rating || '',
-                stock_filter: router.query.stock_filter || '',
+                stock_filter: router.query.stock_filter || 'in_stock',
                 untappd_status: router.query.untappd_status || '',
                 shop: router.query.shop || '',
                 brewery_filter: router.query.brewery_filter || '',
@@ -119,6 +121,7 @@ function HomeContent() {
                 limit: currentParams.limit || '20',
                 search: currentParams.search || '',
                 sort: currentParams.sort || 'newest',
+                stock_filter: currentParams.stock_filter || 'in_stock'
             });
             if (currentParams.shop) params.append('shop', currentParams.shop);
 
@@ -138,6 +141,7 @@ function HomeContent() {
 
                 const data = await res.json();
                 setBeers(data.beers || []);
+                setShopCounts(data.shopCounts || {}); // New state
                 setTotalPages(data.pagination.totalPages);
                 setTotalItems(data.pagination.total);
             } catch (err) {
@@ -169,6 +173,7 @@ function HomeContent() {
         if (query.sort === 'newest') delete query.sort
         if (!query.search) delete query.search
         if (!query.shop) delete query.shop
+        if (query.stock_filter === 'in_stock') delete query.stock_filter // Cleanup default
         const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status', 'set_mode']
         filterKeys.forEach(key => { if (!query[key]) delete query[key] })
         router.push({ pathname, query }, undefined, { scroll: false })
@@ -192,7 +197,7 @@ function HomeContent() {
     const resetFilters = () => {
         setSearchInput('')
         setTempFilters({
-            min_abv: '', max_abv: '', min_ibu: '', max_ibu: '', min_rating: '', stock_filter: '', untappd_status: '', shop: '', brewery_filter: '', style_filter: '', set_mode: ''
+            min_abv: '', max_abv: '', min_ibu: '', max_ibu: '', min_rating: '', stock_filter: 'in_stock', untappd_status: '', shop: '', brewery_filter: '', style_filter: '', set_mode: ''
         })
         router.push({ pathname: '/', query: {} }, undefined, { scroll: false })
     }
@@ -262,6 +267,7 @@ function HomeContent() {
             <main className="container">
                 <BeerFilters
                     shop={tempFilters.shop}
+                    shopCounts={shopCounts}
                     brewery_filter={tempFilters.brewery_filter}
                     style_filter={tempFilters.style_filter}
                     sort={sort}
