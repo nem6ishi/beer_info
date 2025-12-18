@@ -266,7 +266,13 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
             return result
             
     # Final Fallback: Return search URL
-    final_query = search_query if search_query.strip() else (beer_name or beer_name_jp or "")
+    # Build fallback query from available info
+    if beer_name:
+        final_query = f"{beer_name} {brewery_name}" if brewery_name else beer_name
+    elif beer_name_jp:
+        final_query = f"{beer_name_jp} {brewery_name}" if brewery_name else beer_name_jp
+    else:
+        final_query = brewery_name or ""
     # Also clean the final query
     final_query = clean_beer_name(final_query) or final_query
     encoded_query = urllib.parse.quote(final_query)
