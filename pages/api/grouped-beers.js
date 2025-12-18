@@ -124,12 +124,15 @@ export default async function handler(req, res) {
             // we'd need to re-query without the shop filter.
             // Let's do a lightweight query if 'shop' is present.
             let countQuery = supabase.from('beer_info_view').select('shop')
+                .not('untappd_url', 'is', null)
+                .not('untappd_url', 'ilike', '%/search?%')
+
             if (search) countQuery = countQuery.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
-            if (currentParams.min_abv) countQuery = countQuery.gte('abv', currentParams.min_abv)
-            if (currentParams.max_abv) countQuery = countQuery.lte('abv', currentParams.max_abv)
-            if (currentParams.min_ibu) countQuery = countQuery.gte('ibu', currentParams.min_ibu)
-            if (currentParams.max_ibu) countQuery = countQuery.lte('ibu', currentParams.max_ibu)
-            if (currentParams.min_rating) countQuery = countQuery.gte('untappd_rating', currentParams.min_rating)
+            if (min_abv) countQuery = countQuery.gte('untappd_abv', min_abv)
+            if (max_abv) countQuery = countQuery.lte('untappd_abv', max_abv)
+            if (min_ibu) countQuery = countQuery.gte('untappd_ibu', min_ibu)
+            if (max_ibu) countQuery = countQuery.lte('untappd_ibu', max_ibu)
+            if (min_rating) countQuery = countQuery.gte('untappd_rating', min_rating)
             if (stock_filter === 'in_stock') countQuery = countQuery.ilike('stock_status', '%In Stock%')
             else if (stock_filter === 'sold_out') countQuery = countQuery.not('stock_status', 'ilike', '%In Stock%')
             if (style_filter) {
