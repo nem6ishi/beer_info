@@ -80,6 +80,10 @@ def clean_beer_name(name: str) -> str:
     # Remove Japanese parentheses content that looks like version info
     name = re.sub(r'（[^）]*版[^）]*）', '', name)
     
+    # Remove -〇〇編- style suffixes (e.g., -ラガー編-, -IPA編-)
+    name = re.sub(r'-[^-]+編-?$', '', name)
+    name = re.sub(r'－[^－]+編－?$', '', name)  # Full-width dash
+    
     # Clean up extra whitespace
     name = ' '.join(name.split())
     
