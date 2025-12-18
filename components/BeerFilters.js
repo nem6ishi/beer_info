@@ -53,7 +53,7 @@ export default function BeerFilters({
                             { value: 'BEER VOLTA', label: 'BEER VOLTA' },
                             { value: 'ちょうせいや', label: 'ちょうせいや' },
                             { value: '一期一会～る', label: '一期一会～る' },
-                            { value: 'Arome', label: 'Arome' }
+                            { value: 'Arôme', label: 'Arôme' }
                         ]}
                         selectedValues={shop ? shop.split(',') : []}
                         onChange={(vals) => onMultiSelectChange('shop', vals)}

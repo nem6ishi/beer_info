@@ -116,7 +116,7 @@ async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scr
     print(f"  Loaded {len(existing_data)} existing beers (Complete)")
     
     scraper_names = ['beervolta', 'chouseiya', 'ichigo_ichie', 'arome']
-    display_names = ['BeerVolta', 'Chouseiya', 'Ichigo Ichie', 'Arome']
+    display_names = ['BeerVolta', 'Chouseiya', 'Ichigo Ichie', 'Arôme']
 
     # Run scrapers in parallel
     print("\n🔍 Running scrapers in parallel...")

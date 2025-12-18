@@ -3,14 +3,9 @@ import os
 import re
 import time
 import requests
-import ssl
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from typing import List, Dict, Optional
-from requests.adapters import HTTPAdapter
-from urllib3.poolmanager import PoolManager
-from urllib3.util import ssl_ as ssl_util
-
 # Early stop threshold for existing items
 SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '30'))
 
@@ -22,16 +17,13 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
 }
 
-# Custom SSL Adapter to handle "DH key too small" error
-class LegacySSLAdapter(HTTPAdapter):
-    def init_poolmanager(self, connections, maxsize, block=False):
-        context = ssl_util.create_urllib3_context(ciphers='DEFAULT:@SECLEVEL=1')
-        self.poolmanager = PoolManager(
-            num_pools=connections,
-            maxsize=maxsize,
-            block=block,
-            ssl_context=context
-        )
+def normalize_url(url: str) -> str:
+    """Extracts product_id to ensure consistent URL matching."""
+    if not url: return url
+    match = re.search(r'product_id=(\d+)', url)
+    if match:
+        return f"{BASE_URL}/products/detail.php?product_id={match.group(1)}"
+    return url
 
 def extract_product_data(item, is_area=False) -> Optional[Dict]:
     """
@@ -149,11 +141,11 @@ def extract_product_data(item, is_area=False) -> Optional[Dict]:
 
         return {
             "name": product_name,
-            "url": product_url,
+            "url": normalize_url(product_url),
             "price": price,
             "image": image_url,
             "stock_status": stock_status,
-            "shop": "Arome"
+            "shop": "Arôme"
         }
 
     except Exception as e:
@@ -202,9 +194,8 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
     if existing_urls is not None:
         print(f"[Arome] New product mode: Will stop after {SOLD_OUT_THRESHOLD} consecutive existing items")
     
-    # Create a session with the legacy SSL adapter
+    # Create a session
     session = requests.Session()
-    session.mount('https://', LegacySSLAdapter())
     
     while True:
         url = SEARCH_URL_TEMPLATE.format(page=page)

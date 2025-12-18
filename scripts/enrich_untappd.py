@@ -380,4 +380,13 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode, shop_filter=args.shop_filter, name_filter=args.name_filter))
+    args = parser.parse_args()
+    
+    # Run untappd enrichment
+    collected_urls = asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode, shop_filter=args.shop_filter, name_filter=args.name_filter))
+
+    # Trigger brewery enrichment if we found any
+    if collected_urls:
+        from scripts.enrich_breweries import enrich_breweries
+        print(f"\nFound {len(collected_urls)} breweries to potentially enrich. Starting brewery enrichment...")
+        asyncio.run(enrich_breweries(target_urls=list(collected_urls)))

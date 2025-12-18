@@ -141,6 +141,7 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument('--limit', type=int, default=50)
     arg_parser.add_argument('--force', action='store_true', help="Force update even if fresh")
+    arg_parser.add_argument('--targets', nargs='+', help="List of specific Untappd URLs to enrich")
     args = arg_parser.parse_args()
     
-    asyncio.run(enrich_breweries(limit=args.limit, force=args.force))
+    asyncio.run(enrich_breweries(limit=args.limit, force=args.force, target_urls=args.targets))

@@ -37,11 +37,6 @@ export default async function handler(req, res) {
             // Optimize: Order by newest first so the first item found for a group is the newest variant
             .order('first_seen', { ascending: false, nullsLast: true })
 
-        // Apply shop filter if provided
-        if (shop) {
-            query = query.eq('shop', shop)
-        }
-
         // Apply search filter if provided
         if (search) {
             query = query.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
@@ -56,7 +51,7 @@ export default async function handler(req, res) {
 
         // Filter by Shop (Multi-select)
         if (shop) {
-            const shops = shop.split(',').map(s => s.trim()).filter(Boolean)
+            const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
             if (shops.length > 0) {
                 query = query.in('shop', shops)
             }
@@ -64,7 +59,7 @@ export default async function handler(req, res) {
 
         // Filter by Style (Multi-select)
         if (style_filter) {
-            const styles = style_filter.split(',').map(s => s.trim()).filter(Boolean)
+            const styles = style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
             if (styles.length > 0) {
                 query = query.in('untappd_style', styles)
             }
@@ -72,7 +67,7 @@ export default async function handler(req, res) {
 
         // Filter by Brewery (Multi-select)
         if (req.query.brewery_filter) {
-            const breweries = req.query.brewery_filter.split(',').map(s => s.trim()).filter(Boolean)
+            const breweries = req.query.brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
             if (breweries.length > 0) {
                 query = query.in('untappd_brewery_name', breweries)
             }
