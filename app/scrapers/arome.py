@@ -240,11 +240,16 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
 
                 product_data = extract_product_data(area, is_area=True)
                 if product_data:
-                    # Check for truncated name
+                    product_url = product_data["url"]
+                    
+                    # Check for truncated name - but skip if we already have this URL (re-scrape)
+                    # because the DB already has the full name
                     name = product_data["name"]
-                    if name.endswith("...") or name.endswith("…"):
+                    is_existing = existing_urls is not None and product_url in existing_urls
+                    
+                    if (name.endswith("...") or name.endswith("…")) and not is_existing:
                         print(f"[Arome] Name truncated: '{name}'. Fetching detail...")
-                        full_name = fetch_full_name(session, product_data["url"])
+                        full_name = fetch_full_name(session, product_url)
                         if full_name:
                             print(f"[Arome] Updated name: '{full_name}'")
                             product_data["name"] = full_name
@@ -252,7 +257,7 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
                     
                     # Check if this is an existing item (for new product mode)
                     if existing_urls is not None:
-                        if product_data["url"] in existing_urls:
+                        if is_existing:
                             consecutive_existing += 1
                             # Check for early stop
                             if not full_scrape and consecutive_existing >= SOLD_OUT_THRESHOLD:
