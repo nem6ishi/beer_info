@@ -86,6 +86,15 @@ def clean_beer_name(name: str) -> str:
     name = re.sub(r'-[^-]+編-?$', '', name)
     name = re.sub(r'－[^－]+編－?$', '', name)  # Full-width dash
     
+    # Remove version/multiplier markers (2x, 3x, 2X, 3X, etc.)
+    name = re.sub(r'\s+\d+[xX]\s*', ' ', name)
+    name = re.sub(r'\s+\d+[xX]$', '', name)
+    
+    # Normalize DR./MR./ST. etc. (remove period for better matching)
+    name = re.sub(r'\bDR\.\s*', 'Dr ', name, flags=re.IGNORECASE)
+    name = re.sub(r'\bMR\.\s*', 'Mr ', name, flags=re.IGNORECASE)
+    name = re.sub(r'\bST\.\s*', 'St ', name, flags=re.IGNORECASE)
+    
     # Clean up extra whitespace
     name = ' '.join(name.split())
     
@@ -229,20 +238,23 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
     if beer_name:
         stripped_name = strip_beer_suffix(beer_name)
         if stripped_name:
-            # Try 1: {Stripped} {Brewery}
-            query = f"{stripped_name} {brewery_name}" if brewery_name else stripped_name
-            logger.info(f"Retrying with stripped name: {query}")
+            # Clean the stripped name (removes version markers like 3x, DR. etc)
+            cleaned_stripped = clean_beer_name(stripped_name)
+            
+            # Try 1: {Cleaned Stripped} {Brewery}
+            query = f"{cleaned_stripped} {brewery_name}" if brewery_name else cleaned_stripped
+            logger.info(f"Retrying with cleaned stripped name: {query}")
             result = search_untappd(query, validate_brewery=brewery_name)
             if result:
-                logger.info(f"Found direct link (stripped+brewery): {result}")
+                logger.info(f"Found direct link (cleaned stripped+brewery): {result}")
                 return result
                 
-            # Try 2: {Stripped} only (with validation)
+            # Try 2: {Cleaned Stripped} only (with validation)
             if brewery_name:
-                logger.info(f"Retrying with stripped name only: {stripped_name}")
-                result = search_untappd(stripped_name, validate_brewery=brewery_name)
+                logger.info(f"Retrying with cleaned stripped name only: {cleaned_stripped}")
+                result = search_untappd(cleaned_stripped, validate_brewery=brewery_name)
                 if result:
-                    logger.info(f"Found direct link (stripped only): {result}")
+                    logger.info(f"Found direct link (cleaned stripped only): {result}")
                     return result
 
     # Japanese Name Fallback
