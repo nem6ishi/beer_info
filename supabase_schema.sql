@@ -155,9 +155,9 @@ BEGIN
     'shops', json_agg(DISTINCT shop)
   )
   INTO result
-  FROM beer_info_view;
+  FROM public.beer_info_view;
   
   RETURN result;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = '';
 
