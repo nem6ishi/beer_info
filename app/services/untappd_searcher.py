@@ -39,6 +39,7 @@ BREWERY_ALIASES = {
     "CRAFT ROCK": ["CRAFTROCK"],
     "CRAFT ROCK Brewing": ["CRAFTROCK Brewing"],
     "麦雑穀工房": ["Zakkoku Koubou Microbrewery"],
+    "箕面ビール": ["Minoh Beer"],
 }
 
 COMMON_SUFFIXES = [
