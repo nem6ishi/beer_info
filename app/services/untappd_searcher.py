@@ -48,6 +48,46 @@ COMMON_SUFFIXES = [
 # Sort by length desc to remove longest match first
 COMMON_SUFFIXES.sort(key=len, reverse=True)
 
+import re
+
+def clean_beer_name(name: str) -> str:
+    """
+    Cleans beer name by removing common noise patterns:
+    - Japanese series markers (〜, シリーズ, #XX, Vol.X)
+    - Batch/version markers (Batch X, Ver.X, 2024, etc.)
+    - Special characters and brackets with content
+    """
+    if not name:
+        return name
+    
+    original = name
+    
+    # Remove content after 〜 (wave dash - usually series info)
+    name = re.sub(r'〜.*$', '', name)
+    name = re.sub(r'~.*$', '', name)
+    
+    # Remove シリーズ and everything after
+    name = re.sub(r'シリーズ.*$', '', name)
+    
+    # Remove #XX, Vol.X, Batch X patterns
+    name = re.sub(r'#\d+', '', name)
+    name = re.sub(r'Vol\.?\s*\d+', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'Batch\s*\d+', '', name, flags=re.IGNORECASE)
+    
+    # Remove year patterns at the end (2024, 2025)
+    name = re.sub(r'\s+20\d{2}\s*$', '', name)
+    
+    # Remove Japanese parentheses content that looks like version info
+    name = re.sub(r'（[^）]*版[^）]*）', '', name)
+    
+    # Clean up extra whitespace
+    name = ' '.join(name.split())
+    
+    if name != original:
+        logger.info(f"Cleaned beer name: '{original}' -> '{name}'")
+    
+    return name.strip()
+
 def strip_beer_suffix(beer_name: str) -> Optional[str]:
     """
     Strips common beer style suffixes from the beer name.
@@ -201,10 +241,20 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
 
     # Japanese Name Fallback
     if beer_name_jp:
+        # Clean the Japanese name before searching
+        cleaned_jp_name = clean_beer_name(beer_name_jp)
+        
+        # Try with cleaned name first
+        if cleaned_jp_name and cleaned_jp_name != beer_name_jp:
+            search_query_jp = f"{cleaned_jp_name} {brewery_name}" if brewery_name else cleaned_jp_name
+            logger.info(f"Retrying with cleaned Japanese name: {search_query_jp}")
+            result = search_untappd(search_query_jp, validate_brewery=brewery_name)
+            if result:
+                logger.info(f"Found direct link (cleaned JP name): {result}")
+                return result
+        
+        # Try with original Japanese name
         logger.info(f"Retrying with Japanese name: {beer_name_jp}")
-        # Validation might be hard with EN brewery name vs JP result, 
-        # but often JP results have EN brewery name in Untappd too. 
-        # We'll try strictly if we have brewery name, otherwise permissive.
         result = search_untappd(beer_name_jp, validate_brewery=brewery_name)
         if result:
             logger.info(f"Found direct link (JP name): {result}")
@@ -212,6 +262,8 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
             
     # Final Fallback: Return search URL
     final_query = search_query if search_query.strip() else (beer_name or beer_name_jp or "")
+    # Also clean the final query
+    final_query = clean_beer_name(final_query) or final_query
     encoded_query = urllib.parse.quote(final_query)
     fallback_url = f"https://untappd.com/search?q={encoded_query}"
     logger.info("No direct link found. Returning search URL.")
