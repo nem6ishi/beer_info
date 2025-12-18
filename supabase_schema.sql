@@ -72,7 +72,9 @@ CREATE INDEX IF NOT EXISTS idx_scraped_name ON scraped_beers USING gin(to_tsvect
 
 -- 6. beer_info_view: Unified view for API
 -- Casts prices and ratings to numeric for sorting
-CREATE OR REPLACE VIEW beer_info_view AS
+-- Using SECURITY INVOKER so RLS policies of the querying user are applied
+CREATE OR REPLACE VIEW beer_info_view
+WITH (security_invoker = on) AS
 SELECT
   s.url,
   s.name,
