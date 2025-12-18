@@ -98,6 +98,26 @@ async def process_beer_missing(beer, supabase, offline=False):
             except Exception as e:
                 logger.error(f"  ⚠️ Error checking persistence: {e}")
 
+        # Try to find known brewery URL for priority search
+        brewery_url_hint = None
+        if brewery:
+            # We use a simple global cache for BreweryManager to avoid reloading for every beer
+            global _brewery_manager
+            if '_brewery_manager' not in globals():
+                from app.services.brewery_manager import BreweryManager
+                try:
+                    _brewery_manager = BreweryManager()
+                except Exception as e:
+                    logger.warning(f"  ⚠️  Could not load BreweryManager: {e}")
+                    _brewery_manager = None
+            
+            if _brewery_manager:
+                b_info = _brewery_manager.brewery_index.get(brewery.lower())
+                if b_info:
+                    brewery_url_hint = b_info.get('untappd_url')
+                    if brewery_url_hint:
+                        logger.info(f"  🏢 Known brewery URL found: {brewery_url_hint}")
+
         # Search if no URL found yet
         if not untappd_url:
             if offline:
@@ -119,7 +139,7 @@ async def process_beer_missing(beer, supabase, offline=False):
             else:
                 logger.info(f"  🔍 Searching Untappd for: {brewery} - {beer_name}")
                 beer_name_jp_clean = beer.get('beer_name_jp')
-                untappd_url = get_untappd_url(brewery, beer_name, beer_name_jp=beer_name_jp_clean)
+                untappd_url = get_untappd_url(brewery, beer_name, beer_name_jp=beer_name_jp_clean, brewery_url=brewery_url_hint)
         
         if untappd_url:
             scraped_updates['untappd_url'] = untappd_url

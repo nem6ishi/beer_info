@@ -36,9 +36,28 @@ async def refresh_arome_top16():
     
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
-    # 1. Scrape Top 16
+    # 1. Get ALL existing Arôme URLs to skip redundant detail fetches
+    print("  Loading existing Arôme URLs to optimize fetching...")
+    existing_urls = set()
+    start = 0
+    chunk_size = 1000
+    while True:
+        existing_res = supabase.table('scraped_beers') \
+            .select('url') \
+            .eq('shop', 'Arôme') \
+            .range(start, start + chunk_size - 1) \
+            .execute()
+        if not existing_res.data:
+            break
+        existing_urls.update(row['url'] for row in existing_res.data)
+        if len(existing_res.data) < chunk_size:
+            break
+        start += chunk_size
+    print(f"  Loaded {len(existing_urls)} existing URLs.")
+
+    # 2. Scrape Top 16
     print("\n🔍 Scraping top 16 items from Arôme...")
-    items = await scrape_arome(limit=16, existing_urls=None, full_scrape=True)
+    items = await scrape_arome(limit=16, existing_urls=existing_urls, full_scrape=True)
     
     if not items:
         print("❌ No items found.")

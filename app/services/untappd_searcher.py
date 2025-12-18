@@ -153,7 +153,7 @@ def validate_brewery_match(result_element: BeautifulSoup, expected_brewery: str)
     logger.debug(f"Validation failed: Result '{result_brewery}' ({rb_norm}) != Expected '{expected_brewery}' ({eb_norm})")
     return False
 
-def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None) -> Optional[str]:
+def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None, brewery_url: str = None) -> Optional[str]:
     """
     Searches for an Untappd beer page using direct scraping of Untappd.com.
     
@@ -161,6 +161,7 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
         brewery_name (str): Name of the brewery (prefer English).
         beer_name (str): Name of the beer (prefer English).
         beer_name_jp (str): Name of the beer in Japanese (optional fallback).
+        brewery_url (str): Known Untappd URL of the brewery (optional priority search).
         
     Returns:
         Optional[str]: A direct beer page URL if found, otherwise the search result page URL.
@@ -200,6 +201,25 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
             logger.error(f"Search error for '{query}': {e}")
         
         return None
+
+    # PRIORITY 1: SEARCH WITHIN BREWERY PAGE IF URL KNOWN
+    if brewery_url and (beer_name or beer_name_jp):
+        logger.info(f"Prioritizing brewery-specific search for: {brewery_name} (URL: {brewery_url})")
+        query_for_b = beer_name or beer_name_jp
+        # Clean it a bit (remove brewery if present)
+        if brewery_name.lower() in query_for_b.lower():
+            query_for_b = query_for_b.replace(brewery_name, "").strip()
+        
+        # Also try without suffix
+        query_fallback = strip_beer_suffix(query_for_b) or query_for_b
+        
+        for q in [query_for_b, query_fallback]:
+            if not q: continue
+            logger.info(f"Searching within known brewery page: {q}")
+            result = search_brewery_beer(brewery_url, q)
+            if result:
+                logger.debug(f"Found direct link (priority brewery): {result}")
+                return result
 
     # Primary Search: beer_name + brewery_name (or alias)
     if beer_name:
@@ -277,7 +297,28 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
         if result:
             logger.info(f"Found direct link (JP name): {result}")
             return result
+
+    # Brewery-Specific Fallback (if URL NOT known but we can find it)
+    if brewery_name and (beer_name or beer_name_jp) and not brewery_url:
+        logger.info(f"Trying brewery-specific search for: {brewery_name}")
+        b_url = search_brewery(brewery_name)
+        if b_url:
+            query_for_b = beer_name or beer_name_jp
+            # Clean it a bit (remove brewery if present)
+            if brewery_name.lower() in query_for_b.lower():
+                query_for_b = query_for_b.replace(brewery_name, "").strip()
             
+            # Also try without suffix
+            query_fallback = strip_beer_suffix(query_for_b) or query_for_b
+            
+            for q in [query_for_b, query_fallback]:
+                if not q: continue
+                logger.info(f"Searching within brewery page: {q}")
+                result = search_brewery_beer(b_url, q)
+                if result:
+                    logger.info(f"Found direct link (brewery fallback): {result}")
+                    return result
+
     # Final Fallback: Return search URL
     # Build fallback query from available info
     if beer_name:
@@ -292,6 +333,42 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None)
     fallback_url = f"https://untappd.com/search?q={encoded_query}"
     logger.info("No direct link found. Returning search URL.")
     return fallback_url
+
+
+def search_brewery_beer(brewery_url: str, query: str) -> Optional[str]:
+    """
+    Searches for a beer within a specific brewery's page on Untappd.
+    Navigate to /beer?q={query}&sort=created_at_desc
+    """
+    if not brewery_url or not query:
+        return None
+    
+    encoded_query = urllib.parse.quote(query)
+    # Ensure URL ends without slash before appending
+    base_url = brewery_url.rstrip('/')
+    url = f"{base_url}/beer?q={encoded_query}&sort=created_at_desc"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, 'lxml')
+            # In the brewery's beer list, items are usually in .beer-item
+            results = soup.select('.beer-item')
+            for res in results[:3]:
+                name_tag = res.select_one('.name a')
+                if name_tag:
+                    href = name_tag.get('href')
+                    if href and "/b/" in href:
+                        # Success
+                        return f"https://untappd.com{href}"
+    except Exception as e:
+        logger.error(f"Brewery beer search error for '{query}' at {brewery_url}: {e}")
+        
+    return None
 
 
 def scrape_beer_details(url: str) -> UntappdBeerDetails:

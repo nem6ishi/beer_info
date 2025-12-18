@@ -12,10 +12,12 @@ export default function GroupedBeers() {
     // State for data
     const [groups, setGroups] = useState([])
     const [shopCounts, setShopCounts] = useState({})
-    const [loading, setLoading] = useState(true)
+    const [loading, setLoading] = useState(false) // Start as false to avoid initial lock
     const [error, setError] = useState(null)
     const [totalPages, setTotalPages] = useState(0)
     const [totalItems, setTotalItems] = useState(0)
+    const [mounted, setMounted] = useState(false)
+    const [forcedReady, setForcedReady] = useState(false)
 
     // UI State
     const [searchInput, setSearchInput] = useState('')
@@ -46,7 +48,8 @@ export default function GroupedBeers() {
 
     // Initialize search input from URL once router is ready. 
     useEffect(() => {
-        if (router.isReady) {
+        setMounted(true)
+        if (router.isReady || forcedReady) {
             setSearchInput(router.query.search || '')
             // Don't need styleInput state anymore, using router directly for multi-select
             setTempFilters({
@@ -76,12 +79,24 @@ export default function GroupedBeers() {
                 })
                 .catch(err => console.error('Failed to load breweries', err))
         }
-    }, [router.isReady])
+    }, [router.isReady, forcedReady])
+
+    // Safety timeout for router.isReady
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (!router.isReady) {
+                console.warn("Router not ready after 3s, forcing ready state for Safari/280blocker resilience.");
+                setForcedReady(true);
+            }
+        }, 3000);
+        return () => clearTimeout(timer);
+    }, [router.isReady, forcedReady]);
 
     // Data Fetching
     // Data Fetching
     const fetchGroups = useCallback(async () => {
-        if (!router.isReady) return;
+        if (!router.isReady && !forcedReady) return;
+        if (!mounted) return;
 
         setLoading(true);
         setError(null);
@@ -117,7 +132,7 @@ export default function GroupedBeers() {
         } finally {
             setLoading(false);
         }
-    }, [router.isReady, router.query]);
+    }, [router.isReady, router.query, mounted, forcedReady]);
 
     // Fetch on URL change
     useEffect(() => {
@@ -146,7 +161,7 @@ export default function GroupedBeers() {
 
     // Filter Logic
     const activeFilterCount = (() => {
-        if (!router.isReady) return 0
+        if (!router.isReady && !forcedReady) return 0
         const keys = ['limit', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter', 'missing_untappd', 'set_mode'] // Limit acts like a filter param
         return keys.filter(k => !!router.query[k] && k !== 'limit' && k !== 'sort' && k !== 'page').length // Exclude structural params from badge count
     })()
@@ -163,7 +178,7 @@ export default function GroupedBeers() {
 
     // Debounced effect for Advanced Filters (ABV, IBU, Rating)
     useEffect(() => {
-        if (!router.isReady) return
+        if (!router.isReady && !forcedReady) return
 
         const timeoutId = setTimeout(() => {
             const query = router.query
@@ -183,7 +198,7 @@ export default function GroupedBeers() {
 
         return () => clearTimeout(timeoutId)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tempFilters, router.isReady])
+    }, [tempFilters, router.isReady, forcedReady])
 
     const handleMultiSelectChange = (paramKey, newValues) => {
         const valueStr = newValues.join(',')
@@ -228,7 +243,7 @@ export default function GroupedBeers() {
 
     // Debounce search update to URL
     useEffect(() => {
-        if (!router.isReady) return
+        if (!router.isReady && !forcedReady) return
 
         const currentUrlSearch = router.query.search || ''
         if (searchInput === currentUrlSearch) return
@@ -239,7 +254,7 @@ export default function GroupedBeers() {
 
         return () => clearTimeout(timeoutId)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchInput, router.isReady])
+    }, [searchInput, router.isReady, forcedReady])
 
 
     const handleSort = (e) => {

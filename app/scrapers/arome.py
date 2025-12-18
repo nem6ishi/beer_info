@@ -17,6 +17,25 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
 }
 
+from requests.adapters import HTTPAdapter
+from urllib3.util.ssl_ import create_urllib3_context
+
+# Custom adapter to handle weak DH keys (DH_KEY_TOO_SMALL)
+class LegacySSLAdapter(HTTPAdapter):
+    def init_poolmanager(self, *args, **kwargs):
+        ctx = create_urllib3_context()
+        ctx.load_default_certs()
+        ctx.set_ciphers('DEFAULT@SECLEVEL=1')
+        kwargs['ssl_context'] = ctx
+        return super(LegacySSLAdapter, self).init_poolmanager(*args, **kwargs)
+
+    def proxy_manager_for(self, *args, **kwargs):
+        ctx = create_urllib3_context()
+        ctx.load_default_certs()
+        ctx.set_ciphers('DEFAULT@SECLEVEL=1')
+        kwargs['ssl_context'] = ctx
+        return super(LegacySSLAdapter, self).proxy_manager_for(*args, **kwargs)
+
 def normalize_url(url: str) -> str:
     """Extracts product_id to ensure consistent URL matching."""
     if not url: return url
@@ -158,6 +177,7 @@ def fetch_full_name(session, product_url) -> Optional[str]:
     """
     try:
         # print(f"[Arome] Fetching detail for full name: {product_url}")
+        session.mount("https://", LegacySSLAdapter())
         response = session.get(product_url, headers=HEADERS, timeout=30)
         if response.status_code != 200:
             return None
@@ -196,6 +216,7 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
     
     # Create a session
     session = requests.Session()
+    session.mount("https://", LegacySSLAdapter())
     
     while True:
         url = SEARCH_URL_TEMPLATE.format(page=page)
@@ -238,13 +259,16 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
                     name = product_data["name"]
                     is_existing = existing_urls is not None and product_url in existing_urls
                     
-                    if (name.endswith("...") or name.endswith("…")) and not is_existing:
-                        print(f"[Arome] Name truncated: '{name}'. Fetching detail...")
-                        full_name = fetch_full_name(session, product_url)
-                        if full_name:
-                            print(f"[Arome] Updated name: '{full_name}'")
-                            product_data["name"] = full_name
-                        await asyncio.sleep(0.5) # Be polite when hitting details
+                    if (name.endswith("...") or name.endswith("…")):
+                        if not is_existing:
+                            print(f"[Arome] Name truncated: '{name}'. Fetching detail...")
+                            full_name = fetch_full_name(session, product_url)
+                            if full_name:
+                                print(f"[Arome] Updated name: '{full_name}'")
+                                product_data["name"] = full_name
+                            await asyncio.sleep(0.5) # Be polite when hitting details
+                        else:
+                            print(f"[Arome] Name truncated but item exists. Skipping detail fetch for: {product_url}")
                     
                     # Check if this is an existing item (for new product mode)
                     if existing_urls is not None:

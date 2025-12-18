@@ -124,7 +124,7 @@ async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scr
         beervolta.scrape_beervolta(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
         chouseiya.scrape_chouseiya(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
         ichigo_ichie.scrape_ichigo_ichie(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
-        arome.scrape_arome(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape), # Arome
+        arome.scrape_arome(limit=limit, existing_urls=existing_urls, full_scrape=full_scrape), # Arome
         return_exceptions=True
     )
     

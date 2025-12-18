@@ -44,10 +44,12 @@ function HomeContent() {
     // State for data
     const [beers, setBeers] = useState([])
     const [shopCounts, setShopCounts] = useState({})
-    const [loading, setLoading] = useState(true)
+    const [loading, setLoading] = useState(false) // Start as false to avoid initial lock
     const [error, setError] = useState(null)
     const [totalPages, setTotalPages] = useState(0)
     const [totalItems, setTotalItems] = useState(0)
+    const [mounted, setMounted] = useState(false)
+    const [forcedReady, setForcedReady] = useState(false)
 
     // UI State
     const [searchInput, setSearchInput] = useState('')
@@ -86,7 +88,8 @@ function HomeContent() {
 
     // Initialize search input from URL
     useEffect(() => {
-        if (router.isReady) {
+        setMounted(true)
+        if (router.isReady || forcedReady) {
             setSearchInput(router.query.search || '')
             setTempFilters({
                 min_abv: router.query.min_abv || '',
@@ -105,11 +108,23 @@ function HomeContent() {
             fetch('/api/styles').then(res => res.json()).then(d => d.styles && setAvailableStyles(d.styles)).catch(console.error)
             fetch('/api/breweries').then(res => res.json()).then(d => d.breweries && setAvailableBreweries(d.breweries)).catch(console.error)
         }
-    }, [router.isReady])
+    }, [router.isReady, forcedReady])
+
+    // Safety timeout for router.isReady
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (!router.isReady) {
+                console.warn("Router not ready after 3s, forcing ready state for Safari/280blocker resilience.");
+                setForcedReady(true);
+            }
+        }, 3000);
+        return () => clearTimeout(timer);
+    }, [router.isReady, forcedReady]);
 
     // Data Fetching
     const fetchBeers = useCallback(async () => {
-        if (!router.isReady) return;
+        if (!router.isReady && !forcedReady) return;
+        if (!mounted) return;
 
         setLoading(true);
         setError(null);
@@ -157,7 +172,7 @@ function HomeContent() {
         } finally {
             setLoading(false);
         }
-    }, [router.isReady, router.query]);
+    }, [router.isReady, router.query, mounted, forcedReady]);
 
     // Fetch on URL change
     useEffect(() => {
@@ -180,7 +195,7 @@ function HomeContent() {
     }
 
     const activeFilterCount = (() => {
-        if (!router.isReady) return 0
+        if (!router.isReady && !forcedReady) return 0
         const keys = ['min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'shop', 'style_filter', 'brewery_filter', 'untappd_status', 'set_mode']
         return keys.filter(k => !!router.query[k]).length
     })()
