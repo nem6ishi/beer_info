@@ -41,7 +41,7 @@ def record_search_failure(
         
         now = datetime.now(timezone.utc).isoformat()
         
-        if existing.data:
+        if existing and existing.data:
             # Update existing failure record
             supabase.table('untappd_search_failures') \
                 .update({
