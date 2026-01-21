@@ -11,9 +11,11 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Set, Optional
 
 from app.core.db import get_supabase_client
-from app.services.untappd.searcher import get_untappd_url, scrape_beer_details, UntappdBeerDetails
+from app.services.untappd.searcher import get_untappd_url, scrape_beer_details, UntappdBeerDetails, UntappdSearchResult
 
 logger = logging.getLogger(__name__)
+
+from app.commands.failure_tracker import record_search_failure, resolve_search_failure
 
 def map_details_to_payload(details: UntappdBeerDetails):
     """Maps scraper keys to untappd_data table columns."""
@@ -128,7 +130,28 @@ async def process_beer_missing(beer: dict, offline: bool = False):
             else:
                 logger.info(f"  🔍 Searching Untappd for: {brewery} - {beer_name}")
                 beer_name_jp_clean = beer.get('beer_name_jp')
-                untappd_url = get_untappd_url(brewery, beer_name, beer_name_jp=beer_name_jp_clean, brewery_url=brewery_url_hint)
+                search_result = get_untappd_url(brewery, beer_name, beer_name_jp=beer_name_jp_clean, brewery_url=brewery_url_hint)
+                
+                # Handle search result
+                if not search_result.get('success'):
+                    # Record failure
+                    if beer.get('url'):
+                        record_search_failure(
+                            supabase,
+                            product_url=beer['url'],
+                            brewery_name=brewery,
+                            beer_name=beer_name,
+                            beer_name_jp=beer_name_jp_clean,
+                            failure_reason=search_result.get('failure_reason', 'unknown'),
+                            error_message=search_result.get('error_message')
+                        )
+                    
+                    # If we got a search URL fallback, don't save it
+                    if search_result.get('failure_reason') == 'no_results':
+                        logger.info(f"  ⏭️  No direct link found. Failure recorded.")
+                        return None
+                
+                untappd_url = search_result.get('url')
         
         if untappd_url:
             scraped_updates['untappd_url'] = untappd_url
@@ -136,6 +159,10 @@ async def process_beer_missing(beer: dict, offline: bool = False):
             untappd_payload['untappd_url'] = untappd_url # PK
             
             logger.info(f"  ✅ Found URL: {untappd_url}")
+            
+            # Mark any existing failure as resolved
+            if beer.get('url'):
+                resolve_search_failure(supabase, beer['url'])
             
             # Check if this URL already exists in untappd_data table
             existing_entry = supabase.table('untappd_data').select('untappd_url, fetched_at').eq('untappd_url', untappd_url).execute()

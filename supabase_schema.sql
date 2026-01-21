@@ -62,12 +62,35 @@ CREATE TABLE IF NOT EXISTS breweries (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 5. untappd_search_failures: Track failed Untappd searches
+CREATE TABLE IF NOT EXISTS untappd_search_failures (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  product_url TEXT NOT NULL, -- Reference to scraped_beers.url
+  brewery_name TEXT,
+  beer_name TEXT,
+  beer_name_jp TEXT,
+  failure_reason TEXT NOT NULL, -- 'missing_info', 'no_results', 'network_error', 'validation_failed'
+  search_attempts INTEGER DEFAULT 1,
+  last_error_message TEXT,
+  first_failed_at TIMESTAMPTZ DEFAULT NOW(),
+  last_failed_at TIMESTAMPTZ DEFAULT NOW(),
+  resolved BOOLEAN DEFAULT false,
+  resolved_at TIMESTAMPTZ,
+  notes TEXT
+);
+
 -- 5. Indices for Performance
 CREATE INDEX IF NOT EXISTS idx_scraped_beers_shop ON scraped_beers(shop);
 CREATE INDEX IF NOT EXISTS idx_scraped_beers_last_seen ON scraped_beers(last_seen DESC);
 CREATE INDEX IF NOT EXISTS idx_scraped_beers_first_seen ON scraped_beers(first_seen DESC);
 -- Full-text search index (optional, but good for raw name search)
 CREATE INDEX IF NOT EXISTS idx_scraped_name ON scraped_beers USING gin(to_tsvector('english', name));
+
+-- Indices for untappd_search_failures
+CREATE INDEX IF NOT EXISTS idx_untappd_failures_product_url ON untappd_search_failures(product_url);
+CREATE INDEX IF NOT EXISTS idx_untappd_failures_resolved ON untappd_search_failures(resolved);
+CREATE INDEX IF NOT EXISTS idx_untappd_failures_reason ON untappd_search_failures(failure_reason);
+CREATE INDEX IF NOT EXISTS idx_untappd_failures_last_failed ON untappd_search_failures(last_failed_at DESC);
 
 
 -- 6. beer_info_view: Unified view for API
@@ -127,18 +150,21 @@ ALTER TABLE scraped_beers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gemini_data ENABLE ROW LEVEL SECURITY;
 ALTER TABLE untappd_data ENABLE ROW LEVEL SECURITY;
 ALTER TABLE breweries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE untappd_search_failures ENABLE ROW LEVEL SECURITY;
 
 -- Allow anonymous read access (for frontend)
 CREATE POLICY "Public Read Scraped" ON scraped_beers FOR SELECT TO anon USING (true);
 CREATE POLICY "Public Read Gemini" ON gemini_data FOR SELECT TO anon USING (true);
 CREATE POLICY "Public Read Untappd" ON untappd_data FOR SELECT TO anon USING (true);
 CREATE POLICY "Public Read Breweries" ON breweries FOR SELECT TO anon USING (true);
+CREATE POLICY "Public Read Failures" ON untappd_search_failures FOR SELECT TO anon USING (true);
 
 -- Allow authenticated write access (for GitHub Actions/Scripts)
 CREATE POLICY "Auth Write Scraped" ON scraped_beers FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Auth Write Gemini" ON gemini_data FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Auth Write Untappd" ON untappd_data FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Auth Write Breweries" ON breweries FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth Write Failures" ON untappd_search_failures FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- Function for stats (updated to work with new tables)
 CREATE OR REPLACE FUNCTION get_beer_stats()

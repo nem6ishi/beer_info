@@ -28,6 +28,13 @@ class UntappdBreweryDetails(TypedDict, total=False):
     stats: dict # {total, unique, monthly, ratings}
     fetched_at: str
 
+class UntappdSearchResult(TypedDict, total=False):
+    """Result of an Untappd search operation."""
+    url: Optional[str]  # Found URL (may be search URL as fallback)
+    success: bool  # True if direct beer page found
+    failure_reason: Optional[str]  # 'missing_info', 'no_results', 'network_error', 'validation_failed'
+    error_message: Optional[str]  # Detailed error message for logging
+
 
 BREWERY_ALIASES = {
     "鬼伝説": ["Wakasaimo"],
@@ -153,7 +160,7 @@ def validate_brewery_match(result_element: BeautifulSoup, expected_brewery: str)
     logger.debug(f"Validation failed: Result '{result_brewery}' ({rb_norm}) != Expected '{expected_brewery}' ({eb_norm})")
     return False
 
-def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None, brewery_url: str = None) -> Optional[str]:
+def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None, brewery_url: str = None) -> UntappdSearchResult:
     """
     Searches for an Untappd beer page using direct scraping of Untappd.com.
     
@@ -164,10 +171,15 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
         brewery_url (str): Known Untappd URL of the brewery (optional priority search).
         
     Returns:
-        Optional[str]: A direct beer page URL if found, otherwise the search result page URL.
+        UntappdSearchResult: Structured result with URL, success status, and failure reason if applicable.
     """
     if not brewery_name and not beer_name and not beer_name_jp:
-        return None
+        return {
+            'url': None,
+            'success': False,
+            'failure_reason': 'missing_info',
+            'error_message': 'No brewery or beer name provided'
+        }
 
     def search_untappd(query: str, validate_brewery: str = None) -> Optional[str]:
         """Helper to perform a single search attempt."""
@@ -199,110 +211,14 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
                                 
         except Exception as e:
             logger.error(f"Search error for '{query}': {e}")
+            raise  # Re-raise to be caught by outer handler
         
         return None
 
-    # PRIORITY 1: SEARCH WITHIN BREWERY PAGE IF URL KNOWN
-    if brewery_url and (beer_name or beer_name_jp):
-        logger.info(f"Prioritizing brewery-specific search for: {brewery_name} (URL: {brewery_url})")
-        query_for_b = beer_name or beer_name_jp
-        # Clean it a bit (remove brewery if present)
-        if brewery_name.lower() in query_for_b.lower():
-            query_for_b = query_for_b.replace(brewery_name, "").strip()
-        
-        # Also try without suffix
-        query_fallback = strip_beer_suffix(query_for_b) or query_for_b
-        
-        for q in [query_for_b, query_fallback]:
-            if not q: continue
-            logger.info(f"Searching within known brewery page: {q}")
-            result = search_brewery_beer(brewery_url, q)
-            if result:
-                logger.debug(f"Found direct link (priority brewery): {result}")
-                return result
-
-    # Primary Search: beer_name + brewery_name (or alias)
-    if beer_name:
-        parts = []
-        parts.append(beer_name)
-        
-        search_brewery_name = brewery_name
-        if brewery_name and brewery_name in BREWERY_ALIASES:
-            # Use the first alias (English) for better search results
-            search_brewery_name = BREWERY_ALIASES[brewery_name][0]
-            logger.info(f"Using alias for search: {brewery_name} -> {search_brewery_name}")
-            
-        if search_brewery_name: parts.append(search_brewery_name)
-        
-        search_query = " ".join(parts)
-        logger.info(f"Searching: {search_query}")
-        
-        # We pass brewery_name for validation since we are explicitly searching for it
-        result = search_untappd(search_query, validate_brewery=brewery_name)
-        if result:
-            logger.info(f"Found direct link: {result}")
-            return result
-    
-    # Fallback Search: beer_name only
-    # Only do this if we actually have a brewery name to validate against, 
-    # otherwise searching for just "Pale Ale" is useless.
-    if beer_name and brewery_name:
-        logger.info(f"Fallback search (Beer Name Only): {beer_name}")
-        # CRITICAL: Must validate brewery here, otherwise we get random matching beer
-        result = search_untappd(beer_name, validate_brewery=brewery_name)
-        if result:
-            logger.info(f"Found direct link (fallback): {result}")
-            return result
-            
-    # Advanced Fallback: Strip common style suffixes
-    if beer_name:
-        stripped_name = strip_beer_suffix(beer_name)
-        if stripped_name:
-            # Clean the stripped name (removes version markers like 3x, DR. etc)
-            cleaned_stripped = clean_beer_name(stripped_name)
-            
-            # Try 1: {Cleaned Stripped} {Brewery}
-            query = f"{cleaned_stripped} {brewery_name}" if brewery_name else cleaned_stripped
-            logger.info(f"Retrying with cleaned stripped name: {query}")
-            result = search_untappd(query, validate_brewery=brewery_name)
-            if result:
-                logger.info(f"Found direct link (cleaned stripped+brewery): {result}")
-                return result
-                
-            # Try 2: {Cleaned Stripped} only (with validation)
-            if brewery_name:
-                logger.info(f"Retrying with cleaned stripped name only: {cleaned_stripped}")
-                result = search_untappd(cleaned_stripped, validate_brewery=brewery_name)
-                if result:
-                    logger.info(f"Found direct link (cleaned stripped only): {result}")
-                    return result
-
-    # Japanese Name Fallback
-    if beer_name_jp:
-        # Clean the Japanese name before searching
-        cleaned_jp_name = clean_beer_name(beer_name_jp)
-        
-        # Try with cleaned name first
-        if cleaned_jp_name and cleaned_jp_name != beer_name_jp:
-            search_query_jp = f"{cleaned_jp_name} {brewery_name}" if brewery_name else cleaned_jp_name
-            logger.info(f"Retrying with cleaned Japanese name: {search_query_jp}")
-            result = search_untappd(search_query_jp, validate_brewery=brewery_name)
-            if result:
-                logger.info(f"Found direct link (cleaned JP name): {result}")
-                return result
-        
-        # Try with original Japanese name
-        logger.info(f"Retrying with Japanese name: {beer_name_jp}")
-        result = search_untappd(beer_name_jp, validate_brewery=brewery_name)
-        if result:
-            logger.info(f"Found direct link (JP name): {result}")
-            return result
-
-    # Brewery-Specific Fallback (if URL NOT known but we can find it)
-    if brewery_name and (beer_name or beer_name_jp) and not brewery_url:
-        logger.info(f"Trying brewery-specific search for: {brewery_name}")
-        b_url = search_brewery(brewery_name)
-        if b_url:
+    try:
+        # PRIORITY 1: SEARCH WITHIN BREWERY PAGE IF URL KNOWN
+        if brewery_url and (beer_name or beer_name_jp):
+            logger.info(f"Prioritizing brewery-specific search for: {brewery_name} (URL: {brewery_url})")
             query_for_b = beer_name or beer_name_jp
             # Clean it a bit (remove brewery if present)
             if brewery_name.lower() in query_for_b.lower():
@@ -313,26 +229,178 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
             
             for q in [query_for_b, query_fallback]:
                 if not q: continue
-                logger.info(f"Searching within brewery page: {q}")
-                result = search_brewery_beer(b_url, q)
+                logger.info(f"Searching within known brewery page: {q}")
+                result = search_brewery_beer(brewery_url, q)
                 if result:
-                    logger.info(f"Found direct link (brewery fallback): {result}")
-                    return result
+                    logger.debug(f"Found direct link (priority brewery): {result}")
+                    return {
+                        'url': result,
+                        'success': True,
+                        'failure_reason': None,
+                        'error_message': None
+                    }
 
-    # Final Fallback: Return search URL
-    # Build fallback query from available info
-    if beer_name:
-        final_query = f"{beer_name} {brewery_name}" if brewery_name else beer_name
-    elif beer_name_jp:
-        final_query = f"{beer_name_jp} {brewery_name}" if brewery_name else beer_name_jp
-    else:
-        final_query = brewery_name or ""
-    # Also clean the final query
-    final_query = clean_beer_name(final_query) or final_query
-    encoded_query = urllib.parse.quote(final_query)
-    fallback_url = f"https://untappd.com/search?q={encoded_query}"
-    logger.info("No direct link found. Returning search URL.")
-    return fallback_url
+        # Primary Search: beer_name + brewery_name (or alias)
+        if beer_name:
+            parts = []
+            parts.append(beer_name)
+            
+            search_brewery_name = brewery_name
+            if brewery_name and brewery_name in BREWERY_ALIASES:
+                # Use the first alias (English) for better search results
+                search_brewery_name = BREWERY_ALIASES[brewery_name][0]
+                logger.info(f"Using alias for search: {brewery_name} -> {search_brewery_name}")
+                
+            if search_brewery_name: parts.append(search_brewery_name)
+            
+            search_query = " ".join(parts)
+            logger.info(f"Searching: {search_query}")
+            
+            # We pass brewery_name for validation since we are explicitly searching for it
+            result = search_untappd(search_query, validate_brewery=brewery_name)
+            if result:
+                logger.info(f"Found direct link: {result}")
+                return {
+                    'url': result,
+                    'success': True,
+                    'failure_reason': None,
+                    'error_message': None
+                }
+        
+        # Fallback Search: beer_name only
+        # Only do this if we actually have a brewery name to validate against, 
+        # otherwise searching for just "Pale Ale" is useless.
+        if beer_name and brewery_name:
+            logger.info(f"Fallback search (Beer Name Only): {beer_name}")
+            # CRITICAL: Must validate brewery here, otherwise we get random matching beer
+            result = search_untappd(beer_name, validate_brewery=brewery_name)
+            if result:
+                logger.info(f"Found direct link (fallback): {result}")
+                return {
+                    'url': result,
+                    'success': True,
+                    'failure_reason': None,
+                    'error_message': None
+                }
+                
+        # Advanced Fallback: Strip common style suffixes
+        if beer_name:
+            stripped_name = strip_beer_suffix(beer_name)
+            if stripped_name:
+                # Clean the stripped name (removes version markers like 3x, DR. etc)
+                cleaned_stripped = clean_beer_name(stripped_name)
+                
+                # Try 1: {Cleaned Stripped} {Brewery}
+                query = f"{cleaned_stripped} {brewery_name}" if brewery_name else cleaned_stripped
+                logger.info(f"Retrying with cleaned stripped name: {query}")
+                result = search_untappd(query, validate_brewery=brewery_name)
+                if result:
+                    logger.info(f"Found direct link (cleaned stripped+brewery): {result}")
+                    return {
+                        'url': result,
+                        'success': True,
+                        'failure_reason': None,
+                        'error_message': None
+                    }
+                    
+                # Try 2: {Cleaned Stripped} only (with validation)
+                if brewery_name:
+                    logger.info(f"Retrying with cleaned stripped name only: {cleaned_stripped}")
+                    result = search_untappd(cleaned_stripped, validate_brewery=brewery_name)
+                    if result:
+                        logger.info(f"Found direct link (cleaned stripped only): {result}")
+                        return {
+                            'url': result,
+                            'success': True,
+                            'failure_reason': None,
+                            'error_message': None
+                        }
+
+        # Japanese Name Fallback
+        if beer_name_jp:
+            # Clean the Japanese name before searching
+            cleaned_jp_name = clean_beer_name(beer_name_jp)
+            
+            # Try with cleaned name first
+            if cleaned_jp_name and cleaned_jp_name != beer_name_jp:
+                search_query_jp = f"{cleaned_jp_name} {brewery_name}" if brewery_name else cleaned_jp_name
+                logger.info(f"Retrying with cleaned Japanese name: {search_query_jp}")
+                result = search_untappd(search_query_jp, validate_brewery=brewery_name)
+                if result:
+                    logger.info(f"Found direct link (cleaned JP name): {result}")
+                    return {
+                        'url': result,
+                        'success': True,
+                        'failure_reason': None,
+                        'error_message': None
+                    }
+            
+            # Try with original Japanese name
+            logger.info(f"Retrying with Japanese name: {beer_name_jp}")
+            result = search_untappd(beer_name_jp, validate_brewery=brewery_name)
+            if result:
+                logger.info(f"Found direct link (JP name): {result}")
+                return {
+                    'url': result,
+                    'success': True,
+                    'failure_reason': None,
+                    'error_message': None
+                }
+
+        # Brewery-Specific Fallback (if URL NOT known but we can find it)
+        if brewery_name and (beer_name or beer_name_jp) and not brewery_url:
+            logger.info(f"Trying brewery-specific search for: {brewery_name}")
+            b_url = search_brewery(brewery_name)
+            if b_url:
+                query_for_b = beer_name or beer_name_jp
+                # Clean it a bit (remove brewery if present)
+                if brewery_name.lower() in query_for_b.lower():
+                    query_for_b = query_for_b.replace(brewery_name, "").strip()
+                
+                # Also try without suffix
+                query_fallback = strip_beer_suffix(query_for_b) or query_for_b
+                
+                for q in [query_for_b, query_fallback]:
+                    if not q: continue
+                    logger.info(f"Searching within brewery page: {q}")
+                    result = search_brewery_beer(b_url, q)
+                    if result:
+                        logger.info(f"Found direct link (brewery fallback): {result}")
+                        return {
+                            'url': result,
+                            'success': True,
+                            'failure_reason': None,
+                            'error_message': None
+                        }
+
+        # Final Fallback: Return search URL as failure
+        # Build fallback query from available info
+        if beer_name:
+            final_query = f"{beer_name} {brewery_name}" if brewery_name else beer_name
+        elif beer_name_jp:
+            final_query = f"{beer_name_jp} {brewery_name}" if brewery_name else beer_name_jp
+        else:
+            final_query = brewery_name or ""
+        # Also clean the final query
+        final_query = clean_beer_name(final_query) or final_query
+        encoded_query = urllib.parse.quote(final_query)
+        fallback_url = f"https://untappd.com/search?q={encoded_query}"
+        logger.info("No direct link found. Returning search URL as failure.")
+        return {
+            'url': fallback_url,
+            'success': False,
+            'failure_reason': 'no_results',
+            'error_message': f'No direct beer page found after all search strategies for: {final_query}'
+        }
+    
+    except Exception as e:
+        logger.error(f"Network error during Untappd search: {e}")
+        return {
+            'url': None,
+            'success': False,
+            'failure_reason': 'network_error',
+            'error_message': str(e)
+        }
 
 
 def search_brewery_beer(brewery_url: str, query: str) -> Optional[str]:
