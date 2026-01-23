@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS gemini_data (
   brewery_name_jp TEXT,
   beer_name_en TEXT,
   beer_name_jp TEXT,
+  product_type TEXT DEFAULT 'beer',
+  is_set BOOLEAN DEFAULT false,
   payload JSONB, -- Raw response for debugging
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -116,6 +118,7 @@ SELECT
   g.brewery_name_jp,
   g.beer_name_en,
   g.beer_name_jp,
+  g.product_type,
   g.is_set,
   
   -- Untappd Data

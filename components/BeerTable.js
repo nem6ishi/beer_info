@@ -42,11 +42,11 @@ export default function BeerTable({ beers, loading, error }) {
                             </td>
                             <td className="col-name">
                                 <BeerInfoCell
-                                    brewery={(beer.untappd_url && !beer.untappd_url.includes('/search') && !beer.is_set) ? beer.untappd_brewery_name : null}
-                                    beer={(beer.untappd_url && !beer.untappd_url.includes('/search') && !beer.is_set) ? beer.untappd_beer_name : beer.name}
-                                    logo={(beer.untappd_url && !beer.untappd_url.includes('/search') && !beer.is_set) ? beer.brewery_logo : null}
-                                    location={(beer.untappd_url && !beer.untappd_url.includes('/search') && !beer.is_set) ? beer.brewery_location : null}
-                                    type={(beer.untappd_url && !beer.untappd_url.includes('/search') && !beer.is_set) ? beer.brewery_type : null}
+                                    brewery={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.untappd_brewery_name : null}
+                                    beer={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.untappd_beer_name : beer.name}
+                                    logo={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.brewery_logo : null}
+                                    location={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.brewery_location : null}
+                                    type={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.brewery_type : null}
                                 />
                             </td>
                             <td className="col-beer-style">

@@ -68,11 +68,11 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                 </td>
                                 <td className="col-name">
                                     <BeerInfoCell
-                                        brewery={(group.untappd_url && !group.untappd_url.includes('/search') && !group.is_set) ? group.brewery : null}
-                                        beer={(group.untappd_url && !group.untappd_url.includes('/search') && !group.is_set) ? group.beer_name : (cheapestItem?.name || group.beer_name)}
-                                        logo={(group.untappd_url && !group.untappd_url.includes('/search') && !group.is_set) ? group.brewery_logo : null}
-                                        location={(group.untappd_url && !group.untappd_url.includes('/search') && !group.is_set) ? group.brewery_location : null}
-                                        type={(group.untappd_url && !group.untappd_url.includes('/search') && !group.is_set) ? group.brewery_type : null}
+                                        brewery={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery : null}
+                                        beer={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.beer_name : (cheapestItem?.name || group.beer_name)}
+                                        logo={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_logo : null}
+                                        location={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_location : null}
+                                        type={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_type : null}
                                     />
                                 </td>
                                 <td className="col-beer-style">

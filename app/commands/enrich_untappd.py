@@ -49,8 +49,8 @@ async def process_beer_missing(beer: dict, offline: bool = False):
     brewery = beer.get('brewery_name_en') or beer.get('brewery_name_jp')
     beer_name = beer.get('beer_name_en') or beer.get('beer_name_jp')
     
-    if beer.get('is_set'):
-        logger.info(f"  📦 Item is a Set/Merch. Skipping Untappd.")
+    if beer.get('product_type') and beer.get('product_type') != 'beer':
+        logger.info(f"  ⏭️ Item is a {beer.get('product_type')}. Skipping Untappd.")
         return None
 
     if not brewery or not beer_name:
@@ -299,7 +299,7 @@ async def enrich_untappd(limit: int = 50, mode: str = 'missing', shop_filter: st
             query = supabase.table('beer_info_view') \
                 .select('*') \
                 .is_('untappd_url', None) \
-                .or_('is_set.is.null,is_set.eq.false')
+                .eq('product_type', 'beer')
             
             if shop_filter:
                 query = query.eq('shop', shop_filter)
