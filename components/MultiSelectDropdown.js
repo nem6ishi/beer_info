@@ -25,9 +25,21 @@ export default function MultiSelectDropdown({ options, selectedValues, onChange,
         onChange(newValues)
     }
 
-    const filteredOptions = searchable
+    // Filter and sort options: selected items first, then alphabetically
+    const filteredAndSortedOptions = (searchable
         ? options.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase()))
         : options
+    ).sort((a, b) => {
+        const aSelected = selectedValues.includes(a.value)
+        const bSelected = selectedValues.includes(b.value)
+
+        // Selected items first
+        if (aSelected && !bSelected) return -1
+        if (!aSelected && bSelected) return 1
+
+        // Otherwise, sort alphabetically
+        return a.label.localeCompare(b.label)
+    })
 
     const getDisplayLabel = () => {
         if (selectedValues.length === 0) return placeholder
@@ -59,8 +71,8 @@ export default function MultiSelectDropdown({ options, selectedValues, onChange,
                         </div>
                     )}
                     <div className="multi-select-options">
-                        {filteredOptions.length > 0 ? (
-                            filteredOptions.map((option) => (
+                        {filteredAndSortedOptions.length > 0 ? (
+                            filteredAndSortedOptions.map((option) => (
                                 <label key={option.value} className="multi-select-option">
                                     <input
                                         type="checkbox"
