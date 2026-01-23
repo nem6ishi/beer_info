@@ -526,16 +526,34 @@ def scrape_brewery_details(url: str) -> UntappdBreweryDetails:
         
     logger.info(f"Scraping brewery details from: {url}")
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://untappd.com/"
     }
     
     try:
         resp = requests.get(url, headers=headers, timeout=10)
+        html = resp.text
         if resp.status_code != 200:
-            logger.warning(f"Failed to load brewery details. Status: {resp.status_code}")
-            return details
+            logger.warning(f"Failed to load brewery details with requests. Status: {resp.status_code}. Trying curl fallback...")
+            import subprocess
+            curl_cmd = [
+                'curl', '-s', '-L',
+                '-H', f"User-Agent: {headers['User-Agent']}",
+                '-H', f"Accept: {headers['Accept']}",
+                '-H', f"Referer: {headers['Referer']}",
+                url
+            ]
+            curl_res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=15)
+            if curl_res.returncode == 0 and len(curl_res.stdout) > 1000:
+                html = curl_res.stdout
+                logger.info("  ✅ Curl fallback successful")
+            else:
+                logger.error(f"  ❌ Curl fallback failed or returned too little data (code: {curl_res.returncode})")
+                return details
             
-        soup = BeautifulSoup(resp.text, 'lxml')
+        soup = BeautifulSoup(html, 'lxml')
         
         # Try finding the name directly (H1 is usually the name)
         name_tag = soup.select_one('h1')
@@ -569,9 +587,17 @@ def scrape_brewery_details(url: str) -> UntappdBreweryDetails:
                          details['brewery_type'] = text
         
         # Logo
-        # .logo img is often the site header logo. The brewery logo is usually in div.label or div.basic
-        logo_img = soup.select_one('.label img') or soup.select_one('.basic img') or soup.select_one('.logo img')
-        if logo_img: details['logo_url'] = logo_img.get('src')
+        # Try og:image first as it's very reliable for breweries
+        og_image = soup.find('meta', property='og:image')
+        if og_image and og_image.get('content') and 'brewery_logos' in og_image.get('content'):
+            details['logo_url'] = og_image.get('content')
+        
+        if not details.get('logo_url'):
+            # Fallback to standard selectors
+            # .label.image-big img is common for the main brewery logo
+            logo_img = soup.select_one('.label img') or soup.select_one('.basic img') or soup.select_one('.logo img')
+            if logo_img:
+                details['logo_url'] = logo_img.get('src')
         
         # Website / Socials - usually in .social
         socials = soup.select('.social a')

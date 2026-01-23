@@ -73,10 +73,13 @@ async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: li
                         existing_url = existing_brewery.get('untappd_url')
                         
                         # Same brewery but different URL (e.g., vanity URL vs /w/ URL)
-                        if existing_url != url:
+                        # If existing_url is None, we should definitely update/overwrite it with the new URL
+                        if existing_url and existing_url != url:
                             logger.info(f"  ⏭️  Skipped: '{brewery_name}' already exists with different URL: {existing_url}")
                             processed_urls.add(url)
                             continue
+                        elif not existing_url:
+                            logger.info(f"  📝 Matching to existing record with null URL: {brewery_name}")
                     
                     payload = {
                          'untappd_url': url,
@@ -90,12 +93,26 @@ async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: li
                     }
                     
                     try:
-                        # Check if record exists by untappd_url (primary unique key)
-                        existing_res = supabase.table('breweries').select('id').eq('untappd_url', url).execute()
+                        # Find best match for update
+                        target_id = None
                         
-                        if existing_res.data and len(existing_res.data) > 0:
+                        # 1. Try match by untappd_url
+                        existing_by_url = supabase.table('breweries').select('id').eq('untappd_url', url).execute()
+                        if existing_by_url.data:
+                            target_id = existing_by_url.data[0]['id']
+                        
+                        # 2. If not found, try match by name_en (to avoid duplicate key error)
+                        if not target_id:
+                            existing_by_name = supabase.table('breweries').select('id, untappd_url').eq('name_en', brewery_name).execute()
+                            if existing_by_name.data:
+                                # Only match if the existing record doesn't have a different untappd_url
+                                if not existing_by_name.data[0]['untappd_url'] or existing_by_name.data[0]['untappd_url'] == url:
+                                    target_id = existing_by_name.data[0]['id']
+                                    logger.info(f"  📝 Matching to existing record by name: {brewery_name} (ID: {target_id})")
+
+                        if target_id:
                             # Update existing record
-                            supabase.table('breweries').update(payload).eq('untappd_url', url).execute()
+                            supabase.table('breweries').update(payload).eq('id', target_id).execute()
                             logger.info(f"  ✅ Updated: {brewery_name}")
                         else:
                             # Insert new record
@@ -176,9 +193,12 @@ async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: li
                             existing_url = existing_brewery.get('untappd_url')
                             
                             # Same brewery but different URL (e.g., vanity URL vs /w/ URL)
-                            if existing_url != url:
+                            # If existing_url is None, allow updating it
+                            if existing_url and existing_url != url:
                                 logger.info(f"  ⏭️  Skipped: '{brewery_name}' already exists with different URL: {existing_url}")
                                 continue
+                            elif not existing_url:
+                                logger.info(f"  📝 Matching to existing record with null URL: {brewery_name}")
                         
                         payload = {
                              'untappd_url': url,
@@ -192,12 +212,26 @@ async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: li
                         }
                         
                         try:
-                            # Check if record exists by untappd_url (primary unique key)
-                            existing_res = supabase.table('breweries').select('id').eq('untappd_url', url).execute()
+                            # Find best match for update
+                            target_id = None
                             
-                            if existing_res.data and len(existing_res.data) > 0:
+                            # 1. Try match by untappd_url
+                            existing_by_url = supabase.table('breweries').select('id').eq('untappd_url', url).execute()
+                            if existing_by_url.data:
+                                target_id = existing_by_url.data[0]['id']
+                            
+                            # 2. If not found, try match by name_en (to avoid duplicate key error)
+                            if not target_id:
+                                existing_by_name = supabase.table('breweries').select('id, untappd_url').eq('name_en', brewery_name).execute()
+                                if existing_by_name.data:
+                                    # Only match if the existing record doesn't have a different untappd_url
+                                    if not existing_by_name.data[0]['untappd_url'] or existing_by_name.data[0]['untappd_url'] == url:
+                                        target_id = existing_by_name.data[0]['id']
+                                        logger.info(f"  📝 Matching to existing record by name: {brewery_name} (ID: {target_id})")
+
+                            if target_id:
                                 # Update existing record
-                                supabase.table('breweries').update(payload).eq('untappd_url', url).execute()
+                                supabase.table('breweries').update(payload).eq('id', target_id).execute()
                                 logger.info(f"  ✅ Updated: {brewery_name}")
                             else:
                                 # Insert new record
