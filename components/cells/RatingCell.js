@@ -1,22 +1,15 @@
 import React from 'react';
 
-export default function RatingCell({ rating, count, url, breweryName }) {
+export default function RatingCell({ rating, count, url, productType }) {
     const displayRating = rating
         ? (typeof rating === 'number' ? rating.toFixed(2) : Number(rating).toFixed(2))
         : 'N/A';
 
     const validUrl = url && !url.includes('/search?q=') ? url : null;
 
-    // If no brewery name, it's likely a non-beer product (goods, merchandise, etc.)
-    const isOthers = !breweryName && !rating;
-
     return (
         <div className="rating-box">
-            {isOthers ? (
-                <div className="set-badge-container">
-                    <span className="set-badge" style={{ background: '#6c757d' }}>📦 Others</span>
-                </div>
-            ) : validUrl ? (
+            {validUrl ? (
                 <a href={validUrl} target="_blank" rel="noopener noreferrer" className="untappd-badge-link">
                     <span className="untappd-header">UNTAPPD ↗</span>
                     <span className="untappd-badge">

@@ -139,77 +139,41 @@ class GeminiExtractor:
         prompt = f"""
         Extract the brewery name and beer name from the following product title string.
         Separate them into Japanese and English versions if present.
-        Also determine if this product is a "set" (multiple different beers, a variety pack, or a glass/merch set) or a single beer product (even if it's a 4-pack of the SAME beer, it counts as a single beer product for enrichment purposes).
+        Also determine the product type: "beer", "set", "glass", or "other".
         Product Title: "{product_name}"{brewery_hint}
 
-        Guidelines:
+        Guidelines for product_type:
+        - "beer": A single beer product (e.g., bottle, can, or a 4-pack/6-pack of the SAME beer).
+        - "set": Multiple DIFFERENT beers, a variety pack, or a combination set of beer and something else.
+        - "glass": Glassware, non-set items like a single beer glass or specialized glass.
+        - "other": Merchandise like T-shirts, stickers, bottle openers, snacks, etc.
+        
+        Guidelines for names:
         - Identify the brewery name and beer name from the title.
         - Common formats include "Beer Name / Brewery Name" or "【Beer Name/Brewery Name】".
         - If the title follows "【A/B】", A is typically the Beer Name and B is the Brewery Name.
-        - Use your knowledge to identify known breweries (e.g., "FETISH CLUB", "UCHU BREWING", "West Coast Brewing").
-        - "NAMACHAN" or "NAMACHAん" refers to "Namachan Brewing". Do NOT confuse it with "Black Tide" even if "Black" appears in the beer name.
-        - If multiple breweries are listed (e.g., collaboration), prioritize and extract the FIRST listed brewery.
-        - **NOISE REMOVAL**: Strictly REMOVE any text related to "Arrival Date" (e.g., "12/18（木）入荷予定", "≪12/20-21入荷≫"), "Sold Out", "One per person", "Air Import" (空輸) from the extracted names. Return ONLY the clean name.
-        - **Product vs Style**: If a name contains both a product name and a style (e.g., "Porter Cask Finish (1t IPA)"), prioritize the PRODUCT NAME ("Porter Cask Finish"). Do NOT include the style description in the name unless it is part of the actual name. "1t IPA" is often a style description in Shiga Kogen context, NOT the name if "Porter" is present.
-        - **Set Detection**: Set "is_set" to true if the product contains multiple DIFFERENT beers (e.g., "Drinking Comparison Set", "Variety Pack", "3 types set") or if it is NOT a beer (e.g. "Glass", "T-shirt"). A 6-pack of the SAME beer is NOT a set (is_set=false).
-
-        Return ONLY a raw JSON string (no markdown formatting, no code blocks) with strictly these keys:
+        - **NOISE REMOVAL**: Strictly REMOVE text like "Arrival Date", "Sold Out", "One per person", "Air Import" (空輸).
+        
+        Return ONLY a raw JSON string with strictly these keys:
         - "brewery_name_jp" (Japanese brewery name, or null)
         - "brewery_name_en" (English brewery name, or null)
         - "beer_name_jp" (Japanese beer name, or null)
         - "beer_name_en" (English beer name, or null)
-        - "is_set" (boolean, true if it is a set/variety pack/merch, false otherwise)
+        - "product_type" (string: "beer", "set", "glass", or "other")
+        - "is_set" (boolean, true ONLY if product_type is "set")
         
         Examples:
-        1. Input: "【TECHNO PILS/FETISH CLUB】"
-           Output:
-           {{
-             "brewery_name_jp": null,
-             "brewery_name_en": "FETISH CLUB",
-             "beer_name_jp": null,
-             "beer_name_en": "TECHNO PILS",
-             "is_set": false
-           }}
-
-        2. Input: "Theory of Clarity / Inkhorn Brewing"
-           Output:
-           {{
-             "brewery_name_jp": "インクホーン",
-             "brewery_name_en": "Inkhorn Brewing",
-             "beer_name_jp": null,
-             "beer_name_en": "Theory of Clarity",
-             "is_set": false
-           }}
-
-        3. Input: "おまかせ6本セット / Random 6 Bottle Set"
-           Output:
-           {{
-             "brewery_name_jp": null,
-             "brewery_name_en": null,
-             "beer_name_jp": "おまかせ6本セット",
-             "beer_name_en": "Random 6 Bottle Set",
-             "is_set": true
-           }}
-
-        4. Input: "WCB オリジナルグラス / WCB Original Glass"
-           Output:
-           {{
-             "brewery_name_jp": "West Coast Brewing",
-             "brewery_name_en": "West Coast Brewing",
-             "beer_name_jp": "オリジナルグラス",
-             "beer_name_en": "Original Glass",
-             "is_set": true
-           }}
-
-        5. Input: "ブラックタイド x ヤッホーブルーイング ブラックデーモン / BLACK TIDE x Yoho Brewing Black Demon ≪12/20-21入荷予定≫"
-           Output:
-           {{
-             "brewery_name_jp": "ブラックタイド",
-             "brewery_name_en": "BLACK TIDE BREWING",
-             "beer_name_jp": "ブラックデーモン",
-             "beer_name_en": "Black Demon",
-             "is_set": false
-           }}
+        1. Input: "Theory of Clarity / Inkhorn Brewing"
+           Output: {{"brewery_name_jp": "インクホーン", "brewery_name_en": "Inkhorn Brewing", "beer_name_jp": null, "beer_name_en": "Theory of Clarity", "product_type": "beer", "is_set": false}}
+        
+        2. Input: "おまかせ6本セット / Random 6 Bottle Set"
+           Output: {{"brewery_name_jp": null, "brewery_name_en": null, "beer_name_jp": "おまかせ6本セット", "beer_name_en": "Random 6 Bottle Set", "product_type": "set", "is_set": true}}
+        
+        3. Input: "カンティヨン専用グラス / Cantillon Glass"
+           Output: {{"brewery_name_jp": "Cantillon", "brewery_name_en": "Cantillon", "beer_name_jp": "専用グラス", "beer_name_en": "Glass", "product_type": "glass", "is_set": false}}
+        
+        4. Input: "WCB オリジナルTシャツ / WCB Original T-Shirt"
+           Output: {{"brewery_name_jp": "West Coast Brewing", "brewery_name_en": "West Coast Brewing", "beer_name_jp": "オリジナルTシャツ", "beer_name_en": "Original T-Shirt", "product_type": "other", "is_set": false}}
         """
 
         try:
@@ -221,6 +185,7 @@ class GeminiExtractor:
                     "brewery_name_en": data.get("brewery_name_en"),
                     "beer_name_jp": data.get("beer_name_jp"),
                     "beer_name_en": data.get("beer_name_en"),
+                    "product_type": data.get("product_type", "beer"),
                     "is_set": data.get("is_set", False)
                 }
         except Exception as e:
@@ -231,6 +196,7 @@ class GeminiExtractor:
             "brewery_name_en": None, 
             "beer_name_jp": None, 
             "beer_name_en": None,
+            "product_type": "beer",
             "is_set": False
         }
 

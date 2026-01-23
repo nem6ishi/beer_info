@@ -20,7 +20,7 @@ export default async function handler(req, res) {
             style_filter,
             stock_filter,
             missing_untappd,
-            set_mode
+            product_type
         } = req.query
 
         const pageNum = parseInt(page, 10)
@@ -48,11 +48,12 @@ export default async function handler(req, res) {
                     untappd_ibu,
                     untappd_rating,
                     untappd_rating_count,
-                    untappd_image,
+                    untappd_fetched_at,
                     brewery_location,
                     brewery_type,
                     brewery_logo,
-                    is_set
+                    is_set,
+                    product_type
                 `)
                 .not('untappd_url', 'is', null)
                 .not('untappd_url', 'ilike', '%/search?%')
@@ -95,11 +96,9 @@ export default async function handler(req, res) {
                 q = q.eq('stock_status', 'Sold Out')
             }
 
-            // Set Mode
-            if (set_mode === 'individual') {
-                q = q.or('is_set.is.null,is_set.eq.false')
-            } else if (set_mode === 'set') {
-                q = q.eq('is_set', true)
+            // Product Type
+            if (product_type) {
+                q = q.eq('product_type', product_type)
             }
 
             return q
@@ -206,7 +205,8 @@ export default async function handler(req, res) {
                     brewery_type: item.brewery_type,
                     untappd_updated_at: item.untappd_fetched_at, // Add timestamp
                     rating_count: item.untappd_rating_count,
-                    is_set: item.is_set, // Pass Set flag
+                    is_set: item.is_set,
+                    product_type: item.product_type, // Pass product_type
                     // Aggregate data
                     items: [],
                     // Sort key helpers

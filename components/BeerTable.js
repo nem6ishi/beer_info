@@ -66,16 +66,24 @@ export default function BeerTable({ beers, loading, error }) {
                                 </div>
                             </td>
                             <td className="col-rating">
-                                {beer.is_set ? (
+                                {beer.product_type === 'set' ? (
                                     <div className="set-badge-container">
                                         <span className="set-badge">📦 Set Product</span>
+                                    </div>
+                                ) : beer.product_type === 'glass' ? (
+                                    <div className="set-badge-container">
+                                        <span className="set-badge" style={{ background: '#17a2b8' }}>🍺 Glass</span>
+                                    </div>
+                                ) : beer.product_type === 'other' ? (
+                                    <div className="set-badge-container">
+                                        <span className="set-badge" style={{ background: '#6c757d' }}>📦 Other</span>
                                     </div>
                                 ) : (
                                     <RatingCell
                                         rating={beer.untappd_rating}
                                         count={beer.untappd_rating_count}
                                         url={beer.untappd_url}
-                                        isSet={beer.is_set}
+                                        productType={beer.product_type}
                                         breweryName={beer.untappd_brewery_name}
                                     />
                                 )}

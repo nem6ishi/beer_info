@@ -157,6 +157,7 @@ async def enrich_gemini(limit: int = 50, shop_filter: str = None, keyword_filter
                                 'brewery_name_jp': enriched_info.get('brewery_name_jp'),
                                 'beer_name_en': enriched_info.get('beer_name_en'),
                                 'beer_name_jp': enriched_info.get('beer_name_jp'),
+                                'product_type': enriched_info.get('product_type', 'beer'),
                                 'is_set': enriched_info.get('is_set', False),
                                 'payload': enriched_info.get('raw_response'), # Save raw for debugging
                                 'updated_at': datetime.now(timezone.utc).isoformat()
@@ -165,18 +166,17 @@ async def enrich_gemini(limit: int = 50, shop_filter: str = None, keyword_filter
                             # Upsert to gemini_data table
                             try:
                                 supabase.table('gemini_data').upsert(gemini_payload).execute()
-                                logger.info(f"  💾 Saved to gemini_data table")
+                                logger.info(f"  💾 Saved to gemini_data table (Type: {gemini_payload['product_type']})")
                             except Exception as e:
                                  logger.error(f"  ❌ Error saving to gemini_data: {e}")
                                  continue
 
-                            # Merge for Untappd step (process_beer expects these in the beer dict or separate db fetch)
-                            # We update the 'beer' object in memory so process_beer has the info
+                            # Merge for Untappd step
                             beer.update(gemini_payload)
                             updates = gemini_payload # Marker that we have updates
                             total_enriched += 1
                         else:
-                            logger.warning("  ⚠️  Gemini returned no info")
+                            logger.warning("  ⚠️ Gemini returned no info")
                 else:
                     logger.info("  ✅ Gemini data already exists. Skipping extraction.")
                     updates = True # Mark as "proceed to chain"
@@ -187,9 +187,12 @@ async def enrich_gemini(limit: int = 50, shop_filter: str = None, keyword_filter
             
             # Chain Untappd processing if successful
             if updates:
-                # If it's a set, we do NOT chain Untappd
-                if isinstance(updates, dict) and updates.get('is_set'):
-                     logger.info("  ⏭️  Skipping Untappd enrichment (Item is a Set/Merch)")
+                # Skip Untappd for non-beer products (set, glass, other)
+                product_type = beer.get('product_type', 'beer')
+                is_beer = product_type == 'beer'
+                
+                if not is_beer:
+                     logger.info(f"  ⏭️ Skipping Untappd enrichment (Product Type: {product_type})")
                 else:
                     try:
                          logger.info("  🔗 Chaining Untappd enrichment...")

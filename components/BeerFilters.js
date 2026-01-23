@@ -243,18 +243,20 @@ export default function BeerFilters({
                             </div>
                         </div>
 
-                        {/* Set Product Filter */}
+                        {/* Product Type Filter */}
                         <div className="filter-item">
                             <label>Product Type</label>
                             <div className="select-wrapper full-width">
                                 <select
                                     className="filter-select"
-                                    value={tempFilters.set_mode || ''}
-                                    onChange={(e) => onFilterChange('set_mode', e.target.value)}
+                                    value={tempFilters.product_type || ''}
+                                    onChange={(e) => onFilterChange('product_type', e.target.value)}
                                 >
                                     <option value="">All Products</option>
-                                    <option value="individual">Individual Beers Only</option>
-                                    <option value="set">Sets Only</option>
+                                    <option value="beer">Individual Beers</option>
+                                    <option value="set">Sets</option>
+                                    <option value="glass">Glassware</option>
+                                    <option value="other">Merch / Others</option>
                                 </select>
                             </div>
                         </div>

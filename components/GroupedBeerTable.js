@@ -92,16 +92,24 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                     </div>
                                 </td>
                                 <td className="col-rating">
-                                    {group.is_set ? (
+                                    {group.product_type === 'set' ? (
                                         <div className="set-badge-container">
                                             <span className="set-badge">📦 Set Product</span>
+                                        </div>
+                                    ) : group.product_type === 'glass' ? (
+                                        <div className="set-badge-container">
+                                            <span className="set-badge" style={{ background: '#17a2b8' }}>🍺 Glass</span>
+                                        </div>
+                                    ) : group.product_type === 'other' ? (
+                                        <div className="set-badge-container">
+                                            <span className="set-badge" style={{ background: '#6c757d' }}>📦 Other</span>
                                         </div>
                                     ) : (
                                         <RatingCell
                                             rating={group.rating}
                                             count={group.rating_count}
                                             url={group.untappd_url}
-                                            isSet={group.is_set}
+                                            productType={group.product_type}
                                             breweryName={group.brewery}
                                         />
                                     )}

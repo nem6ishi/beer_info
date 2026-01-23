@@ -20,7 +20,7 @@ export default async function handler(req, res) {
             style_filter,
             stock_filter,
             missing_untappd,
-            set_mode
+            product_type
         } = req.query
 
         const pageNum = parseInt(page, 10)
@@ -76,18 +76,15 @@ export default async function handler(req, res) {
         // Filter by Untappd Status
         if (req.query.untappd_status === 'missing') {
             query = query.or('untappd_url.is.null,untappd_url.ilike.%/search?%')
-            // Exclude sets from 'missing' list (they often don't have links mostly)
-            query = query.or('is_set.is.null,is_set.eq.false')
+            // Exclude non-beer products from 'missing' list
+            query = query.or('product_type.is.null,product_type.eq.beer')
         } else if (req.query.untappd_status === 'linked') {
             query = query.not('untappd_url', 'is', null).not('untappd_url', 'ilike', '%/search?%')
         }
 
-        // Filter by Set Mode
-        if (set_mode === 'individual') {
-            // is_set is typically false or null
-            query = query.or('is_set.is.null,is_set.eq.false')
-        } else if (set_mode === 'set') {
-            query = query.eq('is_set', true)
+        // Filter by Product Type
+        if (product_type) {
+            query = query.eq('product_type', product_type)
         }
 
         // Sorting
@@ -159,10 +156,8 @@ export default async function handler(req, res) {
             const breweries = req.query.brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
             if (breweries.length > 0) countQuery = countQuery.in('untappd_brewery_name', breweries)
         }
-        if (set_mode === 'individual') {
-            countQuery = countQuery.or('is_set.is.null,is_set.eq.false')
-        } else if (set_mode === 'set') {
-            countQuery = countQuery.eq('is_set', true)
+        if (product_type) {
+            countQuery = countQuery.eq('product_type', product_type)
         }
         if (req.query.untappd_status === 'missing') {
             countQuery = countQuery.or('untappd_url.is.null,untappd_url.ilike.%/search?%')
