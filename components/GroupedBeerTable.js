@@ -101,6 +101,8 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                             rating={group.rating}
                                             count={group.rating_count}
                                             url={group.untappd_url}
+                                            isSet={group.is_set}
+                                            breweryName={group.brewery}
                                         />
                                     )}
                                 </td>

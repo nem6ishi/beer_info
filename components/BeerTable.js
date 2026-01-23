@@ -75,6 +75,8 @@ export default function BeerTable({ beers, loading, error }) {
                                         rating={beer.untappd_rating}
                                         count={beer.untappd_rating_count}
                                         url={beer.untappd_url}
+                                        isSet={beer.is_set}
+                                        breweryName={beer.untappd_brewery_name}
                                     />
                                 )}
                             </td>
