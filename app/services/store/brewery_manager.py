@@ -135,18 +135,32 @@ class BreweryManager:
         
         return list(set([a for a in aliases if a]))
     
-    def find_brewery_in_text(self, text: str) -> Optional[Dict]:
-        """Search for known brewery in product name."""
+    def find_breweries_in_text(self, text: str) -> List[Dict]:
+        """Search for all known breweries in product name."""
         if not text:
-            return None
+            return []
         
         text_lower = text.lower()
+        found_breweries = []
+        found_keys = set()
         
-        for key, brewery in self.brewery_index.items():
+        # Sort keys by length descending to catch longer matches first (e.g. "West Coast Brewing" before "West Coast")
+        sorted_keys = sorted(self.brewery_index.keys(), key=len, reverse=True)
+        
+        for key in sorted_keys:
             if key in text_lower:
-                return brewery
+                brewery = self.brewery_index[key]
+                # Avoid adding same brewery multiple times via different aliases
+                if brewery['name_en'] not in found_keys:
+                    found_breweries.append(brewery)
+                    found_keys.add(brewery['name_en'])
         
-        return None
+        return found_breweries
+
+    def find_brewery_in_text(self, text: str) -> Optional[Dict]:
+        """Legacy method: returns the first found brewery."""
+        breweries = self.find_breweries_in_text(text)
+        return breweries[0] if breweries else None
     
     def add_brewery(self, name_en: str, name_jp: Optional[str] = None) -> None:
         """Manually add a brewery to the database."""

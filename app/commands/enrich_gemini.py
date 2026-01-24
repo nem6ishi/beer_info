@@ -106,6 +106,7 @@ async def enrich_gemini(limit: int = 50, shop_filter: str = None, keyword_filter
             
         response = query.order('first_seen', desc=True) \
             .limit(current_batch_size) \
+            .offset(total_processed) \
             .execute()
             
         beers = response.data
@@ -132,12 +133,12 @@ async def enrich_gemini(limit: int = 50, shop_filter: str = None, keyword_filter
                          # Offline mode strictly chains, does not call Gemini
                          updates = False 
                     else:
-                        # Check for known brewery hint in the beer name
+                        # Check for known brewery hints in the beer name
                         known_brewery = None
-                        brewery_match = brewery_manager.find_brewery_in_text(beer['name'])
-                        if brewery_match:
-                            known_brewery = brewery_match.get('name_en')
-                            logger.info(f"  🏭 Found known brewery hint: {known_brewery}")
+                        brewery_matches = brewery_manager.find_breweries_in_text(beer['name'])
+                        if brewery_matches:
+                            known_brewery = ", ".join([b['name_en'] for b in brewery_matches])
+                            logger.info(f"  🏭 Found known brewery hints: {known_brewery}")
                         
                         logger.info("  🤖 Calling Gemini API...")
                         enriched_info = await extractor.extract_info(beer['name'], known_brewery=known_brewery)

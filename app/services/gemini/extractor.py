@@ -142,18 +142,22 @@ class GeminiExtractor:
         Also determine the product type: "beer", "set", "glass", or "other".
         Product Title: "{product_name}"{brewery_hint}
 
-        Guidelines for product_type:
-        - "beer": A single beer product (e.g., bottle, can, or a 4-pack/6-pack of the SAME beer).
-        - "set": Multiple DIFFERENT beers, a variety pack, or a combination set of beer and something else.
-        - "glass": Glassware, non-set items like a single beer glass or specialized glass.
-        - "other": Merchandise like T-shirts, stickers, bottle openers, snacks, etc.
-        
         Guidelines for names:
         - Identify the brewery name and beer name from the title.
-        - Common formats include "Beer Name / Brewery Name" or "【Beer Name/Brewery Name】".
-        - If the title follows "【A/B】", A is typically the Beer Name and B is the Brewery Name.
-        - **NOISE REMOVAL**: Strictly REMOVE text like "Arrival Date", "Sold Out", "One per person", "Air Import" (空輸).
+        - **COLLABORATIONS**: If multiple breweries are involved (often separated by 'x', '×', or '/'), include all of them in the brewery name (e.g., "Totopia x Teenage").
+        - **FORMATS**: 
+            - Common formats include "Beer Name / Brewery Name" or "【Beer Name / Brewery Name】".
+            - If the title follows "【A/B】", A is typically the Beer Name and B is the Brewery Name.
+            - However, if B looks like a beer name and A is a known brewery (from hints or context), adjust accordingly.
+        - **HINTS**: Use the provided brewery hints if they match parts of the title. If multiple hints are given, it's likely a collaboration.
+        - **NOISE REMOVAL**: Strictly REMOVE text like "Arrival Date", "Sold Out", "One per person", "Air Import" (空輸), "≪...入荷≫", "【...入荷予定】".
         
+        Guidelines for product_type:
+        - "beer": A single beer product (including 4-pack/6-pack of the SAME beer).
+        - "set": Multiple DIFFERENT beers, variety packs.
+        - "glass": Glassware.
+        - "other": Merchandise.
+
         Return ONLY a raw JSON string with strictly these keys:
         - "brewery_name_jp" (Japanese brewery name, or null)
         - "brewery_name_en" (English brewery name, or null)
@@ -166,14 +170,8 @@ class GeminiExtractor:
         1. Input: "Theory of Clarity / Inkhorn Brewing"
            Output: {{"brewery_name_jp": "インクホーン", "brewery_name_en": "Inkhorn Brewing", "beer_name_jp": null, "beer_name_en": "Theory of Clarity", "product_type": "beer", "is_set": false}}
         
-        2. Input: "おまかせ6本セット / Random 6 Bottle Set"
-           Output: {{"brewery_name_jp": null, "brewery_name_en": null, "beer_name_jp": "おまかせ6本セット", "beer_name_en": "Random 6 Bottle Set", "product_type": "set", "is_set": true}}
-        
-        3. Input: "カンティヨン専用グラス / Cantillon Glass"
-           Output: {{"brewery_name_jp": "Cantillon", "brewery_name_en": "Cantillon", "beer_name_jp": "専用グラス", "beer_name_en": "Glass", "product_type": "glass", "is_set": false}}
-        
-        4. Input: "WCB オリジナルTシャツ / WCB Original T-Shirt"
-           Output: {{"brewery_name_jp": "West Coast Brewing", "brewery_name_en": "West Coast Brewing", "beer_name_jp": "オリジナルTシャツ", "beer_name_en": "Original T-Shirt", "product_type": "other", "is_set": false}}
+        2. Input: "【Tonephilia/Totopia×Teenage】" (Wait, Hint: Totopia, Teenage)
+           Output: {{"brewery_name_jp": "トートピア x ティーネイジ", "brewery_name_en": "Totopia x Teenage", "beer_name_jp": "トーンフィリア", "beer_name_en": "Tonephilia", "product_type": "beer", "is_set": false}}
         """
 
         try:
