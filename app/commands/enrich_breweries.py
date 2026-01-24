@@ -105,10 +105,13 @@ async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: li
                         if not target_id:
                             existing_by_name = supabase.table('breweries').select('id, untappd_url').eq('name_en', brewery_name).execute()
                             if existing_by_name.data:
-                                # Only match if the existing record doesn't have a different untappd_url
-                                if not existing_by_name.data[0]['untappd_url'] or existing_by_name.data[0]['untappd_url'] == url:
+                                # ONLY match if the existing record has NO URL. 
+                                # If it has a URL, even if it's different, it's a different brewery.
+                                if not existing_by_name.data[0]['untappd_url']:
                                     target_id = existing_by_name.data[0]['id']
-                                    logger.info(f"  📝 Matching to existing record by name: {brewery_name} (ID: {target_id})")
+                                    logger.info(f"  📝 Matching to placeholder record by name: {brewery_name} (ID: {target_id})")
+                                elif existing_by_name.data[0]['untappd_url'] == url:
+                                    target_id = existing_by_name.data[0]['id']
 
                         if target_id:
                             # Update existing record
@@ -224,10 +227,12 @@ async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: li
                             if not target_id:
                                 existing_by_name = supabase.table('breweries').select('id, untappd_url').eq('name_en', brewery_name).execute()
                                 if existing_by_name.data:
-                                    # Only match if the existing record doesn't have a different untappd_url
-                                    if not existing_by_name.data[0]['untappd_url'] or existing_by_name.data[0]['untappd_url'] == url:
+                                    # ONLY match if the existing record has NO URL. 
+                                    if not existing_by_name.data[0]['untappd_url']:
                                         target_id = existing_by_name.data[0]['id']
-                                        logger.info(f"  📝 Matching to existing record by name: {brewery_name} (ID: {target_id})")
+                                        logger.info(f"  📝 Matching to placeholder record by name: {brewery_name} (ID: {target_id})")
+                                    elif existing_by_name.data[0]['untappd_url'] == url:
+                                        target_id = existing_by_name.data[0]['id']
 
                             if target_id:
                                 # Update existing record
