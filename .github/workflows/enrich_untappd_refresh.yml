@@ -29,7 +29,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
-          python -m app.cli enrich-untappd --mode refresh --limit 1000
+          python -m backend.src.cli enrich-untappd --mode refresh --limit 1000
       
       - name: Report status
         if: always()

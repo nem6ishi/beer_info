@@ -1,0 +1,18 @@
+{
+    "BEER VOLTA": {
+        "rule": "- **Shop Rule (BEER VOLTA)**: The name is usually `Japanese Name / English Name`. In the English part, the first word(s) are typically the brewery followed by the beer name.",
+        "examples": "1. \"パリッシュ サイプレスシェード / Parish Cypress Shade\" -> {\"brewery_name_en\": \"Parish Brewing\", \"beer_name_en\": \"Cypress Shade\"}\n2. \"ハドソンバレー イキガイ / Hudson Valley Ikigai\" -> {\"brewery_name_en\": \"Hudson Valley Brewery\", \"beer_name_en\": \"Ikigai\"}"
+    },
+    "ちょうせいや": {
+        "rule": "- **Shop Rule (ちょうせいや)**: The name is formatted as `【Beer Name / Brewery Name】`. Since this is a specialized beer shop, assume it is a \"beer\" unless it's explicitly a glass or other merchandise.",
+        "examples": "1. \"【Brown Saison/ヨロッコ】\" -> {\"brewery_name_en\": \"Yorocco Beer\", \"beer_name_en\": \"Brown Saison\", \"product_type\": \"beer\"}\n2. \"【スタウト/箕面ビール】\" -> {\"brewery_name_en\": \"Minoh Beer\", \"beer_name_en\": \"Stout\", \"product_type\": \"beer\"}"
+    },
+    "一期一会～る": {
+        "rule": "- **Shop Rule (一期一会～る)**: The name is usually `Brewery Name (JP/EN) Space Beer Name (JP/EN)`. No slash separator.",
+        "examples": "1. \"ニーディープ ディープヘイズ（KNEE DEEP Deep Haze）\" -> {\"brewery_name_en\": \"Knee Deep Brewing\", \"beer_name_en\": \"Deep Haze\"}\n2. \"WCB ウェストコーストブルーイング ダークトレント\" -> {\"brewery_name_en\": \"West Coast Brewing\", \"beer_name_en\": \"Dark Torrent\"}"
+    },
+    "アローム": {
+        "rule": "- **Shop Rule (アローム)**: The name is formatted as `Brewery / Beer [English Brewery / English Beer]`. The first part is always the brewery.",
+        "examples": "1. \"トパトパ / ハックスター (Double IPA) [Topa Topa Brewing / Huckster]\" -> {\"brewery_name_en\": \"Topa Topa Brewing\", \"beer_name_en\": \"Huckster\"}"
+    }
+}

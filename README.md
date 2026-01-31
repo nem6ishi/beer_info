@@ -109,7 +109,7 @@ uv run cli.py enrich breweries --limit 50
 ```
 /
 ├── .github/workflows/      # GitHub Actions
-├── app/                    # Python Backend
+├── backend/src/                    # Python Backend
 │   ├── commands/           # Command logic (Scrape, Enrich)
 │   ├── core/               # Config, DB, Logging
 │   ├── scrapers/           # Site scrapers
@@ -128,9 +128,9 @@ uv run cli.py enrich breweries --limit 50
 
 ## 🔄 Data Flow
 
-1. **Scraping**: `app/commands/scrape.py` fetches data from shops and upserts to `scraped_beers`.
-2. **Enrichment (Gemini)**: `app/commands/enrich_gemini.py` reads `scraped_beers` AND uses Gemini API to extract metadata, saving to `gemini_data`.
-3. **Enrichment (Untappd)**: `app/commands/enrich_untappd.py` reads valid metadata and searches Untappd, saving to `untappd_data`.
+1. **Scraping**: `backend/src/commands/scrape.py` fetches data from shops and upserts to `scraped_beers`.
+2. **Enrichment (Gemini)**: `backend/src/commands/enrich_gemini.py` reads `scraped_beers` AND uses Gemini API to extract metadata, saving to `gemini_data`.
+3. **Enrichment (Untappd)**: `backend/src/commands/enrich_untappd.py` reads valid metadata and searches Untappd, saving to `untappd_data`.
 4. **Integration**: `beer_info_view` in Supabase joins these 3 tables to provide a unified "beers" view.
 5. **Frontend**: Next.js API (`/api/beers`) queries `beer_info_view` to serve the UI.
 

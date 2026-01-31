@@ -1,0 +1,775 @@
+import logging
+import urllib.parse
+from datetime import datetime
+from typing import Optional, TypedDict, List
+import requests
+from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
+
+class UntappdBeerDetails(TypedDict, total=False):
+    untappd_beer_name: str
+    untappd_brewery_name: str
+    untappd_brewery_url: str # New field
+    untappd_style: str
+    untappd_abv: str
+    untappd_ibu: str
+    untappd_rating: str
+    untappd_rating_count: str
+    untappd_label: str
+    untappd_fetched_at: str
+
+class UntappdBreweryDetails(TypedDict, total=False):
+    brewery_name: str
+    location: str
+    brewery_type: str
+    website: str
+    logo_url: str
+    stats: dict # {total, unique, monthly, ratings}
+    fetched_at: str
+
+class UntappdSearchResult(TypedDict, total=False):
+    """Result of an Untappd search operation."""
+    url: Optional[str]  # Found URL (may be search URL as fallback)
+    success: bool  # True if direct beer page found
+    failure_reason: Optional[str]  # 'missing_info', 'no_results', 'network_error', 'validation_failed'
+    error_message: Optional[str]  # Detailed error message for logging
+
+
+BREWERY_ALIASES = {
+    "鬼伝説": ["Wakasaimo"],
+    "Oni Densetsu": ["Wakasaimo"],
+    "ヨロッコ": ["Yorocco Beer"],
+    "Shiga Kogen": ["Tamamura Honten"],
+    "Shiga Kogen Beer": ["Tamamura Honten"],
+    "志賀高原": ["Tamamura Honten"],
+    "CRAFT ROCK": ["CRAFTROCK"],
+    "CRAFT ROCK Brewing": ["CRAFTROCK Brewing"],
+    "麦雑穀工房": ["Zakkoku Koubou Microbrewery"],
+    "箕面ビール": ["Minoh Beer"],
+    "箕面": ["Minoh Beer"],
+    "京都醸造": ["Kyoto Brewing Co."],
+    "ベアード": ["Baird Brewing Company"],
+    "ノースアイランド": ["North Island Beer", "North Island Brewing"],
+    "伊勢角屋": ["Ise Kadoya Brewery"],
+    "うちゅう": ["Uchu Brewing"],
+    "富士桜": ["Fujizakura Heights Beer"],
+    "ロコビア": ["Locobeer"],
+    "常陸野ネスト": ["Hitachino Nest Beer"],
+    "スワンレイク": ["Swan Lake Beer"],
+    "サンクトガーレン": ["Sankt Gallen"],
+    "奈良醸造": ["Nara Brewing Co."],
+    "Yマーケット": ["Y.Market Brewing"],
+    "ワイマーケット": ["Y.Market Brewing"],
+    "ディレイラ": ["Derailleur Brew Works"],
+    "Teenage": ["Teenage Brewing"],
+}
+
+COMMON_SUFFIXES = [
+    " IPA", " Hazy IPA", " Double IPA", " DIPA", " Triple IPA", " TIPA", " NEIPA", " West Coast IPA", " Session IPA", " DDH IPA", " TDH IPA",
+    " Pale Ale", " Stout", " Imperial Stout", " Lager", " Pilsner", " Sour", 
+    " Gose", " Porter", " Ale", " Wheat", " Saison", " Barleywine", " Lambic", " Gueuze", " Fruit Beer"
+]
+# Sort by length desc to remove longest match first
+COMMON_SUFFIXES.sort(key=len, reverse=True)
+
+import re
+
+def clean_beer_name(name: str) -> str:
+    """
+    Cleans beer name by removing common noise patterns:
+    - Japanese series markers (〜, シリーズ, #XX, Vol.X)
+    - Batch/version markers (Batch X, Ver.X, 2024, etc.)
+    - Special characters and brackets with content
+    """
+    if not name:
+        return name
+    
+    original = name
+    
+    # Remove content after 〜 (wave dash - usually series info)
+    name = re.sub(r'〜.*$', '', name)
+    name = re.sub(r'~.*$', '', name)
+    
+    # Remove シリーズ and everything after
+    name = re.sub(r'シリーズ.*$', '', name)
+    
+    # Remove #XX, Vol.X, Batch X patterns
+    name = re.sub(r'#\d+', '', name)
+    name = re.sub(r'Vol\.?\s*\d+', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'Batch\s*\d+', '', name, flags=re.IGNORECASE)
+    
+    # Remove year patterns at the end (2024, 2025)
+    name = re.sub(r'\s+20\d{2}\s*$', '', name)
+    
+    # Remove Japanese parentheses content that looks like version info
+    name = re.sub(r'（[^）]*版[^）]*）', '', name)
+    
+    # Remove -〇〇編- style suffixes (e.g., -ラガー編-, -IPA編-)
+    name = re.sub(r'-[^-]+編-?$', '', name)
+    name = re.sub(r'－[^－]+編－?$', '', name)  # Full-width dash
+    
+    # Remove version/multiplier markers (2x, 3x, 2X, 3X, etc.)
+    name = re.sub(r'\s+\d+[xX]\s*', ' ', name)
+    name = re.sub(r'\s+\d+[xX]$', '', name)
+    
+    # Normalize DR./MR./ST. etc. (remove period for better matching)
+    name = re.sub(r'\bDR\.\s*', 'Dr ', name, flags=re.IGNORECASE)
+    name = re.sub(r'\bMR\.\s*', 'Mr ', name, flags=re.IGNORECASE)
+    name = re.sub(r'\bST\.\s*', 'St ', name, flags=re.IGNORECASE)
+    
+    # Clean up extra whitespace
+    name = ' '.join(name.split())
+    
+    if name != original:
+        logger.info(f"Cleaned beer name: '{original}' -> '{name}'")
+    
+    return name.strip()
+
+def clean_brewery_name(name: str) -> str:
+    """
+    Cleans brewery name by removing common suffixes (Brewing, Brewery, Beer, etc.)
+    for better search matching.
+    """
+    if not name:
+        return name
+    
+    # Common suffixes to remove (order matters, longest first)
+    suffixes = [
+        ' Beer Company', ' Brewing Co.', ' Brewing Company', ' Brewery Co.', 
+        ' Brewing', ' Brewery', ' Beer', ' Co.', ' Company', ' Corporation', ' Corp.'
+    ]
+    suffixes.sort(key=len, reverse=True)
+    
+    original = name
+    for suffix in suffixes:
+        if name.lower().endswith(suffix.lower()):
+            name = name[:-len(suffix)].strip()
+            # Special case: don't leave it empty or too short if it was part of a name?
+            # Usually safe to strip these.
+            break
+            
+    if name != original:
+        logger.info(f"Cleaned brewery name: '{original}' -> '{name}'")
+        
+    return name.strip()
+
+def strip_beer_suffix(beer_name: str) -> Optional[str]:
+    """
+    Strips common beer style suffixes from the beer name.
+    Returns the stripped name if a suffix was found, otherwise None.
+    """
+    lower_name = beer_name.lower()
+    for suffix in COMMON_SUFFIXES:
+        if lower_name.endswith(suffix.lower()):
+            stripped = beer_name[:-len(suffix)].strip()
+            logger.info(f"Detected suffix '{suffix}'. Stripped to: '{stripped}'")
+            return stripped
+    return None
+
+def normalize_for_comparison(text: str) -> str:
+    """Removes whitespace and non-alphanumeric characters for fuzzy comparison."""
+    if not text:
+        return ""
+    return "".join(c.lower() for c in text if c.isalnum())
+
+def validate_beer_match(result_element: BeautifulSoup, expected_beer: str) -> bool:
+    """Checks if the beer name in the search result matches the expected beer."""
+    if not expected_beer:
+        return True
+    
+    name_tag = result_element.select_one('.name a')
+    if not name_tag:
+        return False
+        
+    result_beer = name_tag.get_text(strip=True)
+    rb_norm = normalize_for_comparison(result_beer)
+    eb_norm = normalize_for_comparison(expected_beer)
+    
+    # Check for direct inclusion or high similarity
+    if rb_norm in eb_norm or eb_norm in rb_norm:
+        logger.info(f"  [Validation] Beer MATCH: '{result_beer}' matches '{expected_beer}'")
+        return True
+        
+    logger.info(f"  [Validation] Beer FAIL: '{result_beer}' ({rb_norm}) != '{expected_beer}' ({eb_norm})")
+    return False
+
+def validate_brewery_match(result_element: BeautifulSoup, expected_brewery: str) -> bool:
+    """
+    Checks if the brewery name in the search result matches the expected brewery.
+    Uses normalized comparison (ignoring spaces/punctuation), aliases, and collab logic.
+    """
+    if not expected_brewery:
+        return True 
+        
+    brewery_tag = result_element.select_one('.brewery')
+    if not brewery_tag:
+        return False
+        
+    result_brewery = brewery_tag.get_text(strip=True)
+    rb_norm = normalize_for_comparison(result_brewery)
+    eb_norm = normalize_for_comparison(expected_brewery)
+    
+    # 1. Normalization Check
+    if rb_norm in eb_norm or eb_norm in rb_norm:
+        logger.info(f"  [Validation] Brewery MATCH (Norm): '{result_brewery}' matches '{expected_brewery}'")
+        return True
+        
+    # 2. Alias Check
+    if expected_brewery in BREWERY_ALIASES:
+        for alias in BREWERY_ALIASES[expected_brewery]:
+            alias_norm = normalize_for_comparison(alias)
+            if alias_norm in rb_norm:
+                logger.info(f"  [Validation] Brewery MATCH (Alias): '{result_brewery}' matches alias '{alias}'")
+                return True
+                
+    # 3. Collaboration Check (x, ×, /)
+    if any(sep in expected_brewery for sep in [' x ', ' x', 'x ', '×', '/']):
+        parts = re.split(r'\s*[x×/]\s*', expected_brewery)
+        for part in parts:
+            if not part: continue
+            part_norm = normalize_for_comparison(part)
+            if part_norm and (part_norm in rb_norm or rb_norm in part_norm):
+                logger.info(f"  [Validation] Brewery MATCH (Collab): '{result_brewery}' matches part '{part}'")
+                return True
+            if part in BREWERY_ALIASES:
+                for alias in BREWERY_ALIASES[part]:
+                    alias_norm = normalize_for_comparison(alias)
+                    if alias_norm and (alias_norm in rb_norm or rb_norm in alias_norm):
+                        logger.info(f"  [Validation] Brewery MATCH (Collab Alias): '{result_brewery}' matches alias '{alias}' for part '{part}'")
+                        return True
+
+    logger.info(f"  [Validation] Brewery FAIL: '{result_brewery}' != '{expected_brewery}'")
+    return False
+
+def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None, brewery_url: str = None) -> UntappdSearchResult:
+    """
+    Searches for an Untappd beer page using direct scraping of Untappd.com.
+    
+    Args:
+        brewery_name (str): Name of the brewery (prefer English).
+        beer_name (str): Name of the beer (prefer English).
+        beer_name_jp (str): Name of the beer in Japanese (optional fallback).
+        brewery_url (str): Known Untappd URL of the brewery (optional priority search).
+        
+    Returns:
+        UntappdSearchResult: Structured result with URL, success status, and failure reason if applicable.
+    """
+    if not brewery_name and not beer_name and not beer_name_jp:
+        return {
+            'url': None,
+            'success': False,
+            'failure_reason': 'missing_info',
+            'error_message': 'No brewery or beer name provided'
+        }
+
+    def search_untappd(query: str, validate_brewery: str = None, validate_beer: str = None) -> Optional[str]:
+        """Helper to perform a single search attempt."""
+        encoded_query = urllib.parse.quote(query)
+        url = f"https://untappd.com/search?q={encoded_query}"
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'lxml')
+                results = soup.select('.beer-item')
+                
+                # Check top 3 results
+                for res in results[:3]:
+                    name_tag = res.select_one('.name a')
+                    if name_tag:
+                        href = name_tag.get('href')
+                        if href and "/b/" in href:
+                            # Validate brewery if requested
+                            if validate_brewery and not validate_brewery_match(res, validate_brewery):
+                                continue
+                            
+                            # Validate beer name if requested
+                            if validate_beer and not validate_beer_match(res, validate_beer):
+                                continue
+                                
+                            return f"https://untappd.com{href}"
+                                
+        except Exception as e:
+            logger.error(f"Search error for '{query}': {e}")
+            raise  # Re-raise to be caught by outer handler
+        
+        return None
+
+    try:
+        # PRIORITY 1: SEARCH WITHIN BREWERY PAGE IF URL KNOWN
+        if brewery_url and (beer_name or beer_name_jp):
+            logger.info(f"Prioritizing brewery-specific search for: {brewery_name} (URL: {brewery_url})")
+            query_for_b = beer_name or beer_name_jp
+            # Clean it a bit (remove brewery if present)
+            if brewery_name.lower() in query_for_b.lower():
+                query_for_b = query_for_b.replace(brewery_name, "").strip()
+            
+            # Also try without suffix
+            query_fallback = strip_beer_suffix(query_for_b) or query_for_b
+            
+            for q in [query_for_b, query_fallback]:
+                if not q: continue
+                logger.info(f"Searching within known brewery page: {q}")
+                result = search_brewery_beer(brewery_url, q)
+                if result:
+                    logger.debug(f"Found direct link (priority brewery): {result}")
+                    return {
+                        'url': result,
+                        'success': True,
+                        'failure_reason': None,
+                        'error_message': None
+                    }
+
+        # Primary Search: beer_name + brewery_name (or alias)
+        if beer_name:
+            queries_to_try = []
+            
+            # Helper to generate queries for a given brewery string
+            def add_brewery_queries(b_name):
+                search_brewery_name = b_name
+                if b_name and b_name in BREWERY_ALIASES:
+                    search_brewery_name = BREWERY_ALIASES[b_name][0]
+                
+                if search_brewery_name:
+                    queries_to_try.append(f"{beer_name} {search_brewery_name}")
+            
+            # 1. Try full brewery name first
+            add_brewery_queries(brewery_name)
+            
+            # Additional: Try cleaned brewery name (without 'Beer', 'Brewing', etc.)
+            cleaned_b = clean_brewery_name(brewery_name)
+            if cleaned_b != brewery_name:
+                add_brewery_queries(cleaned_b)
+            
+            # 2. If collaboration, try individual breweries
+            if brewery_name and any(sep in brewery_name for sep in [' x ', ' x', 'x ', '×', '/']):
+                parts = re.split(r'\s*[x×/]\s*', brewery_name)
+                for part in parts:
+                    if part and part.strip():
+                        p = part.strip()
+                        add_brewery_queries(p)
+                        cp = clean_brewery_name(p)
+                        if cp != p:
+                            add_brewery_queries(cp)
+            
+            # Execute queries in order
+            for search_query in queries_to_try:
+                logger.info(f"Searching: {search_query}")
+                result = search_untappd(search_query, validate_brewery=brewery_name, validate_beer=beer_name)
+                if result:
+                    logger.info(f"Found direct link: {result}")
+                    return {
+                        'url': result,
+                        'success': True,
+                        'failure_reason': None,
+                        'error_message': None
+                    }
+        
+        # Fallback Search: beer_name only
+        # Only do this if we actually have a brewery name to validate against, 
+        # otherwise searching for just "Pale Ale" is useless.
+        if beer_name and brewery_name:
+            logger.info(f"Fallback search (Beer Name Only): {beer_name}")
+            # CRITICAL: Must validate brewery and beer here
+            result = search_untappd(beer_name, validate_brewery=brewery_name, validate_beer=beer_name)
+            if result:
+                logger.info(f"Found direct link (fallback): {result}")
+                return {
+                    'url': result,
+                    'success': True,
+                    'failure_reason': None,
+                    'error_message': None
+                }
+                
+        # Advanced Fallback: Strip common style suffixes
+        if beer_name:
+            stripped_name = strip_beer_suffix(beer_name)
+            if stripped_name:
+                # Clean the stripped name (removes version markers like 3x, DR. etc)
+                cleaned_stripped = clean_beer_name(stripped_name)
+                
+                # Try 1: {Cleaned Stripped} {Brewery}
+                query = f"{cleaned_stripped} {brewery_name}" if brewery_name else cleaned_stripped
+                logger.info(f"Retrying with cleaned stripped name: {query}")
+                result = search_untappd(query, validate_brewery=brewery_name)
+                if result:
+                    logger.info(f"Found direct link (cleaned stripped+brewery): {result}")
+                    return {
+                        'url': result,
+                        'success': True,
+                        'failure_reason': None,
+                        'error_message': None
+                    }
+                    
+                # Try 2: {Cleaned Stripped} only (with validation)
+                if brewery_name:
+                    logger.info(f"Retrying with cleaned stripped name only: {cleaned_stripped}")
+                    result = search_untappd(cleaned_stripped, validate_brewery=brewery_name, validate_beer=cleaned_stripped)
+                    if result:
+                        logger.info(f"Found direct link (cleaned stripped only): {result}")
+                        return {
+                            'url': result,
+                            'success': True,
+                            'failure_reason': None,
+                            'error_message': None
+                        }
+
+        # Japanese Name Fallback
+        if beer_name_jp:
+            # Clean the Japanese name before searching
+            cleaned_jp_name = clean_beer_name(beer_name_jp)
+            
+            # Try with cleaned name first
+            if cleaned_jp_name and cleaned_jp_name != beer_name_jp:
+                search_query_jp = f"{cleaned_jp_name} {brewery_name}" if brewery_name else cleaned_jp_name
+                logger.info(f"Retrying with cleaned Japanese name: {search_query_jp}")
+                result = search_untappd(search_query_jp, validate_brewery=brewery_name, validate_beer=cleaned_jp_name)
+                if result:
+                    logger.info(f"Found direct link (cleaned JP name): {result}")
+                    return {
+                        'url': result,
+                        'success': True,
+                        'failure_reason': None,
+                        'error_message': None
+                    }
+            
+            # Try with original Japanese name
+            logger.info(f"Retrying with Japanese name: {beer_name_jp}")
+            result = search_untappd(beer_name_jp, validate_brewery=brewery_name, validate_beer=beer_name_jp)
+            if result:
+                logger.info(f"Found direct link (JP name): {result}")
+                return {
+                    'url': result,
+                    'success': True,
+                    'failure_reason': None,
+                    'error_message': None
+                }
+
+        # Brewery-Specific Fallback (if URL NOT known but we can find it)
+        if brewery_name and (beer_name or beer_name_jp) and not brewery_url:
+            logger.info(f"Trying brewery-specific search for: {brewery_name}")
+            b_url = search_brewery(brewery_name)
+            if b_url:
+                query_for_b = beer_name or beer_name_jp
+                # Clean it a bit (remove brewery if present)
+                if brewery_name.lower() in query_for_b.lower():
+                    query_for_b = query_for_b.replace(brewery_name, "").strip()
+                
+                # Also try without suffix
+                query_fallback = strip_beer_suffix(query_for_b) or query_for_b
+                
+                for q in [query_for_b, query_fallback]:
+                    if not q: continue
+                    logger.info(f"Searching within brewery page: {q}")
+                    result = search_brewery_beer(b_url, q)
+                    if result:
+                        logger.info(f"Found direct link (brewery fallback): {result}")
+                        return {
+                            'url': result,
+                            'success': True,
+                            'failure_reason': None,
+                            'error_message': None
+                        }
+
+        # Final Fallback: Return search URL as failure
+        # Build fallback query from available info
+        if beer_name:
+            final_query = f"{beer_name} {brewery_name}" if brewery_name else beer_name
+        elif beer_name_jp:
+            final_query = f"{beer_name_jp} {brewery_name}" if brewery_name else beer_name_jp
+        else:
+            final_query = brewery_name or ""
+        # Also clean the final query
+        final_query = clean_beer_name(final_query) or final_query
+        encoded_query = urllib.parse.quote(final_query)
+        fallback_url = f"https://untappd.com/search?q={encoded_query}"
+        logger.info("No direct link found. Returning search URL as failure.")
+        return {
+            'url': fallback_url,
+            'success': False,
+            'failure_reason': 'no_results',
+            'error_message': f'No direct beer page found after all search strategies for: {final_query}'
+        }
+    
+    except Exception as e:
+        logger.error(f"Network error during Untappd search: {e}")
+        return {
+            'url': None,
+            'success': False,
+            'failure_reason': 'network_error',
+            'error_message': str(e)
+        }
+
+
+def search_brewery_beer(brewery_url: str, query: str) -> Optional[str]:
+    """
+    Searches for a beer within a specific brewery's page on Untappd.
+    Navigate to /beer?q={query}&sort=created_at_desc
+    """
+    if not brewery_url or not query:
+        return None
+    
+    encoded_query = urllib.parse.quote(query)
+    # Ensure URL ends without slash before appending
+    base_url = brewery_url.rstrip('/')
+    url = f"{base_url}/beer?q={encoded_query}&sort=created_at_desc"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, 'lxml')
+            # In the brewery's beer list, items are usually in .beer-item
+            results = soup.select('.beer-item')
+            for res in results[:3]:
+                name_tag = res.select_one('.name a')
+                if name_tag:
+                    href = name_tag.get('href')
+                    if href and "/b/" in href:
+                        # Success
+                        return f"https://untappd.com{href}"
+    except Exception as e:
+        logger.error(f"Brewery beer search error for '{query}' at {brewery_url}: {e}")
+        
+    return None
+
+
+def scrape_beer_details(url: str) -> UntappdBeerDetails:
+    """
+    Scrapes detailed info from a specific Untappd beer URL.
+    """
+    details: UntappdBeerDetails = {}
+    if not url or "untappd.com/b/" not in url:
+        return details
+
+    logger.info(f"Scraping details from: {url}")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            logger.warning(f"Failed to load details. Status: {resp.status_code}")
+            return details
+            
+        soup = BeautifulSoup(resp.text, 'lxml')
+        
+        # Name & Brewery
+        name_tag = soup.select_one('.name h1')
+        if name_tag: details['untappd_beer_name'] = name_tag.get_text(strip=True)
+        
+        brewery_tag = soup.select_one('.name .brewery')
+        if brewery_tag: 
+            # Prefer text from the link itself to avoid "Subsidiary of..." text
+            brewery_link = brewery_tag.select_one('a')
+            if brewery_link:
+                details['untappd_brewery_name'] = brewery_link.get_text(strip=True)
+            else:
+                details['untappd_brewery_name'] = brewery_tag.get_text(strip=True)
+            if brewery_link and brewery_link.get('href'):
+                href = brewery_link.get('href')
+                if href.startswith('/'):
+                    details['untappd_brewery_url'] = f"https://untappd.com{href}"
+                else:
+                    details['untappd_brewery_url'] = href
+
+        style_tag = soup.select_one('.name .style')
+        if style_tag: details['untappd_style'] = style_tag.get_text(strip=True)
+        
+        # Label Image
+        label_tag = soup.select_one('.label img')
+        if label_tag and label_tag.has_attr('src'):
+            details['untappd_label'] = label_tag['src']
+        
+        # Details Block (ABV, IBU, Rating, Count)
+        abv_tag = soup.select_one('.details .abv')
+        if abv_tag: 
+            details['untappd_abv'] = abv_tag.get_text(strip=True).replace(' ABV', '')
+            
+        ibu_tag = soup.select_one('.details .ibu')
+        if ibu_tag:
+            details['untappd_ibu'] = ibu_tag.get_text(strip=True).replace(' IBU', '')
+            
+        rating_tag = soup.select_one('.details .num')
+        if rating_tag:
+            details['untappd_rating'] = rating_tag.get_text(strip=True).strip('()')
+            
+        raters_tag = soup.select_one('.details .raters')
+        if raters_tag:
+            count_text = raters_tag.get_text(strip=True)
+            count_text = count_text.replace(' Ratings', '').replace(' Rating', '')
+            count_text = count_text.strip('()')
+            details['untappd_rating_count'] = count_text
+
+        # Add timestamp
+        details['untappd_fetched_at'] = datetime.now().isoformat()
+
+    except Exception as e:
+        logger.error(f"Detail scrape error: {e}")
+        
+    return details
+
+
+def scrape_brewery_details(url: str) -> UntappdBreweryDetails:
+    """
+    Scrapes detailed info from a specific Untappd brewery URL.
+    """
+    details: UntappdBreweryDetails = {}
+    if not url:
+        return details
+        
+    logger.info(f"Scraping brewery details from: {url}")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://untappd.com/"
+    }
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        html = resp.text
+        if resp.status_code != 200:
+            logger.warning(f"Failed to load brewery details with requests. Status: {resp.status_code}. Trying curl fallback...")
+            import subprocess
+            curl_cmd = [
+                'curl', '-s', '-L',
+                '-H', f"User-Agent: {headers['User-Agent']}",
+                '-H', f"Accept: {headers['Accept']}",
+                '-H', f"Referer: {headers['Referer']}",
+                url
+            ]
+            curl_res = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=15)
+            if curl_res.returncode == 0 and len(curl_res.stdout) > 1000:
+                html = curl_res.stdout
+                logger.info("  ✅ Curl fallback successful")
+            else:
+                logger.error(f"  ❌ Curl fallback failed or returned too little data (code: {curl_res.returncode})")
+                return details
+            
+        soup = BeautifulSoup(html, 'lxml')
+        
+        # Try finding the name directly (H1 is usually the name)
+        name_tag = soup.select_one('h1')
+        if name_tag:
+            details['brewery_name'] = name_tag.get_text(strip=True)
+            
+            # The structure is usually:
+            # <div class="basic">
+            #   <h1>Wakasaimo Honpo</h1>
+            #   <p class="brewery">Toyako, Hokkaido Japan</p>
+            #   <p class="style">Micro Brewery</p>
+            # </div>
+            
+            parent = name_tag.parent
+            if parent:
+                # Location often in a <p class="brewery"> or just <p>
+                # Using class-agnostic p tag search based on position
+                p_tags = parent.select('p')
+                for p in p_tags:
+                    text = p.get_text(strip=True)
+                    # Skip subsidiary info
+                    if "Subsidiary of" in text:
+                        continue
+                        
+                    # Simple heuristic: If it looks like a location (Japan, US, etc) or has a map icon?
+                    # Or relying on order: 1st is location, 2nd is type
+                    # Untappd usually puts location first
+                    if not details.get('location') and any(c.isalpha() for c in text): 
+                         details['location'] = text
+                    elif not details.get('brewery_type') and details.get('location') and text != details.get('location'):
+                         details['brewery_type'] = text
+        
+        # Logo
+        # Try og:image first as it's very reliable for breweries
+        og_image = soup.find('meta', property='og:image')
+        if og_image and og_image.get('content') and 'brewery_logos' in og_image.get('content'):
+            details['logo_url'] = og_image.get('content')
+        
+        if not details.get('logo_url'):
+            # Fallback to standard selectors
+            # .label.image-big img is common for the main brewery logo
+            logo_img = soup.select_one('.label img') or soup.select_one('.basic img') or soup.select_one('.logo img')
+            if logo_img:
+                details['logo_url'] = logo_img.get('src')
+        
+        # Website / Socials - usually in .social
+        socials = soup.select('.social a')
+        for link in socials:
+            text = link.get_text(strip=True).lower()
+            href = link.get('href')
+            if 'website' in text or 'globe' in str(link): # sometimes icon
+                details['website'] = href
+        
+        # Stats - usually in .stats
+        stats_container = soup.select_one('.stats')
+        if stats_container:
+            stats = {}
+            stat_items = stats_container.select('.item')
+            for item in stat_items:
+                label = item.select_one('.title')
+                value = item.select_one('.count')
+                if label and value:
+                    l_text = label.get_text(strip=True).lower()
+                    v_text = value.get_text(strip=True).replace(',', '')
+                    if 'total' in l_text: stats['total_beers'] = v_text
+                    elif 'unique' in l_text: stats['unique_users'] = v_text
+                    elif 'monthly' in l_text: stats['monthly_checkins'] = v_text
+                    elif 'ratings' in l_text: stats['rating_count'] = v_text
+            details['stats'] = stats
+            
+        details['fetched_at'] = datetime.now().isoformat()
+        
+    except Exception as e:
+        logger.error(f"Brewery scrape error: {e}")
+        
+    return details
+
+def search_brewery(query: str) -> Optional[str]:
+    """
+    Searches for a brewery on Untappd and returns the brewery page URL.
+    """
+    encoded_query = urllib.parse.quote(query)
+    url = f"https://untappd.com/search?q={encoded_query}&type=brewery"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, 'lxml')
+            # Results are usually in .beer-item regardless of type, but struct differs
+            # Brewery results: <div class="beer-item"> ... <p class="name"><a href="/w/brewery-name/123">Brewery Name</a></p>
+            
+            results = soup.select('.beer-item')
+            for res in results[:1]: # Take first match
+                name_tag = res.select_one('.name a')
+                if name_tag:
+                    href = name_tag.get('href')
+                    # format: /w/slug/id OR /vanity_slug
+                    if href and "/b/" not in href:
+                         return f"https://untappd.com{href}"
+                         
+    except Exception as e:
+        logger.error(f"Brewery search error for '{query}': {e}")
+        
+    return None
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    # Integration test
+    test_url = "https://untappd.com/b/inkhorn-brewing-uguisu/6441649"
+    # print(get_untappd_url("Inkhorn Brewing", "UGUISU"))
+    print(scrape_beer_details(test_url))
