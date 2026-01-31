@@ -63,6 +63,7 @@ BREWERY_ALIASES = {
     "ワイマーケット": ["Y.Market Brewing"],
     "ディレイラ": ["Derailleur Brew Works"],
     "Teenage": ["Teenage Brewing"],
+    "Human People Beer": ["Human People"],
 }
 
 COMMON_SUFFIXES = [
