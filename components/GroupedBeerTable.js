@@ -73,6 +73,7 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                                         logo={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_logo : null}
                                         location={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_location : null}
                                         type={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_type : null}
+                                        fallbackName={cheapestItem?.name || group.beer_name}
                                     />
                                 </td>
                                 <td className="col-beer-style">

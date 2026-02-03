@@ -47,6 +47,7 @@ export default function BeerTable({ beers, loading, error }) {
                                     logo={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.brewery_logo : null}
                                     location={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.brewery_location : null}
                                     type={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.brewery_type : null}
+                                    fallbackName={beer.name}
                                 />
                             </td>
                             <td className="col-beer-style">

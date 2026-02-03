@@ -43,8 +43,11 @@ function getFlag(location) {
     return null;
 }
 
-export default function BeerInfoCell({ brewery, beer, logo, location, type }) {
+export default function BeerInfoCell({ brewery, beer, logo, location, type, fallbackName }) {
     const flag = getFlag(location);
+
+    // Use beer name if available, otherwise use fallback (original product name)
+    const displayName = beer || fallbackName || 'Beer name not available';
 
     return (
         <div className="beer-name-group">
@@ -71,7 +74,7 @@ export default function BeerInfoCell({ brewery, beer, logo, location, type }) {
                 </div>
             )}
             <div className="beer-name">
-                {beer || 'Unknown Beer'}
+                {displayName}
             </div>
         </div>
     );

@@ -64,6 +64,9 @@ BREWERY_ALIASES = {
     "ディレイラ": ["Derailleur Brew Works"],
     "Teenage": ["Teenage Brewing"],
     "Human People Beer": ["Human People"],
+    "Voyager": ["Voyager Brewing"],
+    "Green Cheek Beer Co.": ["Green Cheek Beer Company"],
+    "Green Cheek": ["Green Cheek Beer Company"],
 }
 
 COMMON_SUFFIXES = [
@@ -95,16 +98,36 @@ def clean_beer_name(name: str) -> str:
     # Remove シリーズ and everything after
     name = re.sub(r'シリーズ.*$', '', name)
     
+    # Remove hop treatment prefixes (TDH/Triple Dry Hopped, DDH/Double Dry Hopped, etc.)
+    # These are common beer production methods, not part of the core beer name
+    name = re.sub(r'\b(?:TDH|DDH|SDH)\s+', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\b(?:Triple|Double|Single)\s+Dry\s+Hopped\s+', '', name, flags=re.IGNORECASE)
+    
     # Remove #XX, Vol.X, Batch X patterns
     name = re.sub(r'#\d+', '', name)
     name = re.sub(r'Vol\.?\s*\d+', '', name, flags=re.IGNORECASE)
     name = re.sub(r'Batch\s*\d+', '', name, flags=re.IGNORECASE)
     
     # Remove year patterns at the end (2024, 2025)
-    name = re.sub(r'\s+20\d{2}\s*$', '', name)
+    # DISABLED: Year/vintage is important for many beers (Parabola, barrel-aged, etc.)
+    # name = re.sub(r'\s+20\d{2}\s*$', '', name)
     
     # Remove Japanese parentheses content that looks like version info
     name = re.sub(r'（[^）]*版[^）]*）', '', name)
+    
+    # Remove style descriptions in parentheses (e.g., "(West Coast IPA w/Cryo Fresh Hops)")
+    # First remove English parentheses with style info
+    name = re.sub(r'\s*\([^)]*(?:IPA|Lager|Stout|Ale|Saison|Porter|Pilsner|Pale|Hazy|DDH|TDH|DIPA|TIPA|Imperial|Session)[^)]*\)', '', name, flags=re.IGNORECASE)
+    # Also remove generic parenthetical descriptions
+    name = re.sub(r'\s*\([^)]*w/[^)]*\)', '', name)  # e.g., "(w/Cryo Fresh Hops)"
+    
+    # Remove standalone beer style descriptors (e.g., "Imperial Stout", "Hazy IPA")
+    # Common multi-word style patterns
+    name = re.sub(r'\s+(?:Imperial|Russian Imperial|American Imperial)\s+(?:Stout|IPA|Porter|Lager|Pale Ale)\b', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+(?:West Coast|East Coast|New England|Hazy|Session|Double|Triple)\s+(?:IPA|Pale Ale|Lager)\b', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+(?:Sour|Fruited|Barrel-Aged|Oak-Aged)\s+(?:Ale|Beer|Stout|IPA)\b', '', name, flags=re.IGNORECASE)
+    # Single-word styles at the end
+    name = re.sub(r'\s+(?:IPA|DIPA|TIPA|Stout|Porter|Lager|Pilsner|Saison|Ale)$', '', name, flags=re.IGNORECASE)
     
     # Remove -〇〇編- style suffixes (e.g., -ラガー編-, -IPA編-)
     name = re.sub(r'-[^-]+編-?$', '', name)
@@ -136,9 +159,24 @@ def clean_brewery_name(name: str) -> str:
         return name
     
     # Common suffixes to remove (order matters, longest first)
+    # Including multilingual brewery terms
     suffixes = [
+        # English
         ' Beer Company', ' Brewing Co.', ' Brewing Company', ' Brewery Co.', 
-        ' Brewing', ' Brewery', ' Beer', ' Co.', ' Company', ' Corporation', ' Corp.'
+        ' Brewing', ' Brewery', ' Beer', ' Co.', ' Company', ' Corporation', ' Corp.',
+        ' Brewhouse', ' Brewpub', ' Craft Beer',
+        # Czech
+        ' pivovar', ' pivovar a.s.', ' pivovarský dům',
+        # Spanish
+        ' cervecería', ' cerveza', ' cervezas',
+        # German
+        ' brauerei', ' bräu', ' brauhaus',
+        # French
+        ' brasserie',
+        # Italian
+        ' birrificio',
+        # Japanese
+        ' 醸造所', ' ブルワリー', ' ビール',
     ]
     suffixes.sort(key=len, reverse=True)
     
@@ -216,7 +254,17 @@ def validate_brewery_match(result_element: BeautifulSoup, expected_brewery: str)
         logger.info(f"  [Validation] Brewery MATCH (Norm): '{result_brewery}' matches '{expected_brewery}'")
         return True
         
-    # 2. Alias Check
+    # 2. Cleaned Name Check (removes brewery suffixes like 'pivovar', 'brewing', etc.)
+    cleaned_result = clean_brewery_name(result_brewery)
+    cleaned_expected = clean_brewery_name(expected_brewery)
+    cr_norm = normalize_for_comparison(cleaned_result)
+    ce_norm = normalize_for_comparison(cleaned_expected)
+    
+    if cr_norm and ce_norm and (cr_norm in ce_norm or ce_norm in cr_norm):
+        logger.info(f"  [Validation] Brewery MATCH (Cleaned): '{result_brewery}' (cleaned: '{cleaned_result}') matches '{expected_brewery}' (cleaned: '{cleaned_expected}')")
+        return True
+        
+    # 3. Alias Check
     if expected_brewery in BREWERY_ALIASES:
         for alias in BREWERY_ALIASES[expected_brewery]:
             alias_norm = normalize_for_comparison(alias)
@@ -224,7 +272,7 @@ def validate_brewery_match(result_element: BeautifulSoup, expected_brewery: str)
                 logger.info(f"  [Validation] Brewery MATCH (Alias): '{result_brewery}' matches alias '{alias}'")
                 return True
                 
-    # 3. Collaboration Check (x, ×, /)
+    # 4. Collaboration Check (x, ×, /)
     if any(sep in expected_brewery for sep in [' x ', ' x', 'x ', '×', '/']):
         parts = re.split(r'\s*[x×/]\s*', expected_brewery)
         for part in parts:
@@ -338,12 +386,14 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
                     search_brewery_name = BREWERY_ALIASES[b_name][0]
                 
                 if search_brewery_name:
+                    # Try both orders: brewery+beer and beer+brewery
+                    queries_to_try.append(f"{search_brewery_name} {beer_name}")
                     queries_to_try.append(f"{beer_name} {search_brewery_name}")
             
             # 1. Try full brewery name first
             add_brewery_queries(brewery_name)
             
-            # Additional: Try cleaned brewery name (without 'Beer', 'Brewing', etc.)
+            # Additional: Try cleaned brewery name (without 'Beer', 'Brewing', 'pivovar', etc.)
             cleaned_b = clean_brewery_name(brewery_name)
             if cleaned_b != brewery_name:
                 add_brewery_queries(cleaned_b)
@@ -451,6 +501,39 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
                     'failure_reason': None,
                     'error_message': None
                 }
+
+        # Year/Vintage Removal Fallback
+        # If beer name contains a year (2020-2029), try without it
+        if beer_name and re.search(r'\b20[2-9]\d\b', beer_name):
+            beer_name_no_year = re.sub(r'\s*\b20[2-9]\d\b\s*', ' ', beer_name).strip()
+            beer_name_no_year = ' '.join(beer_name_no_year.split())  # Clean extra spaces
+            
+            if beer_name_no_year and beer_name_no_year != beer_name:
+                logger.info(f"Retrying without vintage year: {beer_name_no_year}")
+                
+                # Try with brewery name
+                if brewery_name:
+                    search_query = f"{beer_name_no_year} {brewery_name}"
+                    result = search_untappd(search_query, validate_brewery=brewery_name)
+                    if result:
+                        logger.info(f"Found direct link (no year + brewery): {result}")
+                        return {
+                            'url': result,
+                            'success': True,
+                            'failure_reason': None,
+                            'error_message': None
+                        }
+                
+                # Try beer name only (with validation)
+                result = search_untappd(beer_name_no_year, validate_brewery=brewery_name, validate_beer=beer_name_no_year)
+                if result:
+                    logger.info(f"Found direct link (no year only): {result}")
+                    return {
+                        'url': result,
+                        'success': True,
+                        'failure_reason': None,
+                        'error_message': None
+                    }
 
         # Brewery-Specific Fallback (if URL NOT known but we can find it)
         if brewery_name and (beer_name or beer_name_jp) and not brewery_url:
