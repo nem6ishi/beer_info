@@ -163,7 +163,7 @@ def clean_brewery_name(name: str) -> str:
     suffixes = [
         # English
         ' Beer Company', ' Brewing Co.', ' Brewing Company', ' Brewery Co.', 
-        ' Brewing', ' Brewery', ' Beer', ' Co.', ' Company', ' Corporation', ' Corp.',
+        ' Beer Co', ' Brewing', ' Brewery', ' Beer', ' Co.', ' Company', ' Corporation', ' Corp.',
         ' Brewhouse', ' Brewpub', ' Craft Beer',
         # Czech
         ' pivovar', ' pivovar a.s.', ' pivovarský dům',
