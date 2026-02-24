@@ -67,6 +67,8 @@ BREWERY_ALIASES = {
     "Voyager": ["Voyager Brewing"],
     "Green Cheek Beer Co.": ["Green Cheek Beer Company"],
     "Green Cheek": ["Green Cheek Beer Company"],
+    "Distant Shores": ["Distant Shores Brewing Company"],
+    "Distant Shores Brewing": ["Distant Shores Brewing Company"],
 }
 
 COMMON_SUFFIXES = [
