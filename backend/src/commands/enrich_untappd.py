@@ -346,11 +346,16 @@ async def enrich_untappd(
 
     total_processed = 0
     total_success = 0
-    batch_size = min(limit, 1000)
     collected_brewery_urls: set = set()
+    
+    # Track URLs we've already seen in this run to avoid infinite loop
+    seen_urls_this_run = set()
 
     while True:
         beers = []
+        
+        # Always fetch a large batch to have enough candidates after filtering
+        db_fetch_limit = 1000
 
         if mode == 'missing':
             query = supabase.table('beer_info_view') \
@@ -361,29 +366,87 @@ async def enrich_untappd(
                 query = query.eq('shop', shop_filter)
             if name_filter:
                 query = query.ilike('name', f'%{name_filter}%')
-            beers = query.order('first_seen', desc=True).limit(batch_size).execute().data
+            
+            # Exclude already seen URLs to allow pagination without offset issues
+            if seen_urls_this_run:
+                # PostgREST supports passing a list for not.in
+                query = query.not_.in_('url', list(seen_urls_this_run))
+                
+            beers = query.order('first_seen', desc=True).limit(db_fetch_limit).execute().data
+            
+            if beers:
+                logger.info(f"  🔍 Checking failure history for {len(beers)} fetched candidates...")
+                from dateutil import parser
+                urls = [b['url'] for b in beers if b.get('url')]
+                failure_res = supabase.table('untappd_search_failures') \
+                    .select('product_url, search_attempts, last_failed_at') \
+                    .in_('product_url', urls) \
+                    .eq('resolved', False) \
+                    .execute()
+                
+                skip_urls = set()
+                cutoff = datetime.now(timezone.utc) - timedelta(days=3)
+                
+                for f in failure_res.data:
+                    attempts = f.get('search_attempts', 0)
+                    last_failed_str = f.get('last_failed_at')
+                    
+                    if attempts >= 3:
+                        skip_urls.add(f['product_url'])
+                    elif last_failed_str:
+                        try:
+                            last_failed = parser.parse(last_failed_str)
+                            if last_failed > cutoff:
+                                skip_urls.add(f['product_url'])
+                        except:
+                            pass
+                            
+                for u in urls:
+                    seen_urls_this_run.add(u)
+                    
+                if skip_urls:
+                    logger.info(f"  ⏭️ Skipping {len(skip_urls)} items due to recent/repeated failures (backoff limit).")
+                    beers = [b for b in beers if b.get('url') not in skip_urls]
 
         elif mode == 'refresh':
-            logger.info(f"\n📂 Loading batch of REFRESH beers (Limit: {batch_size})...")
+            logger.info(f"\n📂 Loading batch of REFRESH beers...")
             cutoff_date = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
             query = supabase.table('beer_info_view') \
                 .select('url, name, untappd_url, stock_status, untappd_fetched_at') \
-                .not_.is_('untappd_url', None) \
+                .not_.is_('untappd_url', 'null') \
                 .neq('stock_status', 'Sold Out') \
                 .or_(f'untappd_fetched_at.is.null,untappd_fetched_at.lt.{cutoff_date}')
             if shop_filter:
                 query = query.eq('shop', shop_filter)
             if name_filter:
                 query = query.ilike('name', f'%{name_filter}%')
-            beers = query.order('untappd_fetched_at', desc=False, nullsfirst=True).limit(batch_size).execute().data
+                
+            if seen_urls_this_run:
+                query = query.not_.in_('url', list(seen_urls_this_run))
+                
+            beers = query.order('untappd_fetched_at', desc=False, nullsfirst=True).limit(db_fetch_limit).execute().data
+            for b in beers:
+                if b.get('url'):
+                    seen_urls_this_run.add(b['url'])
 
-        logger.info(f"  Found {len(beers)} beers to process")
-        if not beers:
-            logger.info("\n✨ No more beers to process!")
-            break
+        # Now limit to the remaining processing capacity
+        remaining_capacity = limit - total_processed
+        beers_to_process = beers[:remaining_capacity]
 
-        processed_urls: set = set()
-        for i, beer in enumerate(beers, 1):
+        logger.info(f"  Valid {len(beers_to_process)} beers to process in this batch")
+        if not beers_to_process:
+            if not beers and mode == 'missing':
+                # No beers fetched from DB at all -> done
+                logger.info("\n✨ No more beers to process!")
+                break
+            elif not beers:
+                break
+            else:
+                # Fetched beers but all were skipped, loop again
+                continue
+
+        processed_urls = set()
+        for i, beer in enumerate(beers_to_process, 1):
             product_url = beer.get('url')
             if product_url in processed_urls:
                 continue
@@ -391,7 +454,7 @@ async def enrich_untappd(
 
             name_display = beer.get('name', beer.get('beer_name', 'Unknown'))
             logger.info(f"\n{'='*70}")
-            logger.info(f"[Batch {i}/{len(beers)} | Total {total_processed + i}] Processing: {name_display[:60]}")
+            logger.info(f"[Batch {i}/{len(beers_to_process)} | Total {total_processed + i}] Processing: {name_display[:60]}")
             logger.info(f"{'='*70}")
 
             result = None
@@ -409,7 +472,7 @@ async def enrich_untappd(
 
             await asyncio.sleep(1)
 
-        total_processed += len(beers)
+        total_processed += len(beers_to_process)
         if total_processed >= limit:
             break
 
@@ -417,3 +480,4 @@ async def enrich_untappd(
     logger.info("✨ Untappd enrichment completed!")
     logger.info(f"{'='*70}")
     return list(collected_brewery_urls)
+

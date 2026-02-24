@@ -11,7 +11,6 @@ from backend.src.core.db import get_supabase_client
 from backend.src.core.config import settings
 from backend.src.services.gemini.extractor import GeminiExtractor
 from backend.src.services.store.brewery_manager import BreweryManager
-from backend.src.commands.enrich_untappd import process_beer_missing
 from backend.src.commands.failure_tracker import record_enrichment_failure
 
 logger = logging.getLogger(__name__)
@@ -100,7 +99,7 @@ def _apply_filters(query, shop, keyword, offline, force):
     return query
 
 async def _process_item(supabase, extractor, brewery_manager, beer, offline, force) -> Optional[bool]:
-    """Processes a single beer item: Extract -> Save -> Chain Untappd."""
+    """Processes a single beer item: Extract -> Save."""
     need_gemini = force or not (beer.get('brewery_name_en') and beer.get('beer_name_en'))
     
     try:
@@ -117,15 +116,9 @@ async def _process_item(supabase, extractor, brewery_manager, beer, offline, for
             
             # Save
             _save_gemini_data(supabase, beer['url'], enriched_info)
-            beer.update(enriched_info) # Update local dict for chaining
             
         else:
             logger.info(f"  ⏩ Gemini data already exists. Skipping extraction. (Brewery: {beer.get('brewery_name_en')})")
-        if beer.get('product_type', 'beer') == 'beer':
-            logger.info("  🔗 Chaining Untappd enrichment...")
-            await process_beer_missing(beer, offline=offline)
-        else:
-            logger.info(f"  ⏭️ Skipping Untappd (Type: {beer.get('product_type')})")
             
         return True
 
