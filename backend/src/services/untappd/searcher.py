@@ -316,7 +316,12 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
 
     def search_untappd(query: str, validate_brewery: str = None, validate_beer: str = None) -> Optional[str]:
         """Helper to perform a single search attempt."""
-        encoded_query = urllib.parse.quote(query)
+        # Normalize hyphens: replace standalone hyphens (e.g. "-Mango Boost-") with spaces
+        # Untappd may interpret leading hyphens as exclusion operators
+        normalized_query = re.sub(r'\s*-\s*', ' ', query).strip()
+        if normalized_query != query:
+            logger.info(f"Normalized query hyphens: '{query}' -> '{normalized_query}'")
+        encoded_query = urllib.parse.quote(normalized_query)
         url = f"https://untappd.com/search?q={encoded_query}"
         
         headers = {
