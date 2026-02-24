@@ -163,16 +163,20 @@ class GeminiExtractor:
         - **Collab**: If multiple breweries are involved (×, &, /), include all (e.g., "A x B").
         - **Clean**: Remove "Sold Out", "入荷", "ml缶", "【クール便】", "【限定品】" etc.
         - **Product Type**: "beer" (single/pack), "set" (variety), "glass", "other".
+        - **beer_name_core**: The essential/searchable part of the beer name. Remove edition qualifiers like "Nth Anniversary", "Special Edition", "Limited", "Reserve", "Collaboration" and beer style suffixes (IPA, Stout, etc.). This is used for Untappd search. Example: "The Realm's Remedy 11th Anniversary IPA" → "The Realm's Remedy".
+        - **search_hint**: A short, optimized search query for Untappd (typically: core beer name + key brewery keyword, max ~4 words). Example: "The Realm's Remedy Holy Mountain".
 
         Output JSON:
         {{
           "brewery_name_jp": "...", "brewery_name_en": "...",
           "beer_name_jp": "...", "beer_name_en": "...",
+          "beer_name_core": "...",
+          "search_hint": "...",
           "product_type": "...", "is_set": boolean
         }}
 
         Example:
-        {examples if examples else '1. "Beer Name / Brewery" -> {"brewery_name_en": "Brewery", "beer_name_en": "Beer Name", "product_type": "beer"}'}
+        {examples if examples else '1. "Beer Name / Brewery" -> {"brewery_name_en": "Brewery", "beer_name_en": "Beer Name", "beer_name_core": "Beer Name", "search_hint": "Beer Name Brewery", "product_type": "beer"}'}
         """
 
     async def extract_info(self, product_name: str, known_brewery: Optional[str] = None, shop: Optional[str] = None) -> Dict[str, Any]:
@@ -202,6 +206,8 @@ class GeminiExtractor:
                     "brewery_name_en": data.get("brewery_name_en"),
                     "beer_name_jp": data.get("beer_name_jp"),
                     "beer_name_en": data.get("beer_name_en"),
+                    "beer_name_core": data.get("beer_name_core"),
+                    "search_hint": data.get("search_hint"),
                     "product_type": data.get("product_type", "beer"),
                     "is_set": data.get("is_set", False),
                     "raw_response": data.get("raw_response")
@@ -215,13 +221,52 @@ class GeminiExtractor:
     def _empty_result(self) -> Dict[str, Any]:
         """Returns a default empty result structure."""
         return {
-            "brewery_name_jp": None, 
-            "brewery_name_en": None, 
-            "beer_name_jp": None, 
+            "brewery_name_jp": None,
+            "brewery_name_en": None,
+            "beer_name_jp": None,
             "beer_name_en": None,
+            "beer_name_core": None,
+            "search_hint": None,
             "product_type": "beer",
             "is_set": False
         }
+
+    async def suggest_search_queries(self, product_name: str, brewery: str, beer_name: str) -> List[str]:
+        """
+        Two-pass retry: When Untappd search fails, ask Gemini for alternative search queries.
+        Returns a list of short search query strings to try.
+        """
+        if not self.client:
+            return []
+
+        prompt = f"""
+        An Untappd search for a craft beer has failed. Suggest 3 short, alternative search queries to find it.
+
+        Product Title: "{product_name}"
+        Brewery: "{brewery}"
+        Beer Name: "{beer_name}"
+
+        Rules:
+        - Each query should be short (2-5 words)
+        - Try different combinations: core beer name, brewery abbreviation, key unique words
+        - Remove edition qualifiers (Anniversary, Edition, Limited, etc.)
+        - Remove beer style suffixes (IPA, Stout, Pale Ale, etc.) if the name has other unique words
+        - The goal is to find the beer on Untappd.com
+
+        Output JSON only:
+        {{"queries": ["query1", "query2", "query3"]}}
+        """
+
+        try:
+            data = await self._generate_content_with_retry(prompt)
+            if data and isinstance(data.get("queries"), list):
+                queries = [q for q in data["queries"] if isinstance(q, str) and len(q) >= 3]
+                logger.info(f"  [Gemini] Suggested retry queries: {queries}")
+                return queries[:5]  # Max 5 queries
+        except Exception as e:
+            logger.error(f"[Gemini] suggest_search_queries failed: {e}")
+
+        return []
 
 # Usage Example:
 # extractor = GeminiExtractor()

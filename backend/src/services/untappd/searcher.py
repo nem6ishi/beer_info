@@ -208,6 +208,33 @@ def strip_beer_suffix(beer_name: str) -> Optional[str]:
             return stripped
     return None
 
+# Ordinal number mapping for anniversary/edition names (e.g. 11th -> eleventh)
+_ORDINAL_MAP = {
+    '1st': 'first', '2nd': 'second', '3rd': 'third', '4th': 'fourth',
+    '5th': 'fifth', '6th': 'sixth', '7th': 'seventh', '8th': 'eighth',
+    '9th': 'ninth', '10th': 'tenth', '11th': 'eleventh', '12th': 'twelfth',
+    '13th': 'thirteenth', '14th': 'fourteenth', '15th': 'fifteenth',
+    '16th': 'sixteenth', '17th': 'seventeenth', '18th': 'eighteenth',
+    '19th': 'nineteenth', '20th': 'twentieth', '21st': 'twentyfirst',
+    '25th': 'twentyfifth', '30th': 'thirtieth',
+}
+
+def _normalize_ordinals(text: str) -> str:
+    """Converts ordinal numbers (11th, 2nd, etc.) to their English word equivalents."""
+    def replace_ordinal(m):
+        return _ORDINAL_MAP.get(m.group(0).lower(), m.group(0))
+    return re.sub(r'\b\d+(?:st|nd|rd|th)\b', replace_ordinal, text, flags=re.IGNORECASE)
+
+def _strip_for_core_comparison(text: str) -> str:
+    """Strips year, style suffixes, dashes, and punctuation for core name comparison."""
+    # Remove year in parens like (2026)
+    text = re.sub(r'\s*\(20\d{2}\)\s*', ' ', text)
+    # Remove em-dashes and en-dashes (common in Untappd names)
+    text = re.sub(r'\s*[–—-]\s*', ' ', text)
+    # Remove common beer style suffixes at end
+    text = re.sub(r'\s+(?:IPA|DIPA|TIPA|Hazy IPA|Double IPA|Triple IPA|NEIPA|West Coast IPA|Session IPA|Stout|Imperial Stout|Pale Ale|Lager|Pilsner|Sour|Porter|Ale|Saison|Gose)\s*$', '', text, flags=re.IGNORECASE)
+    return text.strip()
+
 def normalize_for_comparison(text: str) -> str:
     """Removes whitespace and non-alphanumeric characters for fuzzy comparison."""
     if not text:
@@ -227,9 +254,30 @@ def validate_beer_match(result_element: BeautifulSoup, expected_beer: str) -> bo
     rb_norm = normalize_for_comparison(result_beer)
     eb_norm = normalize_for_comparison(expected_beer)
     
-    # Check for direct inclusion or high similarity
+    # 1. Direct inclusion check
     if rb_norm in eb_norm or eb_norm in rb_norm:
         logger.info(f"  [Validation] Beer MATCH: '{result_beer}' matches '{expected_beer}'")
+        return True
+    
+    # 2. Ordinal normalization check (11th -> eleventh, etc.)
+    rb_ord = normalize_for_comparison(_normalize_ordinals(result_beer))
+    eb_ord = normalize_for_comparison(_normalize_ordinals(expected_beer))
+    if rb_ord in eb_ord or eb_ord in rb_ord:
+        logger.info(f"  [Validation] Beer MATCH (Ordinal): '{result_beer}' matches '{expected_beer}'")
+        return True
+    
+    # 3. Core name comparison: strip year, dashes, style suffixes
+    rb_core = normalize_for_comparison(_strip_for_core_comparison(result_beer))
+    eb_core = normalize_for_comparison(_strip_for_core_comparison(expected_beer))
+    if rb_core and eb_core and (rb_core in eb_core or eb_core in rb_core):
+        logger.info(f"  [Validation] Beer MATCH (Core): '{result_beer}' (core: '{rb_core}') matches '{expected_beer}' (core: '{eb_core}')")
+        return True
+    
+    # 4. Combined: ordinal + core stripping
+    rb_ord_core = normalize_for_comparison(_strip_for_core_comparison(_normalize_ordinals(result_beer)))
+    eb_ord_core = normalize_for_comparison(_strip_for_core_comparison(_normalize_ordinals(expected_beer)))
+    if rb_ord_core and eb_ord_core and (rb_ord_core in eb_ord_core or eb_ord_core in rb_ord_core):
+        logger.info(f"  [Validation] Beer MATCH (Ordinal+Core): '{result_beer}' matches '{expected_beer}'")
         return True
         
     logger.info(f"  [Validation] Beer FAIL: '{result_beer}' ({rb_norm}) != '{expected_beer}' ({eb_norm})")
@@ -293,7 +341,8 @@ def validate_brewery_match(result_element: BeautifulSoup, expected_brewery: str)
     logger.info(f"  [Validation] Brewery FAIL: '{result_brewery}' != '{expected_brewery}'")
     return False
 
-def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None, brewery_url: str = None) -> UntappdSearchResult:
+def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None, brewery_url: str = None,
+                    search_hint: str = None, beer_name_core: str = None) -> UntappdSearchResult:
     """
     Searches for an Untappd beer page using direct scraping of Untappd.com.
     
@@ -302,6 +351,8 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
         beer_name (str): Name of the beer (prefer English).
         beer_name_jp (str): Name of the beer in Japanese (optional fallback).
         brewery_url (str): Known Untappd URL of the brewery (optional priority search).
+        search_hint (str): Gemini-generated optimal search query (short, e.g. "The Realm's Remedy Holy Mountain").
+        beer_name_core (str): Core beer name without edition qualifiers (e.g. "The Realm's Remedy").
         
     Returns:
         UntappdSearchResult: Structured result with URL, success status, and failure reason if applicable.
@@ -358,6 +409,19 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
         return None
 
     try:
+        # PRIORITY 0: USE GEMINI's search_hint IF PROVIDED
+        if search_hint:
+            logger.info(f"PRIORITY 0: Using Gemini search_hint: '{search_hint}'")
+            result = search_untappd(search_hint, validate_brewery=brewery_name, validate_beer=beer_name_core or beer_name)
+            if result:
+                logger.info(f"Found direct link (search_hint): {result}")
+                return {
+                    'url': result,
+                    'success': True,
+                    'failure_reason': None,
+                    'error_message': None
+                }
+
         # PRIORITY 1: SEARCH WITHIN BREWERY PAGE IF URL KNOWN
         if brewery_url and (beer_name or beer_name_jp):
             logger.info(f"Prioritizing brewery-specific search for: {brewery_name} (URL: {brewery_url})")
@@ -366,10 +430,13 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
             if brewery_name.lower() in query_for_b.lower():
                 query_for_b = query_for_b.replace(brewery_name, "").strip()
             
-            # Also try without suffix
+            # Also try without suffix, and with beer_name_core if available
             query_fallback = strip_beer_suffix(query_for_b) or query_for_b
+            queries_b = [query_for_b, query_fallback]
+            if beer_name_core and beer_name_core not in [query_for_b, query_fallback]:
+                queries_b.append(beer_name_core)
             
-            for q in [query_for_b, query_fallback]:
+            for q in queries_b:
                 if not q: continue
                 logger.info(f"Searching within known brewery page: {q}")
                 result = search_brewery_beer(brewery_url, q, validate_beer=beer_name or beer_name_jp)
@@ -477,6 +544,29 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
                             'failure_reason': None,
                             'error_message': None
                         }
+
+        # Edition/Anniversary Removal Fallback
+        # Strip "Nth Anniversary", "Special Edition", "Release" etc. to get core beer name
+        if beer_name:
+            core_name = re.sub(
+                r'\s+(?:\d+(?:st|nd|rd|th)\s+)?(?:Anniversary|Edition|Release|Collaboration|Collab|Special|Limited|Reserve|Barrel[\s-]Aged)\b.*$',
+                '', beer_name, flags=re.IGNORECASE
+            ).strip()
+            # Also strip trailing style suffixes from the core name
+            core_name = re.sub(r'\s+(?:IPA|DIPA|TIPA|Pale Ale|Stout|Lager|Saison|Porter|Ale|Sour|Gose)\s*$', '', core_name, flags=re.IGNORECASE).strip()
+            if core_name and core_name != beer_name and len(core_name) >= 4:
+                logger.info(f"Edition removal fallback: '{beer_name}' -> '{core_name}'")
+                # Try core name + brewery
+                query = f"{core_name} {brewery_name}" if brewery_name else core_name
+                result = search_untappd(query, validate_brewery=brewery_name, validate_beer=core_name)
+                if result:
+                    logger.info(f"Found direct link (edition removal): {result}")
+                    return {
+                        'url': result,
+                        'success': True,
+                        'failure_reason': None,
+                        'error_message': None
+                    }
 
         # Japanese Name Fallback
         if beer_name_jp:

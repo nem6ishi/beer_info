@@ -130,9 +130,46 @@ async def process_beer_missing(beer: dict, offline: bool = False):
             else:
                 logger.info(f"  🔍 Searching Untappd for: {brewery} - {beer_name}")
                 beer_name_jp_clean = beer.get('beer_name_jp')
-                search_result = get_untappd_url(brewery, beer_name, beer_name_jp=beer_name_jp_clean, brewery_url=brewery_url_hint)
+                search_hint = beer.get('search_hint')
+                beer_name_core = beer.get('beer_name_core')
+                search_result = get_untappd_url(
+                    brewery, beer_name,
+                    beer_name_jp=beer_name_jp_clean,
+                    brewery_url=brewery_url_hint,
+                    search_hint=search_hint,
+                    beer_name_core=beer_name_core
+                )
                 
                 # Handle search result
+                if not search_result.get('success'):
+                    # Two-pass retry: ask Gemini for alternative search queries
+                    if search_result.get('failure_reason') == 'no_results' and beer.get('name'):
+                        logger.info(f"  🔄 [Two-pass] Primary search failed. Asking Gemini for alternative queries...")
+                        try:
+                            from backend.src.services.gemini.extractor import GeminiExtractor
+                            extractor = GeminiExtractor()
+                            alt_queries = await extractor.suggest_search_queries(
+                                product_name=beer.get('name', ''),
+                                brewery=brewery,
+                                beer_name=beer_name
+                            )
+                            for alt_query in alt_queries:
+                                logger.info(f"  🔍 [Two-pass] Trying: '{alt_query}'")
+                                retry_result = get_untappd_url(
+                                    brewery_name=brewery,
+                                    beer_name=beer_name,
+                                    search_hint=alt_query,
+                                    beer_name_core=beer_name_core
+                                )
+                                if retry_result.get('success'):
+                                    logger.info(f"  ✅ [Two-pass] Found: {retry_result.get('url')}")
+                                    search_result = retry_result
+                                    break
+                                await asyncio.sleep(1)
+                        except Exception as e:
+                            logger.warning(f"  ⚠️ [Two-pass] Gemini retry failed: {e}")
+
+                # Still failed after two-pass
                 if not search_result.get('success'):
                     # Record failure
                     if beer.get('url'):

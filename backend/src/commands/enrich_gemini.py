@@ -154,13 +154,28 @@ def _save_gemini_data(supabase, url, info):
         'brewery_name_jp': info.get('brewery_name_jp'),
         'beer_name_en': info.get('beer_name_en'),
         'beer_name_jp': info.get('beer_name_jp'),
+        'beer_name_core': info.get('beer_name_core'),
+        'search_hint': info.get('search_hint'),
         'product_type': info.get('product_type', 'beer'),
         'is_set': info.get('is_set', False),
         'payload': info.get('raw_response'),
         'updated_at': datetime.now(timezone.utc).isoformat()
     }
-    supabase.table('gemini_data').upsert(payload).execute()
+    try:
+        supabase.table('gemini_data').upsert(payload).execute()
+    except Exception as e:
+        # Fallback: new columns may not exist yet (migration pending)
+        if 'beer_name_core' in str(e) or 'search_hint' in str(e) or 'column' in str(e).lower():
+            logger.warning(f"  ⚠️ New columns not in DB yet, saving without search hints (run migration 005)")
+            payload.pop('beer_name_core', None)
+            payload.pop('search_hint', None)
+            supabase.table('gemini_data').upsert(payload).execute()
+        else:
+            raise
+
     logger.info(f"  💾 Saved to gemini_data (Type: {payload.get('product_type')})")
+    if info.get('search_hint'):
+        logger.info(f"  🔍 search_hint: {info.get('search_hint')} | beer_name_core: {info.get('beer_name_core')}")
 
 def _print_final_report(stats):
     """Prints a summary of the enrichment run."""
