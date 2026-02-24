@@ -372,7 +372,7 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
             for q in [query_for_b, query_fallback]:
                 if not q: continue
                 logger.info(f"Searching within known brewery page: {q}")
-                result = search_brewery_beer(brewery_url, q)
+                result = search_brewery_beer(brewery_url, q, validate_beer=beer_name or beer_name_jp)
                 if result:
                     logger.debug(f"Found direct link (priority brewery): {result}")
                     return {
@@ -558,7 +558,7 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
                 for q in [query_for_b, query_fallback]:
                     if not q: continue
                     logger.info(f"Searching within brewery page: {q}")
-                    result = search_brewery_beer(b_url, q)
+                    result = search_brewery_beer(b_url, q, validate_beer=beer_name or beer_name_jp)
                     if result:
                         logger.info(f"Found direct link (brewery fallback): {result}")
                         return {
@@ -598,10 +598,15 @@ def get_untappd_url(brewery_name: str, beer_name: str, beer_name_jp: str = None,
         }
 
 
-def search_brewery_beer(brewery_url: str, query: str) -> Optional[str]:
+def search_brewery_beer(brewery_url: str, query: str, validate_beer: str = None) -> Optional[str]:
     """
     Searches for a beer within a specific brewery's page on Untappd.
     Navigate to /beer?q={query}&sort=created_at_desc
+    
+    Args:
+        brewery_url: Untappd brewery page URL.
+        query: Search query string for the beer.
+        validate_beer: If provided, only return results where beer name matches this string.
     """
     if not brewery_url or not query:
         return None
@@ -621,12 +626,14 @@ def search_brewery_beer(brewery_url: str, query: str) -> Optional[str]:
             soup = BeautifulSoup(resp.text, 'lxml')
             # In the brewery's beer list, items are usually in .beer-item
             results = soup.select('.beer-item')
-            for res in results[:3]:
+            for res in results[:5]:  # Check top 5 when validating
                 name_tag = res.select_one('.name a')
                 if name_tag:
                     href = name_tag.get('href')
                     if href and "/b/" in href:
-                        # Success
+                        # Validate beer name if requested
+                        if validate_beer and not validate_beer_match(res, validate_beer):
+                            continue
                         return f"https://untappd.com{href}"
     except Exception as e:
         logger.error(f"Brewery beer search error for '{query}' at {brewery_url}: {e}")
