@@ -163,8 +163,10 @@ class GeminiExtractor:
         - **Collab**: If multiple breweries are involved (×, &, /), include all (e.g., "A x B").
         - **Clean**: Remove "Sold Out", "入荷", "ml缶", "【クール便】", "【限定品】" etc.
         - **Product Type**: "beer" (single/pack), "set" (variety), "glass", "other".
-        - **beer_name_core**: The essential/searchable part of the beer name. Remove edition qualifiers like "Nth Anniversary", "Special Edition", "Limited", "Reserve", "Collaboration" and beer style suffixes (IPA, Stout, etc.). This is used for Untappd search. Example: "The Realm's Remedy 11th Anniversary IPA" → "The Realm's Remedy".
-        - **search_hint**: A short, optimized search query for Untappd (typically: core beer name + key brewery keyword, max ~4 words). Example: "The Realm's Remedy Holy Mountain".
+        - **brewery_name_jp**: Preserve the original Japanese brewery name as-is (e.g., "ヨロッコ", "家守堂").
+        - **brewery_name_en**: Use the brewery's OFFICIAL English/romanized name if known (e.g., "Yorocco Beer" for ヨロッコ, "Yamorido" for 家守堂). For Japanese-only breweries, use phonetic romanization (NOT semantic translation). WRONG: "Root + Branch Brewing" for ヨロッコ. RIGHT: "Yorocco Beer".
+        - **beer_name_core**: The essential/searchable part of the beer name. Remove edition qualifiers ("Nth Anniversary", "Special Edition", "Limited", "Reserve") and beer style suffixes (IPA, Stout, NE IPA, etc.). Example: "The Realm's Remedy 11th Anniversary IPA" → "The Realm's Remedy". "Casimiroa NE IPA" → "Casimiroa".
+        - **search_hint**: A short, optimized Untappd search query (max ~4 words). Format: "[beer_name_core] [brewery_name_en]". If the brewery is Japanese and the official English name is uncertain, use the Japanese brewery name instead. Example: "Chakabuki Yamorido", "ROOTS ROCK Yorocco".
 
         Output JSON:
         {{
@@ -175,8 +177,10 @@ class GeminiExtractor:
           "product_type": "...", "is_set": boolean
         }}
 
-        Example:
-        {examples if examples else '1. "Beer Name / Brewery" -> {"brewery_name_en": "Brewery", "beer_name_en": "Beer Name", "beer_name_core": "Beer Name", "search_hint": "Beer Name Brewery", "product_type": "beer"}'}
+        Examples:
+        {examples if examples else '''1. "Beer Name / Brewery" -> {{"brewery_name_en": "Brewery", "beer_name_en": "Beer Name", "beer_name_core": "Beer Name", "search_hint": "Beer Name Brewery", "product_type": "beer"}}
+2. "【カシミロア/バテレ】(VERTERE Casimiroa NE IPA)" -> {{"brewery_name_jp": "バテレ", "brewery_name_en": "VERTERE", "beer_name_en": "Casimiroa NE IPA", "beer_name_core": "Casimiroa", "search_hint": "Casimiroa VERTERE", "product_type": "beer"}}
+3. "【ROOTS ROCK/ヨロッコ】" -> {{"brewery_name_jp": "ヨロッコ", "brewery_name_en": "Yorocco Beer", "beer_name_en": "ROOTS ROCK", "beer_name_core": "ROOTS ROCK", "search_hint": "ROOTS ROCK Yorocco", "product_type": "beer"}}'''}
         """
 
     async def extract_info(self, product_name: str, known_brewery: Optional[str] = None, shop: Optional[str] = None) -> Dict[str, Any]:
