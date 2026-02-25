@@ -90,17 +90,30 @@ def _apply_filters(query, shop, keyword, offline, force):
     if offline:
         query = query.not_.is_('brewery_name_en', 'null').is_('untappd_url', 'null')
     elif not force:
-        query = query.or_('brewery_name_en.is.null,untappd_url.is.null,untappd_url.ilike.%/search?%')
-        
+        # Targets:
+        #   1. brewery_name_en が未設定
+        #   2. untappd_url が未取得（/search? フォールバック含む）
+        #   3. search_hint が未設定（brewery/beer名は取得済みだが最適化キーワードがない）
+        query = query.or_(
+            'brewery_name_en.is.null,'
+            'untappd_url.is.null,'
+            'untappd_url.ilike.%/search?%,'
+            'search_hint.is.null'
+        )
+
     if shop:
         query = query.eq('shop', shop)
     if keyword:
         query = query.ilike('name', f'%{keyword}%')
     return query
 
+
 async def _process_item(supabase, extractor, brewery_manager, beer, offline, force) -> Optional[bool]:
     """Processes a single beer item: Extract -> Save."""
-    need_gemini = force or not (beer.get('brewery_name_en') and beer.get('beer_name_en'))
+    has_names = beer.get('brewery_name_en') and beer.get('beer_name_en')
+    has_hint = bool(beer.get('search_hint'))
+    need_gemini = force or not has_names or not has_hint
+
     
     try:
         if need_gemini:
