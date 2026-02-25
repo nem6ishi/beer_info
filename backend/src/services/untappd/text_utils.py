@@ -11,11 +11,13 @@ logger = logging.getLogger(__name__)
 # Common beer style suffixes (sorted by length descending for greedy matching)
 COMMON_SUFFIXES = [
     " IPA", " Hazy IPA", " Double IPA", " DIPA", " Triple IPA", " TIPA", " NEIPA",
-    " West Coast IPA", " Session IPA", " DDH IPA", " TDH IPA",
+    " NE IPA", " NE-IPA", " WCIPA", " WC IPA", " West Coast IPA", " Session IPA",
+    " DDH IPA", " TDH IPA",
     " Pale Ale", " Stout", " Imperial Stout", " Lager", " Pilsner", " Sour",
     " Gose", " Porter", " Ale", " Wheat", " Saison", " Barleywine",
     " Lambic", " Gueuze", " Fruit Beer"
 ]
+
 COMMON_SUFFIXES.sort(key=len, reverse=True)
 
 # Ordinal number mapping for anniversary/edition names (e.g. 11th -> eleventh)
