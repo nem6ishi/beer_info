@@ -348,14 +348,40 @@ async def enrich_untappd(
     total_success = 0
     collected_brewery_urls: set = set()
     
-    # Track URLs we've already seen in this run to avoid infinite loop
-    seen_urls_this_run = set()
+    # Track URLs processed this run (for dedup, not for DB query exclusion)
+    processed_this_run = set()
+    
+    # Pre-load failure records for backoff (missing mode only)
+    skip_urls_for_backoff: set = set()
+    if mode == 'missing':
+        logger.info("  🔍 Pre-loading failure history for backoff filtering...")
+        from dateutil import parser as dateutil_parser
+        cutoff = datetime.now(timezone.utc) - timedelta(days=3)
+        failure_res = supabase.table('untappd_search_failures') \
+            .select('product_url, search_attempts, last_failed_at') \
+            .eq('resolved', False) \
+            .execute()
+        for f in failure_res.data:
+            attempts = f.get('search_attempts', 0)
+            last_failed_str = f.get('last_failed_at')
+            if attempts >= 3:
+                skip_urls_for_backoff.add(f['product_url'])
+            elif last_failed_str:
+                try:
+                    last_failed = dateutil_parser.parse(last_failed_str)
+                    if last_failed > cutoff:
+                        skip_urls_for_backoff.add(f['product_url'])
+                except Exception:
+                    pass
+        if skip_urls_for_backoff:
+            logger.info(f"  ⏭️ {len(skip_urls_for_backoff)} URLs will be skipped due to backoff policy.")
+
+    # Use offset-based pagination (safe with PostgREST)
+    offset = 0
+    db_fetch_limit = 200
 
     while True:
         beers = []
-        
-        # Always fetch a large batch to have enough candidates after filtering
-        db_fetch_limit = 1000
 
         if mode == 'missing':
             query = supabase.table('beer_info_view') \
@@ -366,50 +392,14 @@ async def enrich_untappd(
                 query = query.eq('shop', shop_filter)
             if name_filter:
                 query = query.ilike('name', f'%{name_filter}%')
+            beers = query.order('first_seen', desc=True).limit(db_fetch_limit).offset(offset).execute().data
             
-            # Exclude already seen URLs to allow pagination without offset issues
-            if seen_urls_this_run:
-                # PostgREST supports passing a list for not.in
-                query = query.not_.in_('url', list(seen_urls_this_run))
-                
-            beers = query.order('first_seen', desc=True).limit(db_fetch_limit).execute().data
-            
-            if beers:
-                logger.info(f"  🔍 Checking failure history for {len(beers)} fetched candidates...")
-                from dateutil import parser
-                urls = [b['url'] for b in beers if b.get('url')]
-                failure_res = supabase.table('untappd_search_failures') \
-                    .select('product_url, search_attempts, last_failed_at') \
-                    .in_('product_url', urls) \
-                    .eq('resolved', False) \
-                    .execute()
-                
-                skip_urls = set()
-                cutoff = datetime.now(timezone.utc) - timedelta(days=3)
-                
-                for f in failure_res.data:
-                    attempts = f.get('search_attempts', 0)
-                    last_failed_str = f.get('last_failed_at')
-                    
-                    if attempts >= 3:
-                        skip_urls.add(f['product_url'])
-                    elif last_failed_str:
-                        try:
-                            last_failed = parser.parse(last_failed_str)
-                            if last_failed > cutoff:
-                                skip_urls.add(f['product_url'])
-                        except:
-                            pass
-                            
-                for u in urls:
-                    seen_urls_this_run.add(u)
-                    
-                if skip_urls:
-                    logger.info(f"  ⏭️ Skipping {len(skip_urls)} items due to recent/repeated failures (backoff limit).")
-                    beers = [b for b in beers if b.get('url') not in skip_urls]
+            # Apply backoff filter in memory
+            if skip_urls_for_backoff:
+                beers = [b for b in beers if b.get('url') not in skip_urls_for_backoff]
 
         elif mode == 'refresh':
-            logger.info(f"\n📂 Loading batch of REFRESH beers...")
+            logger.info(f"\n📂 Loading batch of REFRESH beers (offset={offset})...")
             cutoff_date = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
             query = supabase.table('beer_info_view') \
                 .select('url, name, untappd_url, stock_status, untappd_fetched_at') \
@@ -420,37 +410,28 @@ async def enrich_untappd(
                 query = query.eq('shop', shop_filter)
             if name_filter:
                 query = query.ilike('name', f'%{name_filter}%')
-                
-            if seen_urls_this_run:
-                query = query.not_.in_('url', list(seen_urls_this_run))
-                
-            beers = query.order('untappd_fetched_at', desc=False, nullsfirst=True).limit(db_fetch_limit).execute().data
-            for b in beers:
-                if b.get('url'):
-                    seen_urls_this_run.add(b['url'])
+            beers = query.order('untappd_fetched_at', desc=False, nullsfirst=True).limit(db_fetch_limit).offset(offset).execute().data
 
-        # Now limit to the remaining processing capacity
+        # Advance offset for next iteration
+        offset += db_fetch_limit
+
+        # Filter duplicates already processed this run
+        beers = [b for b in beers if b.get('url') not in processed_this_run]
+
+        # Limit to remaining capacity
         remaining_capacity = limit - total_processed
         beers_to_process = beers[:remaining_capacity]
 
         logger.info(f"  Valid {len(beers_to_process)} beers to process in this batch")
         if not beers_to_process:
-            if not beers and mode == 'missing':
-                # No beers fetched from DB at all -> done
-                logger.info("\n✨ No more beers to process!")
-                break
-            elif not beers:
-                break
-            else:
-                # Fetched beers but all were skipped, loop again
-                continue
+            logger.info("\n✨ No more beers to process!")
+            break
 
-        processed_urls = set()
         for i, beer in enumerate(beers_to_process, 1):
             product_url = beer.get('url')
-            if product_url in processed_urls:
+            if not product_url:
                 continue
-            processed_urls.add(product_url)
+            processed_this_run.add(product_url)
 
             name_display = beer.get('name', beer.get('beer_name', 'Unknown'))
             logger.info(f"\n{'='*70}")

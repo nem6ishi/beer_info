@@ -50,6 +50,8 @@ def strip_for_core_comparison(text: str) -> str:
     text = re.sub(r'\s*\(20\d{2}\)\s*', ' ', text)
     # Remove em-dashes and en-dashes (common in Untappd names)
     text = re.sub(r'\s*[–—-]\s*', ' ', text)
+    # Remove colons and everything after (often used for fruit additions in JP shops)
+    text = re.sub(r':.*$', '', text)
     # Remove common beer style suffixes at end
     text = re.sub(
         r'\s+(?:IPA|DIPA|TIPA|Hazy IPA|Double IPA|Triple IPA|NEIPA|West Coast IPA|'
@@ -87,8 +89,11 @@ def clean_beer_name(name: str) -> str:
     name = re.sub(r'Vol\.?\s*\d+', '', name, flags=re.IGNORECASE)
     name = re.sub(r'Batch\s*\d+', '', name, flags=re.IGNORECASE)
 
-    # Remove Japanese parentheses content that looks like version info
+    # Remove Japanese parentheses content that looks like version info or anniversary
     name = re.sub(r'（[^）]*版[^）]*）', '', name)
+    
+    # Remove anything after a colon (often used for variants like "Name: Cherry/Vanilla")
+    name = re.sub(r':.*$', '', name)
 
     # Remove style descriptions in parentheses
     name = re.sub(
@@ -125,6 +130,10 @@ def clean_beer_name(name: str) -> str:
     name = re.sub(r'\bDR\.\s*', 'Dr ', name, flags=re.IGNORECASE)
     name = re.sub(r'\bMR\.\s*', 'Mr ', name, flags=re.IGNORECASE)
     name = re.sub(r'\bST\.\s*', 'St ', name, flags=re.IGNORECASE)
+    
+    # Special: Remove parenthesis that contain long sentences (e.g. toe 25th Anniversary)
+    # This prevents the search query from being too specific and failing entirely.
+    name = re.sub(r'\([^)]+\)', '', name)
 
     # Clean up extra whitespace
     name = ' '.join(name.split())
