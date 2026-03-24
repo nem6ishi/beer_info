@@ -1,11 +1,9 @@
 import os
 import json
 import time
-import asyncio
 import logging
 from typing import Optional, Dict, Any, List
 from google import genai
-from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,15 +26,9 @@ class GeminiExtractor:
         self.last_request_time = 0
         self.daily_request_count = 0
         
-        # Model Priority & Configuration
-        # 1. Gemma 3 27B: 30 RPM, 14,400 RPD (Primary)
-        # 2. Flash Lite: 10 RPM, 20 RPD (Stub)
-        # 3. Flash: 5 RPM, 20 RPD (Stub)
-        self.models = [
-            {"id": "gemma-3-27b-it", "interval": 3.0, "json_mode": False, "daily_limit": 14400},
-            {"id": "gemini-2.5-flash-lite", "interval": 6.0, "json_mode": True, "daily_limit": 20},
-            {"id": "gemini-2.5-flash", "interval": 12.0, "json_mode": True, "daily_limit": 20}
-        ]
+        # Model Configuration: Gemma 3 27B (30 RPM, 14,400 RPD)
+        self.model_id = "gemma-3-27b-it"
+        self.model_interval = 3.0
         self.global_daily_limit = 14400
 
     def _load_shop_rules(self) -> Dict[str, Any]:
@@ -51,42 +43,21 @@ class GeminiExtractor:
             logger.error(f"Failed to load shop rules: {e}")
         return {}
 
-    async def _generate_content_with_retry(self, prompt: str) -> Optional[Dict[str, Any]]:
-        # ... (rest of the method remains the same)
-        """Attempts to generate content using models in priority order with fallback."""
-        for i, config in enumerate(self.models):
-            model_id = config["id"]
-            interval = config["interval"]
-            use_json_mode = config["json_mode"]
+    async def _generate_content(self, prompt: str) -> Optional[Dict[str, Any]]:
+        """Generates content using Gemma 3 27B."""
+        await self._throttle(self.model_interval, self.model_id)
 
-            # Rate Limit Throttle
-            await self._throttle(interval, model_id)
-
-            try:
-                logger.info(f"  [Gemini] Calling {model_id}...")
-                
-                gen_config = types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                ) if use_json_mode else None
-
-                response = self.client.models.generate_content(
-                    model=model_id,
-                    contents=prompt,
-                    config=gen_config
-                )
-                
-                self.last_request_time = time.time()
-                self.daily_request_count += 1
-                
-                if response.text:
-                    return self._parse_json_response(response.text, sanitize=not use_json_mode)
-                
-            except Exception as e:
-                if self._should_fallback(e, i):
-                    logger.warning(f"  [Gemini] ⚠️ Rate limit or transient error on {model_id}. Switching...")
-                    await asyncio.sleep(1)
-                    continue
-                raise e
+        logger.info(f"  [Gemini] Calling {self.model_id}...")
+        response = self.client.models.generate_content(
+            model=self.model_id,
+            contents=prompt
+        )
+        
+        self.last_request_time = time.time()
+        self.daily_request_count += 1
+        
+        if response.text:
+            return self._parse_json_response(response.text, sanitize=True)
         
         return None
 
@@ -99,22 +70,6 @@ class GeminiExtractor:
             if wait_time > 0.1:
                 logger.debug(f"  [Gemini] Waiting {wait_time:.2f}s for {model_id}...")
                 await asyncio.sleep(wait_time)
-
-    def _should_fallback(self, error: Exception, current_index: int) -> bool:
-        """Determines if we should try the next model."""
-        error_str = str(error)
-        is_last_model = current_index >= len(self.models) - 1
-        
-        if is_last_model:
-            return False
-            
-        # Fallback on rate limits or internal errors
-        if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-            return True
-        if "500" in error_str or "Internal Server Error" in error_str:
-            return True
-            
-        return False
 
     def _parse_json_response(self, text: str, sanitize: bool = False) -> Optional[Dict[str, Any]]:
         """Parses JSON from response text, optionally cleaning markdown blocks."""
@@ -197,7 +152,7 @@ class GeminiExtractor:
         logger.debug(f"[Gemini] Full Prompt:\n{'-'*40}\n{prompt}\n{'-'*40}")
 
         try:
-            data = await self._generate_content_with_retry(prompt)
+            data = await self._generate_content(prompt)
             if data:
                 logger.info(f"  ✅ Extraction Success:")
                 logger.info(f"     - Brewery: {data.get('brewery_name_en')} ({data.get('brewery_name_jp')})")
@@ -262,7 +217,7 @@ class GeminiExtractor:
         """
 
         try:
-            data = await self._generate_content_with_retry(prompt)
+            data = await self._generate_content(prompt)
             if data and isinstance(data.get("queries"), list):
                 queries = [q for q in data["queries"] if isinstance(q, str) and len(q) >= 3]
                 logger.info(f"  [Gemini] Suggested retry queries: {queries}")
