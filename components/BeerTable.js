@@ -33,10 +33,16 @@ export default function BeerTable({ beers, loading, error }) {
                             <td className="col-img">
                                 <div className="beer-image-wrapper">
                                     <img
-                                        src={beer.image}
+                                        src={beer.image || beer.untappd_image || 'https://placehold.co/100x100?text=No+Image'}
                                         alt={beer.name}
                                         loading="lazy"
-                                        onError={(e) => { e.target.src = 'https://placehold.co/100x100?text=No+Image'; }}
+                                        onError={(e) => {
+                                            if (beer.untappd_image && e.target.src !== beer.untappd_image) {
+                                                e.target.src = beer.untappd_image;
+                                            } else {
+                                                e.target.src = 'https://placehold.co/100x100?text=No+Image';
+                                            }
+                                        }}
                                     />
                                 </div>
                             </td>
