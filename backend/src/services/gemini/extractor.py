@@ -2,6 +2,7 @@ import os
 import json
 import time
 import logging
+import asyncio
 from typing import Optional, Dict, Any, List
 from google import genai
 from dotenv import load_dotenv
@@ -26,8 +27,9 @@ class GeminiExtractor:
         self.last_request_time = 0
         self.daily_request_count = 0
         
-        # Model Configuration: Gemma 4 31B (30 RPM, 14,400 RPD)
+        # Model Configuration: Gemma 4 31B (15 RPM, 1,500 RPD)
         self.model_id = "gemma-4-31b-it"
+        self.fallback_model_id = "gemma-4-26b-a4b-it"
         self.model_interval = 3.0
         self.global_daily_limit = 14400
 
@@ -44,14 +46,31 @@ class GeminiExtractor:
         return {}
 
     async def _generate_content(self, prompt: str) -> Optional[Dict[str, Any]]:
-        """Generates content using Gemma 3 27B."""
-        await self._throttle(self.model_interval, self.model_id)
+        """Generates content using the configured Gemma model with fallback."""
+        try:
+            await self._throttle(self.model_interval, self.model_id)
 
-        logger.info(f"  [Gemini] Calling {self.model_id}...")
-        response = self.client.models.generate_content(
-            model=self.model_id,
-            contents=prompt
-        )
+            logger.info(f"  [Gemini] Calling {self.model_id}...")
+            response = self.client.models.generate_content(
+                model=self.model_id,
+                contents=prompt
+            )
+        except Exception as e:
+            error_msg = str(e).lower()
+            if getattr(e, 'code', None) == 429 or "exhausted" in error_msg or "quota" in error_msg or "unavailable" in error_msg:
+                if self.model_id != self.fallback_model_id:
+                    logger.warning(f"  [Gemini] {self.model_id} limit reached or unavailable. Falling back to {self.fallback_model_id}")
+                    self.model_id = self.fallback_model_id
+                    await self._throttle(self.model_interval, self.model_id)
+                    logger.info(f"  [Gemini] Calling fallback {self.model_id}...")
+                    response = self.client.models.generate_content(
+                        model=self.model_id,
+                        contents=prompt
+                    )
+                else:
+                    raise
+            else:
+                raise
         
         self.last_request_time = time.time()
         self.daily_request_count += 1
