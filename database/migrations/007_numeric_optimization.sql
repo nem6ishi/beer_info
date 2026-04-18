@@ -114,3 +114,29 @@ FROM beer_info_view
 WHERE untappd_url IS NOT NULL 
   AND untappd_url NOT LIKE '%/search?%'
 GROUP BY untappd_url;
+
+-- 8. get_available_filters: Optimized aggregation for SSR
+-- Returns top 100 styles and all breweries in a single call, avoiding 22k row select in Node.js
+CREATE OR REPLACE FUNCTION get_available_filters()
+RETURNS TABLE (
+    styles JSONB,
+    breweries JSONB
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        (SELECT jsonb_agg(d) FROM (
+            SELECT untappd_style as style, count(*) as count 
+            FROM public.beer_info_view 
+            WHERE untappd_style IS NOT NULL 
+            GROUP BY untappd_style 
+            ORDER BY count DESC 
+            LIMIT 100
+        ) d) as styles,
+        (SELECT jsonb_agg(d) FROM (
+            SELECT name_en, name_jp 
+            FROM public.breweries 
+            ORDER BY name_en ASC
+        ) d) as breweries;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = '';

@@ -139,7 +139,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Parallel execution
         const [dataRes, countRes] = await Promise.all([
             buildQuery().range(offset, offset + limitNum - 1),
-            buildCountQuery().limit(5000) // Limit to 5k for counts to avoid massive impact
+            buildCountQuery().limit(1000).select('shop') // Reduce to 1000 to avoid 500 errors
         ])
 
         if (dataRes.error) throw dataRes.error

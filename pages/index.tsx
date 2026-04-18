@@ -39,10 +39,19 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     if (search) q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,brewery_name_en.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`);
     if (query.min_abv) q = q.gte('untappd_abv', query.min_abv);
     if (query.max_abv) q = q.lte('untappd_abv', query.max_abv);
-    if (query.min_rating) q = q.gte('untappd_rating', query.min_rating);
-    if (shop) q = q.in('shop', shop.split(','));
-    if (query.style_filter) q = q.in('untappd_style', (query.style_filter as string).split(','));
-    if (query.brewery_filter) q = q.in('untappd_brewery_name', (query.brewery_filter as string).split(','));
+    if (query.min_rating) q = q.gte('untappd_rating', query.min_rating as string);
+    if (shop) {
+        const shopList = shop.split(',').filter(Boolean);
+        if (shopList.length > 0) q = q.in('shop', shopList);
+    }
+    if (query.style_filter) {
+        const styles = (query.style_filter as string).split(',').filter(Boolean);
+        if (styles.length > 0) q = q.in('untappd_style', styles);
+    }
+    if (query.brewery_filter) {
+        const breweries = (query.brewery_filter as string).split(',').filter(Boolean);
+        if (breweries.length > 0) q = q.in('untappd_brewery_name', breweries);
+    }
     
     if (query.stock_filter === 'in_stock') q = q.eq('stock_status', 'In Stock');
     else if (query.stock_filter === 'sold_out') q = q.eq('stock_status', 'Sold Out');
@@ -57,22 +66,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     const { data: beers, count } = await q.range(offset, offset + limitNum - 1);
 
-    // Fetch styles and breweries
-    const [stylesRes, breweriesRes] = await Promise.all([
-        supabase.from('beer_info_view').select('untappd_style').not('untappd_style', 'is', null),
-        supabase.from('breweries').select('name_en, name_jp').order('name_en')
-    ]);
-
-    // Simple style counting
-    const styleMap: Record<string, number> = {};
-    stylesRes.data?.forEach(item => {
-        if (item.untappd_style) styleMap[item.untappd_style] = (styleMap[item.untappd_style] || 0) + 1;
-    });
-    const styles = Object.entries(styleMap).map(([style, count]) => ({ style, count })).sort((a, b) => b.count - a.count);
-
-    const breweries = breweriesRes.data?.map(b => ({
+    // Optimized aggregation via RPC
+    const { data: filterData } = await supabase.rpc('get_available_filters').single();
+    
+    const styles = filterData?.styles || [];
+    const breweries = filterData?.breweries?.map((b: any) => ({
         name: b.name_en || b.name_jp,
-        flag: '' // Optional
+        flag: ''
     })) || [];
 
     return {

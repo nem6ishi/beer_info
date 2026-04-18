@@ -33,9 +33,15 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     if (search) q = q.or(`beer_name.ilike.%${search}%,brewery_name.ilike.%${search}%`);
     if (query.min_abv) q = q.gte('abv', query.min_abv);
     if (query.max_abv) q = q.lte('abv', query.max_abv);
-    if (query.min_rating) q = q.gte('rating', query.min_rating);
-    if (query.style_filter) q = q.in('style', (query.style_filter as string).split(','));
-    if (query.brewery_filter) q = q.in('brewery_name', (query.brewery_filter as string).split(','));
+    if (query.min_rating) q = q.gte('rating', query.min_rating as string);
+    if (query.style_filter) {
+        const styles = (query.style_filter as string).split(',').filter(Boolean);
+        if (styles.length > 0) q = q.in('style', styles);
+    }
+    if (query.brewery_filter) {
+        const breweries = (query.brewery_filter as string).split(',').filter(Boolean);
+        if (breweries.length > 0) q = q.in('brewery_name', breweries);
+    }
 
     switch (sort) {
         case 'newest': q = q.order('newest_seen', { ascending: false }); break;
@@ -47,19 +53,11 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     const { data: groups, count } = await q.range(offset, offset + limitNum - 1);
 
-    // Metadata for filters
-    const [stylesRes, breweriesRes] = await Promise.all([
-        supabase.from('beer_info_view').select('untappd_style').not('untappd_style', 'is', null),
-        supabase.from('breweries').select('name_en, name_jp').order('name_en')
-    ]);
-
-    const styleMap: Record<string, number> = {};
-    stylesRes.data?.forEach(item => {
-        if (item.untappd_style) styleMap[item.untappd_style] = (styleMap[item.untappd_style] || 0) + 1;
-    });
-    const styles = Object.entries(styleMap).map(([style, count]) => ({ style, count })).sort((a, b) => b.count - a.count);
-
-    const breweries = breweriesRes.data?.map(b => ({
+    // Optimized aggregation via RPC
+    const { data: filterData } = await supabase.rpc('get_available_filters').single();
+    
+    const styles = filterData?.styles || [];
+    const breweries = filterData?.breweries?.map((b: any) => ({
         name: b.name_en || b.name_jp,
         flag: ''
     })) || [];
