@@ -3,7 +3,7 @@ import json
 import time
 import logging
 import asyncio
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, cast
 from google import genai
 from google.genai.types import GenerateContentConfig
 from dotenv import load_dotenv
