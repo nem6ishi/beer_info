@@ -40,7 +40,22 @@ const nextConfig = {
       },
       {
         protocol: 'https',
+        hostname: 'www.makeshop.jp',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'makeshop-multi-images.akamaized.net',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
         hostname: '151l.shop',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.shop-pro.jp',
         pathname: '/**',
       },
       {
