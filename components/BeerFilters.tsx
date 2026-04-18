@@ -1,5 +1,29 @@
-import React from 'react'
+import React, { ChangeEvent } from 'react'
 import MultiSelectDropdown from './MultiSelectDropdown'
+import type { FilterState, SelectOption, BreweryOption, StyleOption } from '../types/beer'
+
+interface BeerFiltersProps {
+    shop: string;
+    shopCounts: Record<string, number>;
+    brewery_filter: string;
+    style_filter: string;
+    sort: string;
+    limit: string;
+    isFilterOpen: boolean;
+    activeFilterCount: number;
+    tempFilters: FilterState;
+    availableBreweries: BreweryOption[];
+    availableStyles: (string | StyleOption)[];
+    onMultiSelectChange: (key: string, values: string[]) => void;
+    onSortChange: (e: ChangeEvent<HTMLSelectElement>) => void;
+    onLimitChange: (e: ChangeEvent<HTMLSelectElement>) => void;
+    onToggleFilter: () => void;
+    onReset: () => void;
+    onFilterChange: (key: string, value: string) => void;
+    viewMode?: 'individual' | 'grouped';
+    onViewModeChange: (mode: string) => void;
+    onRefresh: () => void;
+}
 
 export default function BeerFilters({
     shop,
@@ -20,10 +44,10 @@ export default function BeerFilters({
     onFilterChange,
     shopCounts = {},
 
-    viewMode = 'individual', // 'individual' or 'grouped'
+    viewMode = 'individual',
     onViewModeChange,
     onRefresh
-}) {
+}: BeerFiltersProps) {
     return (
         <>
             <div className="controls-bar">
@@ -50,8 +74,8 @@ export default function BeerFilters({
                     <label className="sort-label">Store:</label>
                     <MultiSelectDropdown
                         options={Object.entries(shopCounts)
-                            .map(([name, count]) => ({ value: name, label: `${name} (${count})`, count }))
-                            .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+                            .map(([name, count]): SelectOption => ({ value: name, label: `${name} (${count})`, count }))
+                            .sort((a, b) => (b.count ?? 0) - (a.count ?? 0) || a.value.localeCompare(b.value))
                         }
                         selectedValues={shop ? shop.split(',') : []}
                         onChange={(vals) => onMultiSelectChange('shop', vals)}

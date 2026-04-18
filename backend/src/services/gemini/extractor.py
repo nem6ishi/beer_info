@@ -3,17 +3,28 @@ import json
 import time
 import logging
 import asyncio
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from google import genai
+from google.genai.types import GenerateContentConfig
 from dotenv import load_dotenv
+from ...core.types import GeminiExtraction
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 class GeminiExtractor:
-    def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
+    client: Optional[genai.Client]
+    shop_rules: Dict[str, Any]
+    last_request_time: float
+    daily_request_count: int
+    model_id: str
+    fallback_model_id: str
+    model_interval: float
+    global_daily_limit: int
+
+    def __init__(self) -> None:
+        api_key: Optional[str] = os.getenv("GEMINI_API_KEY")
         if not api_key:
             logger.warning("GEMINI_API_KEY not found. Extraction will be disabled.")
             self.client = None
@@ -36,10 +47,10 @@ class GeminiExtractor:
     def _load_shop_rules(self) -> Dict[str, Any]:
         """Loads shop-specific rules from JSON file."""
         try:
-            json_path = os.path.join(os.path.dirname(__file__), "shop_rules.json")
+            json_path: str = os.path.join(os.path.dirname(__file__), "shop_rules.json")
             if os.path.exists(json_path):
                 with open(json_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    return cast(Dict[str, Any], json.load(f))
             logger.warning(f"Shop rules file not found: {json_path}")
         except Exception as e:
             logger.error(f"Failed to load shop rules: {e}")
@@ -47,16 +58,19 @@ class GeminiExtractor:
 
     async def _generate_content(self, prompt: str) -> Optional[Dict[str, Any]]:
         """Generates content using the configured Gemma model with fallback."""
+        if not self.client:
+            return None
+
         try:
             await self._throttle(self.model_interval, self.model_id)
 
             logger.info(f"  [Gemini] Calling {self.model_id}...")
-            response = self.client.models.generate_content(
+            response: Any = self.client.models.generate_content(
                 model=self.model_id,
                 contents=prompt
             )
         except Exception as e:
-            error_msg = str(e).lower()
+            error_msg: str = str(e).lower()
             if getattr(e, 'code', None) == 429 or "exhausted" in error_msg or "quota" in error_msg or "unavailable" in error_msg:
                 if self.model_id != self.fallback_model_id:
                     logger.warning(f"  [Gemini] {self.model_id} limit reached or unavailable. Falling back to {self.fallback_model_id}")
@@ -80,12 +94,12 @@ class GeminiExtractor:
         
         return None
 
-    async def _throttle(self, interval: float, model_id: str):
+    async def _throttle(self, interval: float, model_id: str) -> None:
         """Simple rate limit delay."""
-        current_time = time.time()
-        time_since_last = current_time - self.last_request_time
+        current_time: float = time.time()
+        time_since_last: float = current_time - self.last_request_time
         if time_since_last < interval:
-            wait_time = interval - time_since_last
+            wait_time: float = interval - time_since_last
             if wait_time > 0.1:
                 logger.debug(f"  [Gemini] Waiting {wait_time:.2f}s for {model_id}...")
                 await asyncio.sleep(wait_time)
@@ -93,7 +107,7 @@ class GeminiExtractor:
     def _parse_json_response(self, text: str, sanitize: bool = False) -> Optional[Dict[str, Any]]:
         """Parses JSON from response text, optionally cleaning markdown blocks."""
         try:
-            content = text.strip()
+            content: str = text.strip()
             if sanitize:
                 if content.startswith("```json"):
                     content = content[7:]
@@ -103,7 +117,7 @@ class GeminiExtractor:
                     content = content[:-3]
                 content = content.strip()
             
-            data = json.loads(content)
+            data: Any = json.loads(content)
             if isinstance(data, dict):
                 data["raw_response"] = text
             return data
@@ -111,13 +125,13 @@ class GeminiExtractor:
             logger.error(f"  [Gemini] Failed to parse JSON: {e}")
             return None
 
-    def _get_shop_guidance(self, shop: Optional[str]) -> tuple[str, str]:
+    def _get_shop_guidance(self, shop: Optional[str]) -> Tuple[str, str]:
         """Provides specific formatting rules and examples based on the shop."""
-        guidance = ""
-        examples = ""
+        guidance: str = ""
+        examples: str = ""
 
         if shop and self.shop_rules and shop in self.shop_rules:
-            target = self.shop_rules[shop]
+            target: Dict[str, Any] = self.shop_rules[shop]
             guidance = target.get("rule", "")
             examples = target.get("examples", "")
 
@@ -130,7 +144,7 @@ class GeminiExtractor:
         Identify product type: "beer", "set", "glass", or "other".
         Product Title: "{product_name}"
         {brewery_hint}
-
+ 
         Rules:
         - **Format**: In "【A/B】", A is Beer Name and B is Brewery Name.
         {shop_guidance}
@@ -141,7 +155,7 @@ class GeminiExtractor:
         - **brewery_name_en**: Use the brewery's OFFICIAL English/romanized name if known (e.g., "Yorocco Beer" for ヨロッコ, "Yamorido" for 家守堂). For Japanese-only breweries, use phonetic romanization (NOT semantic translation). WRONG: "Root + Branch Brewing" for ヨロッコ. RIGHT: "Yorocco Beer".
         - **beer_name_core**: The essential/searchable part of the beer name. Remove edition qualifiers ("Nth Anniversary", "Special Edition", "Limited", "Reserve") and beer style suffixes (IPA, Stout, NE IPA, etc.). Example: "The Realm's Remedy 11th Anniversary IPA" → "The Realm's Remedy". "Casimiroa NE IPA" → "Casimiroa".
         - **search_hint**: A short, optimized Untappd search query (max ~4 words). Format: "[beer_name_core] [brewery_name_en]". If the brewery is Japanese and the official English name is uncertain, use the Japanese brewery name instead. Example: "Chakabuki Yamorido", "ROOTS ROCK Yorocco".
-
+ 
         Output JSON:
         {{
           "brewery_name_jp": "...", "brewery_name_en": "...",
@@ -150,28 +164,28 @@ class GeminiExtractor:
           "search_hint": "...",
           "product_type": "...", "is_set": boolean
         }}
-
+ 
         Examples:
         {examples if examples else '''1. "Beer Name / Brewery" -> {{"brewery_name_en": "Brewery", "beer_name_en": "Beer Name", "beer_name_core": "Beer Name", "search_hint": "Beer Name Brewery", "product_type": "beer"}}
 2. "【カシミロア/バテレ】(VERTERE Casimiroa NE IPA)" -> {{"brewery_name_jp": "バテレ", "brewery_name_en": "VERTERE", "beer_name_en": "Casimiroa NE IPA", "beer_name_core": "Casimiroa", "search_hint": "Casimiroa VERTERE", "product_type": "beer"}}
 3. "【ROOTS ROCK/ヨロッコ】" -> {{"brewery_name_jp": "ヨロッコ", "brewery_name_en": "Yorocco Beer", "beer_name_en": "ROOTS ROCK", "beer_name_core": "ROOTS ROCK", "search_hint": "ROOTS ROCK Yorocco", "product_type": "beer"}}'''}
         """
 
-    async def extract_info(self, product_name: str, known_brewery: Optional[str] = None, shop: Optional[str] = None) -> Dict[str, Any]:
+    async def extract_info(self, product_name: str, known_brewery: Optional[str] = None, shop: Optional[str] = None) -> GeminiExtraction:
         """Main entry point for extracting beer information."""
         if not self.client or self.daily_request_count >= self.global_daily_limit:
             return self._empty_result()
 
         logger.info(f"[Gemini] Extracting: {product_name} (Known: {known_brewery}, Shop: {shop})")
 
-        hint = f"\nNote: The brewery exists and is likely: \"{known_brewery}\"" if known_brewery else ""
+        hint: str = f"\nNote: The brewery exists and is likely: \"{known_brewery}\"" if known_brewery else ""
         guidance, examples = self._get_shop_guidance(shop)
-        prompt = self._build_prompt(product_name, hint, guidance, examples)
+        prompt: str = self._build_prompt(product_name, hint, guidance, examples)
 
         logger.debug(f"[Gemini] Full Prompt:\n{'-'*40}\n{prompt}\n{'-'*40}")
 
         try:
-            data = await self._generate_content(prompt)
+            data: Optional[Dict[str, Any]] = await self._generate_content(prompt)
             if data:
                 logger.info(f"  ✅ Extraction Success:")
                 logger.info(f"     - Brewery: {data.get('brewery_name_en')} ({data.get('brewery_name_jp')})")
@@ -179,7 +193,7 @@ class GeminiExtractor:
                 logger.info(f"     - Type:    {data.get('product_type')} (Set: {data.get('is_set')})")
                 
                 logger.debug(f"[Gemini] Success. Daily usage: {self.daily_request_count}/{self.global_daily_limit}")
-                res = {
+                res: GeminiExtraction = {
                     "brewery_name_jp": data.get("brewery_name_jp"),
                     "brewery_name_en": data.get("brewery_name_en"),
                     "beer_name_jp": data.get("beer_name_jp"),
@@ -196,7 +210,7 @@ class GeminiExtractor:
 
         return self._empty_result()
 
-    def _empty_result(self) -> Dict[str, Any]:
+    def _empty_result(self) -> GeminiExtraction:
         """Returns a default empty result structure."""
         return {
             "brewery_name_jp": None,
@@ -206,7 +220,8 @@ class GeminiExtractor:
             "beer_name_core": None,
             "search_hint": None,
             "product_type": "beer",
-            "is_set": False
+            "is_set": False,
+            "raw_response": None
         }
 
     async def suggest_search_queries(self, product_name: str, brewery: str, beer_name: str) -> List[str]:
@@ -217,28 +232,28 @@ class GeminiExtractor:
         if not self.client:
             return []
 
-        prompt = f"""
+        prompt: str = f"""
         An Untappd search for a craft beer has failed. Suggest 3 short, alternative search queries to find it.
-
+ 
         Product Title: "{product_name}"
         Brewery: "{brewery}"
         Beer Name: "{beer_name}"
-
+ 
         Rules:
         - Each query should be short (2-5 words)
         - Try different combinations: core beer name, brewery abbreviation, key unique words
         - Remove edition qualifiers (Anniversary, Edition, Limited, etc.)
         - Remove beer style suffixes (IPA, Stout, Pale Ale, etc.) if the name has other unique words
         - The goal is to find the beer on Untappd.com
-
+ 
         Output JSON only:
         {{"queries": ["query1", "query2", "query3"]}}
         """
 
         try:
-            data = await self._generate_content(prompt)
+            data: Optional[Dict[str, Any]] = await self._generate_content(prompt)
             if data and isinstance(data.get("queries"), list):
-                queries = [q for q in data["queries"] if isinstance(q, str) and len(q) >= 3]
+                queries: List[str] = [q for q in data["queries"] if isinstance(q, str) and len(q) >= 3]
                 logger.info(f"  [Gemini] Suggested retry queries: {queries}")
                 return queries[:5]  # Max 5 queries
         except Exception as e:

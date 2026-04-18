@@ -10,26 +10,19 @@ import asyncio
 import logging
 import random
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set, Tuple
 
 import requests
 from bs4 import BeautifulSoup
+from ..core.types import ScrapedProduct
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_HEADERS = {
+_DEFAULT_HEADERS: Dict[str, str] = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
     'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
 }
-
-
-class ScrapedProduct(Dict):
-    """
-    Typed structure representing a scraped beer product.
-    Keys: name, price, url, image, stock_status, shop
-    """
-    pass
 
 
 class BaseScraper(ABC):
@@ -47,14 +40,14 @@ class BaseScraper(ABC):
     """
 
     shop_name: str = "Unknown Shop"
-    default_headers: dict = _DEFAULT_HEADERS
+    default_headers: Dict[str, str] = _DEFAULT_HEADERS
     sold_out_threshold: int = 50
 
     @abstractmethod
     async def scrape(
         self,
-        limit: int = None,
-        existing_urls: set = None,
+        limit: Optional[int] = None,
+        existing_urls: Optional[Set[str]] = None,
         full_scrape: bool = False,
     ) -> List[ScrapedProduct]:
         """
@@ -75,8 +68,8 @@ class BaseScraper(ABC):
     async def fetch(
         self,
         url: str,
-        encoding: str = None,
-        delay: tuple = (0.3, 0.8),
+        encoding: Optional[str] = None,
+        delay: Tuple[float, float] = (0.3, 0.8),
         timeout: int = 30,
     ) -> Optional[BeautifulSoup]:
         """
@@ -96,12 +89,12 @@ class BaseScraper(ABC):
             await asyncio.sleep(random.uniform(*delay))
 
         try:
-            response = requests.get(url, headers=self.default_headers, timeout=timeout)
+            response: requests.Response = requests.get(url, headers=self.default_headers, timeout=timeout)
             response.raise_for_status()
             if encoding:
                 response.encoding = encoding
             else:
-                response.encoding = response.apparent_encoding
+                response.encoding = response.apparent_encoding or 'utf-8'
             return BeautifulSoup(response.content, 'lxml')
         except requests.RequestException as e:
             logger.error(f"[{self.shop_name}] HTTP error fetching {url}: {e}")

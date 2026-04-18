@@ -1,17 +1,19 @@
+import type { NextApiRequest, NextApiResponse } from 'next'
 import { supabase } from '../../lib/supabase'
 
-export default async function handler(req, res) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' })
     }
 
     try {
+        const search = (req.query.search as string) || ''
+        const sort = (req.query.sort as string) || 'newest'
+        const page = (req.query.page as string) || '1'
+        const limit = (req.query.limit as string) || '100'
+        const shop = (req.query.shop as string) || ''
+        
         const {
-            search = '',
-            sort = 'newest',
-            page = '1',
-            limit = '100',
-            shop = '',
             min_abv,
             max_abv,
             min_ibu,
@@ -19,9 +21,8 @@ export default async function handler(req, res) {
             min_rating,
             style_filter,
             stock_filter,
-            missing_untappd,
             product_type
-        } = req.query
+        } = req.query as Record<string, string | undefined>
 
         const pageNum = parseInt(page, 10)
         const limitNum = parseInt(limit, 10)
@@ -61,7 +62,7 @@ export default async function handler(req, res) {
 
         // Filter by Brewery (Multi-select)
         if (req.query.brewery_filter) {
-            const breweries = req.query.brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+            const breweries = (req.query.brewery_filter as string).normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
             if (breweries.length > 0) {
                 query = query.in('untappd_brewery_name', breweries)
             }
@@ -92,7 +93,7 @@ export default async function handler(req, res) {
             case 'newest':
                 // Sort by first_seen (newest = most recently seen/added)
                 query = query
-                    .order('first_seen', { ascending: false, nullsLast: true })
+                    .order('first_seen', { ascending: false, nullsFirst: false })
                 break
             case 'price_asc':
                 // Use numeric price_value column, NULLS LAST
@@ -115,7 +116,7 @@ export default async function handler(req, res) {
             default:
                 // Default: newest first (first_seen)
                 query = query
-                    .order('first_seen', { ascending: false, nullsLast: true })
+                    .order('first_seen', { ascending: false, nullsFirst: false })
         }
 
         // Pagination
@@ -153,7 +154,7 @@ export default async function handler(req, res) {
             if (styles.length > 0) countQuery = countQuery.in('untappd_style', styles)
         }
         if (req.query.brewery_filter) {
-            const breweries = req.query.brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+            const breweries = (req.query.brewery_filter as string).normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
             if (breweries.length > 0) countQuery = countQuery.in('untappd_brewery_name', breweries)
         }
         if (product_type) {
@@ -166,7 +167,7 @@ export default async function handler(req, res) {
         }
 
         const { data: countData } = await countQuery.limit(10000)
-        const shopCounts = {};
+        const shopCounts: Record<string, number> = {};
         if (countData) {
             countData.forEach(item => {
                 shopCounts[item.shop] = (shopCounts[item.shop] || 0) + 1;

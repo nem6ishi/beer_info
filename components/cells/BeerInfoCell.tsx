@@ -1,6 +1,6 @@
 import React from 'react';
 
-const COUNTRY_FLAGS = {
+const COUNTRY_FLAGS: Record<string, string> = {
     'United States': '🇺🇸',
     'Japan': '🇯🇵',
     'Belgium': '🇧🇪',
@@ -33,7 +33,7 @@ const COUNTRY_FLAGS = {
     'Austria': '🇦🇹',
 };
 
-function getFlag(location) {
+function getFlag(location: string | null): string | null {
     if (!location) return null;
     for (const [country, flag] of Object.entries(COUNTRY_FLAGS)) {
         if (location.endsWith(country)) {
@@ -43,7 +43,16 @@ function getFlag(location) {
     return null;
 }
 
-export default function BeerInfoCell({ brewery, beer, logo, location, type, fallbackName }) {
+interface BeerInfoCellProps {
+    brewery: string | null;
+    beer: string | null;
+    logo: string | null;
+    location: string | null;
+    type: string | null;
+    fallbackName: string;
+}
+
+export default function BeerInfoCell({ brewery, beer, logo, location, type, fallbackName }: BeerInfoCellProps) {
     const flag = getFlag(location);
 
     // Use beer name if available, otherwise use fallback (original product name)

@@ -3,35 +3,35 @@ import os
 import re
 import time
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from urllib.parse import urljoin
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set, Any, cast
 import concurrent.futures
+from requests.adapters import HTTPAdapter
+from urllib3.util.ssl_ import create_urllib3_context
+from ..core.types import ScrapedProduct
 
 # Early stop threshold for existing items
-SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '30'))
+SOLD_OUT_THRESHOLD: int = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '30'))
 
 # Arome Search URL Template (Simplified)
-SEARCH_URL_TEMPLATE = "https://www.arome.jp/products/list.php?category_id=0&disp_number=100&pageno={page}"
-BASE_URL = "https://www.arome.jp"
+SEARCH_URL_TEMPLATE: str = "https://www.arome.jp/products/list.php?category_id=0&disp_number=100&pageno={page}"
+BASE_URL: str = "https://www.arome.jp"
 
-HEADERS = {
+HEADERS: Dict[str, str] = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
 }
 
-from requests.adapters import HTTPAdapter
-from urllib3.util.ssl_ import create_urllib3_context
-
 # Custom adapter to handle weak DH keys (DH_KEY_TOO_SMALL)
 class LegacySSLAdapter(HTTPAdapter):
-    def init_poolmanager(self, *args, **kwargs):
+    def init_poolmanager(self, *args: Any, **kwargs: Any) -> Any:
         ctx = create_urllib3_context()
         ctx.load_default_certs()
         ctx.set_ciphers('DEFAULT@SECLEVEL=1')
         kwargs['ssl_context'] = ctx
         return super(LegacySSLAdapter, self).init_poolmanager(*args, **kwargs)
 
-    def proxy_manager_for(self, *args, **kwargs):
+    def proxy_manager_for(self, *args: Any, **kwargs: Any) -> Any:
         ctx = create_urllib3_context()
         ctx.load_default_certs()
         ctx.set_ciphers('DEFAULT@SECLEVEL=1')
@@ -46,11 +46,12 @@ def normalize_url(url: str) -> str:
         return f"{BASE_URL}/products/detail.php?product_id={match.group(1)}"
     return url
 
-def extract_product_data(item, is_area=False) -> Optional[Dict]:
+def extract_product_data(item: Tag, is_area: bool = False) -> Optional[ScrapedProduct]:
     """
     Parses a single product item from the list page.
     """
     try:
+        area: Optional[Tag]
         if is_area:
             area = item
         else:
@@ -59,46 +60,47 @@ def extract_product_data(item, is_area=False) -> Optional[Dict]:
         if not area:
             return None
             
-        photo_div = area.select_one("div.listphoto")
-        link_tag = None
+        photo_div: Optional[Tag] = area.select_one("div.listphoto")
+        link_tag: Optional[Tag] = None
         if photo_div:
             link_tag = photo_div.select_one('a')
             
         if not link_tag:
             return None
             
-        relative_url = link_tag.get("href")
-        product_url = urljoin(BASE_URL, relative_url)
+        relative_url: str = cast(str, link_tag.get("href", ""))
+        product_url: str = urljoin(BASE_URL, relative_url)
         
-        img_tag = link_tag.select_one("img")
-        image_url = urljoin(BASE_URL, img_tag.get("src")) if img_tag else None
+        img_tag: Optional[Tag] = link_tag.select_one("img")
+        image_url: Optional[str] = urljoin(BASE_URL, cast(str, img_tag.get("src", ""))) if img_tag else None
 
-        right_div = area.select_one("div.listrightbloc")
-        product_name = "Unknown"
-        price = "Unknown"
+        right_div: Optional[Tag] = area.select_one("div.listrightbloc")
+        product_name: str = "Unknown"
+        price: str = "Unknown"
         
         if right_div:
-            name_link = right_div.select_one(f'a[href="{relative_url}"]')
+            name_link: Optional[Tag] = right_div.select_one(f'a[href="{relative_url}"]')
             if not name_link:
                 name_link = right_div.select_one('a')
             
             if name_link:
                 from bs4.element import NavigableString
-                name_parts = []
+                name_parts: List[str] = []
                 for content in name_link.contents:
-                    if content.name == 'br' or content.name == 'span':
-                        break
+                    if isinstance(content, Tag):
+                        if content.name == 'br' or content.name == 'span':
+                            break
                     if isinstance(content, NavigableString):
                         name_parts.append(str(content))
                 
                 product_name = "".join(name_parts).strip()
                 
             elif img_tag and img_tag.get('alt'):
-                 product_name = img_tag.get('alt')
+                 product_name = cast(str, img_tag.get('alt'))
 
-            price_tag = right_div.select_one("span.price")
+            price_tag: Optional[Tag] = right_div.select_one("span.price")
             if price_tag:
-                raw_price = price_tag.get_text(strip=True)
+                raw_price: str = price_tag.get_text(strip=True)
                 m_tax = re.search(r'税込[:：]\s*[¥￥]\s*([0-9,]+)', raw_price)
                 if m_tax:
                     price = m_tax.group(1).replace(',', '') + "円"
@@ -108,22 +110,22 @@ def extract_product_data(item, is_area=False) -> Optional[Dict]:
                         price = m_simple.group(1).replace(',', '') + "円"
                         
             if price == "Unknown":
-                text = right_div.get_text()
+                text: str = right_div.get_text()
                 m = re.search(r'([0-9,]+)円', text)
                 if not m:
                      m = re.search(r'[¥￥]\s*([0-9,]+)', text)
                 if m:
                     price = m.group(1).replace(',', '') + "円"
 
-        stock_status = "In Stock"
-        text_zone = area.select_one("div.text-zone")
+        stock_status: str = "In Stock"
+        text_zone: Optional[Tag] = area.select_one("div.text-zone")
         if text_zone:
-             zone_text = text_zone.get_text(strip=True)
+             zone_text: str = text_zone.get_text(strip=True)
              if "在庫切れ" in zone_text:
                  stock_status = "Sold Out"
             
         if stock_status == "In Stock":
-            sold_out_img = area.select_one('img[alt="売り切れ"]') or area.select_one('img[src*="soldout"]')
+            sold_out_img: Optional[Tag] = area.select_one('img[alt="売り切れ"]') or area.select_one('img[src*="soldout"]')
             if sold_out_img:
                 stock_status = "Sold Out"
 
@@ -140,26 +142,22 @@ def extract_product_data(item, is_area=False) -> Optional[Dict]:
         print(f"[Arome] Error parsing item: {e}")
         return None
 
-def fetch_full_name(product_url) -> Optional[str]:
+def fetch_full_name(product_url: str) -> Optional[str]:
     """
     Fetches the detail page to get the full product name if truncated.
-    NOTE: Thread-safe if each call uses its own session or a shared thread-safe session.
-    We create a fresh session for safety/simplicity in threads or reuse a passed session?
-    Requests sessions are thread-safe.
     """
     try:
-        # Create a new session for thread safety and simplicity in concurrent futures
         session = requests.Session()
         session.mount("https://", LegacySSLAdapter())
         
-        response = session.get(product_url, headers=HEADERS, timeout=30)
+        response: requests.Response = session.get(product_url, headers=HEADERS, timeout=30)
         if response.status_code != 200:
             return None
         
-        response.encoding = response.apparent_encoding
-        soup = BeautifulSoup(response.text, "html.parser")
+        response.encoding = response.apparent_encoding or 'utf-8'
+        soup: BeautifulSoup = BeautifulSoup(response.text, "html.parser")
         
-        title_tag = soup.select_one("h2.productTitle") or soup.select_one("h2.title")
+        title_tag: Optional[Tag] = soup.select_one("h2.productTitle") or soup.select_one("h2.title")
         if title_tag:
             return title_tag.get_text(strip=True)
             
@@ -168,11 +166,12 @@ def fetch_full_name(product_url) -> Optional[str]:
         print(f"[Arome] Error fetching detail: {e}")
         return None
 
-async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape: bool = False) -> List[Dict]:
-    products = []
-    page = 1
-    consecutive_existing = 0
-    early_stop = False
+async def scrape_arome(limit: Optional[int] = None, existing_urls: Optional[Set[str]] = None, full_scrape: bool = False) -> List[ScrapedProduct]:
+    """Scrapes product data from Arome."""
+    products: List[ScrapedProduct] = []
+    page: int = 1
+    consecutive_existing: int = 0
+    early_stop: bool = False
     
     print(f"[Arome] Starting scrape...")
     if existing_urls is not None:
@@ -182,23 +181,20 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
     session.mount("https://", LegacySSLAdapter())
     
     while True:
-        url = SEARCH_URL_TEMPLATE.format(page=page)
+        url: str = SEARCH_URL_TEMPLATE.format(page=page)
         print(f"[Arome] Scraping page {page}: {url}")
         
         try:
-            # We must use asyncio.to_thread for the main page fetch to not block loop
-            response = await asyncio.to_thread(session.get, url, headers=HEADERS, timeout=30)
-            response.encoding = response.apparent_encoding
+            response: requests.Response = await asyncio.to_thread(session.get, url, headers=HEADERS, timeout=30)
+            response.encoding = response.apparent_encoding or 'utf-8'
             
             if response.status_code != 200:
                 print(f"[Arome] Failed to fetch page {page}. Status: {response.status_code}")
                 break
                 
-            soup = BeautifulSoup(response.text, "html.parser")
-            title = soup.title.string.strip() if soup.title else "No Title"
-            print(f"[Arome] Page Title: {title}")
+            soup: BeautifulSoup = BeautifulSoup(response.text, "html.parser")
             
-            items = soup.select("div.list_area")
+            items: List[Tag] = soup.select("div.list_area")
             if not items:
                 print(f"[Arome] No items found on page {page}. Stopping.")
                 break
@@ -206,40 +202,39 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
             print(f"[Arome] Found {len(items)} items on page {page}.")
             
             # 1. Parse all items on page first
-            page_products = []
+            page_products: List[ScrapedProduct] = []
             
             for area in items:
-                product_data = extract_product_data(area, is_area=True)
+                product_data: Optional[ScrapedProduct] = extract_product_data(area, is_area=True)
                 if product_data:
                     page_products.append(product_data)
 
             # 2. Identify items needing detail fetch (truncated names)
-            tasks = []
+            tasks: List[ScrapedProduct] = []
             for p in page_products:
-                name = p["name"]
-                url = p["url"]
-                is_existing = existing_urls is not None and url in existing_urls
+                name: str = p["name"]
+                p_url: str = p["url"]
+                is_existing: bool = existing_urls is not None and p_url in existing_urls
                 
                 if (name.endswith("...") or name.endswith("…")):
                     if not is_existing:
-                        # Add to list for parallel fetch
                         tasks.append(p)
                     else:
-                        print(f"[Arome] Name truncated but item exists. Skipping detail fetch for: {url}")
+                        print(f"[Arome] Name truncated but item exists. Skipping detail fetch for: {p_url}")
 
             # 3. Parallel fetch using ThreadPool
             if tasks:
                 print(f"[Arome] Fetching details for {len(tasks)} items in parallel...")
                 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                    # Map urls to futures
-                    future_to_product = {executor.submit(fetch_full_name, p["url"]): p for p in tasks}
+                    future_to_product: Dict[concurrent.futures.Future[Optional[str]], ScrapedProduct] = {
+                        executor.submit(fetch_full_name, p["url"]): p for p in tasks
+                    }
                     
                     for future in concurrent.futures.as_completed(future_to_product):
                         p = future_to_product[future]
                         try:
-                            full_name = future.result()
+                            full_name: Optional[str] = future.result()
                             if full_name:
-                                print(f"[Arome] Updated: {full_name[:50]}...")
                                 p["name"] = full_name
                         except Exception as exc:
                             print(f"[Arome] Detail fetch failed for {p['url']}: {exc}")
@@ -249,16 +244,15 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
                 if limit and len(products) >= limit:
                     break
                 
-                is_existing = existing_urls is not None and p["url"] in existing_urls
+                p_url = p["url"]
+                is_existing = existing_urls is not None and p_url in existing_urls
                 if existing_urls is not None:
                     if is_existing:
                         consecutive_existing += 1
                         if not full_scrape and consecutive_existing >= SOLD_OUT_THRESHOLD:
                             print(f"[Arome] ⚠️ Stopping: {consecutive_existing} consecutive existing items found.")
                             early_stop = True
-                            # Don't break immediately, let's finish adding what we processed on this page?
-                            # Or strict stop? Strict stop usually better.
-                            products.append(p) # Add this one
+                            products.append(p)
                             break 
                     else:
                         consecutive_existing = 0
@@ -273,7 +267,7 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
                 break
 
             # Pagination check
-            next_link = soup.find('a', string=re.compile("次へ"))
+            next_link: Optional[Tag] = soup.find('a', string=re.compile("次へ"))
             if not next_link:
                 next_link = soup.select_one(f'a[href*="pageno={page+1}"]')
 
@@ -293,6 +287,5 @@ async def scrape_arome(limit: int = None, existing_urls: set = None, full_scrape
 
 if __name__ == "__main__":
     import json
-    # Simple test
-    items = asyncio.run(scrape_arome(limit=5))
+    items: List[ScrapedProduct] = asyncio.run(scrape_arome(limit=5))
     print(json.dumps(items, indent=2, ensure_ascii=False))

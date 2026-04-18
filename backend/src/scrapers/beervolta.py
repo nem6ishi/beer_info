@@ -3,85 +3,89 @@ import os
 import re
 import random
 import requests
-from typing import List, Dict, Optional
-from bs4 import BeautifulSoup
+from typing import List, Dict, Optional, Set, Any
+from bs4 import BeautifulSoup, Tag
 import html
 import time
+from ..core.types import ScrapedProduct
 
 # BeerVolta category base URLs (without page parameter)
-CATEGORY_BASES = [
+CATEGORY_BASES: List[str] = [
     "https://beervolta.com/?mode=cate&cbid=2270431&csid=0&sort=n",  # ビール
     "https://beervolta.com/?mode=cate&cbid=2830081&csid=0&sort=n"   # ミード・シードル
 ]
 
 # Threshold for consecutive sold-out items before stopping
-SOLD_OUT_THRESHOLD = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '50'))
+SOLD_OUT_THRESHOLD: int = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '50'))
 
 # Headers to mimic a real browser to be safe
-HEADERS = {
+HEADERS: Dict[str, str] = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
     'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
 }
 
-def extract_product_data(item) -> Optional[Dict[str, str]]:
+def extract_product_data(item: Tag) -> Optional[ScrapedProduct]:
     """Helper to extract product data from a soup item."""
     try:
-        href = item.get('href', '')
-        if not href: return None
-        if href.startswith('/'): link = f"https://beervolta.com{href}"
-        elif href.startswith('http'): link = href
-        else: link = f"https://beervolta.com/{href}"
+        href: Optional[str] = item.get('href')
+        if not href:
+            return None
+        
+        link: str
+        if isinstance(href, str):
+            if href.startswith('/'): link = f"https://beervolta.com{href}"
+            elif href.startswith('http'): link = href
+            else: link = f"https://beervolta.com/{href}"
+        else:
+            return None
 
         # Find the correct product image (skip icons)
-        images = item.find_all('img')
-        img_tag = None
+        images: List[Tag] = item.find_all('img')
+        img_tag: Optional[Tag] = None
         for img in images:
-            classes = img.get('class', [])
-            src = img.get('src', '')
+            classes: Any = img.get('class', [])
+            src: Any = img.get('src', '')
             # Skip known icon classes or sources
-            if 'new_mark_img' in str(classes) or 'icons' in src:
+            if 'new_mark_img' in str(classes) or 'icons' in str(src):
                 continue
             img_tag = img
             break
         
-        # If no specific product image found (unlikely), fallback to first or None
-        if not img_tag and images:
-             # Try to find one that is NOT the icon if possible
-             pass 
-
-        img_url = img_tag.get('src') if img_tag else None
+        img_url: Optional[str] = None
+        if img_tag:
+            src_attr = img_tag.get('src')
+            if isinstance(src_attr, str):
+                img_url = src_attr
         
-        # Name extraction strategy:
-        # 1. Image Alt
-        # 2. Text content (cleanup required)
+        # Name extraction strategy
+        name_from_alt: str = ""
+        if img_tag:
+            alt_attr = img_tag.get('alt', '')
+            if isinstance(alt_attr, str):
+                name_from_alt = alt_attr.strip()
         
-        name_from_alt = img_tag.get('alt', '').strip() if img_tag else ''
-        text_content = item.get_text(strip=True, separator=' ')
+        text_content: str = item.get_text(strip=True, separator=' ')
         
         # Use alt if present and not generic
+        name: str
         if name_from_alt and name_from_alt.lower() != 'unknown':
              name = name_from_alt
         else:
-             # Fallback to text content
-             # Remove price info which is usually at the end or recognized by '円'
-             # Splitting by '円' or known separators might be risky, but usually text is "Name / EngName Price"
-             # Let's try to use the full text and clean it up later
              name = text_content
              
         name = html.unescape(name)
         
         # Cleanup
-        indicators = ['≪12/10入荷予定≫', '≪入荷予定≫', '≪予約≫', '売切', 'SOLD OUT', 'SALE!!', 'SALE!']
+        indicators: List[str] = ['≪12/10入荷予定≫', '≪入荷予定≫', '≪予約≫', '売切', 'SOLD OUT', 'SALE!!', 'SALE!']
         for indicator in indicators:
             name = name.replace(indicator, '').strip()
             
         # Remove price info from name if it leaked from text content
-        # Pattern: "1,234円(税込...)"
         name = re.sub(r'[0-9,]+円.*', '', name).strip()
         
-        price = "Unknown"
-        prices_found = [part for part in item.get_text(strip=True, separator='|').split('|') if '円' in part]
+        price: str = "Unknown"
+        prices_found: List[str] = [part for part in item.get_text(strip=True, separator='|').split('|') if '円' in part]
         if prices_found:
             for price_str in prices_found:
                 tax_match = re.search(r'[（(]税込([0-9,]+円)[）)]', price_str)
@@ -91,15 +95,15 @@ def extract_product_data(item) -> Optional[Dict[str, str]]:
             else:
                 price = prices_found[-1]
 
-        stock_status = "In Stock"
-        upper_text = text_content.upper()
+        stock_status: str = "In Stock"
+        upper_text: str = text_content.upper()
         if '売切' in text_content or 'SOLD OUT' in upper_text:
             stock_status = "Sold Out"
         elif '入荷予定' in text_content: 
             stock_status = "Pre-order/Upcoming"
             
         if not img_url:
-            return None # Skip if no image (likely checks inside)
+            return None
             
         return {
             "name": name,
@@ -113,32 +117,13 @@ def extract_product_data(item) -> Optional[Dict[str, str]]:
         print(f"[Beervolta] Error parsing item: {e}")
         return None
 
-async def scrape_beervolta(limit: int = None, existing_urls: set = None, full_scrape: bool = False) -> List[Dict[str, Optional[str]]]:
+async def scrape_beervolta(limit: Optional[int] = None, existing_urls: Optional[Set[str]] = None, full_scrape: bool = False) -> List[ScrapedProduct]:
     """
     Scrapes product data from Beervolta (Beer and Mead/Cider categories).
     Uses pagination to get all products.
-    Uses requests for lightweight scraping (Playwright removed).
-    Stops early if too many consecutive sold-out items are found, unless full_scrape is True.
-    Returns a list of dictionaries containing product details.
     """
-    all_products = []
-    consecutive_sold_out = 0
-    
-    # Since we are running in an async function (scrape_to_supabase calls us with await),
-    # but requests is synchronous, we can run it directly (blocking the event loop slightly is okay for this script)
-    # or wrap it. Given the script structure, blocking is acceptable as it's running in parallel with other scrapers 
-    # via asyncio.gather, but true parallelism would require running in an executor.
-    # For simplicity and effectiveness, we'll execute the requests synchronously within this async function.
-    # The asyncio.gather in scrape.py will wait for this function to complete.
-    # To be truly non-blocking for other scrapers, we should ideally use aiohttp or run_in_executor.
-    # However, since we are rewriting just this one, straightforward sync execution is fine 
-    # as Python's asyncio is single-threaded anyway. The other scrapers might pause waiting for this CPU work,
-    # but network wait is the main bottleneck.
-    
-    # Actually, to prevent blocking other concurrent scrapers (like Chouseiya), 
-    # we should use asyncio.to_thread for the network calls or use aiohttp. 
-    # Let's stick to requests but wrapping blocking calls is better practice.
-    # But for now, direct requests is robust and simple.
+    all_products: List[ScrapedProduct] = []
+    consecutive_sold_out: int = 0
     
     for i, category_base in enumerate(CATEGORY_BASES):
         # Check if we've reached the limit
@@ -151,39 +136,34 @@ async def scrape_beervolta(limit: int = None, existing_urls: set = None, full_sc
         if existing_urls is not None:
             print(f"[Beervolta] New Product Scrape: Forward Scrape & Buffer...")
             
-            scan_page = 1
-            consecutive_existing = 0
-            stop_scan = False
+            scan_page: int = 1
+            consecutive_existing: int = 0
+            stop_scan: bool = False
             
             while not stop_scan:
-                url = f"{category_base}&page={scan_page}" if scan_page > 1 else category_base
+                url: str = f"{category_base}&page={scan_page}" if scan_page > 1 else category_base
                 print(f"[Beervolta] Smart Scrape {scan_page}: {url}")
                 
                 try:
-                    # Sync request
-                    response = requests.get(url, headers=HEADERS, timeout=30)
+                    response: requests.Response = requests.get(url, headers=HEADERS, timeout=30)
                     response.raise_for_status()
-                    
-                    # Beervolta uses EUC-JP encoding sometimes, but requests usually auto-detects.
-                    # Explicitly set if needed, but usually .content + BeautifulSoup handles it.
-                    # The curl output showed charset=EUC-JP.
-                    response.encoding = response.apparent_encoding 
+                    response.encoding = response.apparent_encoding or 'utf-8'
                     
                     await asyncio.sleep(random.uniform(0.3, 0.7)) # Be nice
                     
-                    soup = BeautifulSoup(response.content, 'lxml')
-                    items = soup.find_all('a', href=re.compile(r'\?pid='))
+                    soup: BeautifulSoup = BeautifulSoup(response.content, 'lxml')
+                    items: List[Tag] = soup.find_all('a', href=re.compile(r'\?pid='))
                     
                     if not items:
                         break
                         
-                    seen_urls_page = set()
+                    seen_urls_page: Set[str] = set()
                     
                     for item in items:
-                        p_item = extract_product_data(item)
+                        p_item: Optional[ScrapedProduct] = extract_product_data(item)
                         if not p_item: continue
                         
-                        link = p_item['url']
+                        link: str = p_item['url']
                         
                         if link in seen_urls_page: continue
                         seen_urls_page.add(link)
@@ -212,10 +192,10 @@ async def scrape_beervolta(limit: int = None, existing_urls: set = None, full_sc
                     print(f"[Beervolta] Error scanning page {scan_page}: {e}")
                     break
                     
-            continue # Move to next category (loop over categories)
+            continue # Move to next category
 
         # Normal Mode (if existing_urls is None)
-        current_page = 1
+        current_page: int = 1
         
         while True:
             # Check limit
@@ -223,10 +203,7 @@ async def scrape_beervolta(limit: int = None, existing_urls: set = None, full_sc
                 break
             
             # Build URL with page parameter
-            if current_page == 1:
-                url = category_base
-            else:
-                url = f"{category_base}&page={current_page}"
+            url = category_base if current_page == 1 else f"{category_base}&page={current_page}"
             
             print(f"[Beervolta] Scraping page {current_page}: {url}")
             
@@ -236,7 +213,7 @@ async def scrape_beervolta(limit: int = None, existing_urls: set = None, full_sc
             try:
                 response = requests.get(url, headers=HEADERS, timeout=30)
                 response.raise_for_status()
-                response.encoding = response.apparent_encoding
+                response.encoding = response.apparent_encoding or 'utf-8'
                 
             except Exception as e:
                 print(f"[Beervolta] Error navigating to page {current_page}: {e}")
@@ -255,7 +232,7 @@ async def scrape_beervolta(limit: int = None, existing_urls: set = None, full_sc
             print(f"[Beervolta] Found {len(items)} potential product links on page {current_page}")
             
             seen_urls = set()
-            page_products = []
+            page_products: List[ScrapedProduct] = []
             
             for item in items:
                 p_item = extract_product_data(item)
@@ -270,10 +247,6 @@ async def scrape_beervolta(limit: int = None, existing_urls: set = None, full_sc
                     consecutive_sold_out += 1
                 else:
                     consecutive_sold_out = 0
-                
-                if not full_scrape and consecutive_sold_out >= SOLD_OUT_THRESHOLD:
-                        print(f"[Beervolta] ⚠️  Early stop: {consecutive_sold_out} consecutive sold-out items detected.")
-                        pass
                 
                 all_products.append(p_item)
                 if limit and len(all_products) >= limit: break
@@ -294,6 +267,13 @@ async def scrape_beervolta(limit: int = None, existing_urls: set = None, full_sc
 
     print(f"\n[Beervolta] Total extracted: {len(all_products)} products from all categories.")
     return all_products
+
+if __name__ == "__main__":
+    # For testing purposes
+    import json
+    data = asyncio.run(scrape_beervolta(limit=5))
+    print(json.dumps(data[:5], indent=2, ensure_ascii=False))
+    print(f"\nTotal: {len(data)} products")
 
 if __name__ == "__main__":
     # For testing purposes

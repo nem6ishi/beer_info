@@ -1,6 +1,14 @@
 import React from 'react';
 
-export default function RatingCell({ rating, count, url, productType }) {
+interface RatingCellProps {
+    rating: number | null;
+    count: number | null;
+    url: string | null;
+    productType: string | null;
+    breweryName?: string | null;
+}
+
+export default function RatingCell({ rating, count, url, productType }: RatingCellProps) {
     const displayRating = rating
         ? (typeof rating === 'number' ? rating.toFixed(2) : Number(rating).toFixed(2))
         : 'N/A';
@@ -26,7 +34,7 @@ export default function RatingCell({ rating, count, url, productType }) {
                     <span className="na-text">N/A</span>
                 )
             )}
-            {count > 0 && <span className="rating-count">({count})</span>}
+            {count != null && count > 0 && <span className="rating-count">({count})</span>}
         </div>
     );
 }

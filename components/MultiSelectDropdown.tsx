@@ -1,14 +1,23 @@
 import { useState, useRef, useEffect } from 'react'
+import type { SelectOption } from '../types/beer'
 
-export default function MultiSelectDropdown({ options, selectedValues, onChange, placeholder, searchable = false }) {
+interface MultiSelectDropdownProps {
+    options: SelectOption[];
+    selectedValues: string[];
+    onChange: (values: string[]) => void;
+    placeholder: string;
+    searchable?: boolean;
+}
+
+export default function MultiSelectDropdown({ options, selectedValues, onChange, placeholder, searchable = false }: MultiSelectDropdownProps) {
     const [isOpen, setIsOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState('')
-    const containerRef = useRef(null)
+    const containerRef = useRef<HTMLDivElement>(null)
 
     // Close on click outside
     useEffect(() => {
-        function handleClickOutside(event) {
-            if (containerRef.current && !containerRef.current.contains(event.target)) {
+        function handleClickOutside(event: MouseEvent) {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
                 setIsOpen(false)
             }
         }
@@ -18,7 +27,7 @@ export default function MultiSelectDropdown({ options, selectedValues, onChange,
         };
     }, [containerRef]);
 
-    const handleToggle = (value) => {
+    const handleToggle = (value: string) => {
         const newValues = selectedValues.includes(value)
             ? selectedValues.filter(v => v !== value)
             : [...selectedValues, value]
@@ -41,9 +50,9 @@ export default function MultiSelectDropdown({ options, selectedValues, onChange,
         return a.label.localeCompare(b.label)
     })
 
-    const getDisplayLabel = () => {
+    const getDisplayLabel = (): string => {
         if (selectedValues.length === 0) return placeholder
-        if (selectedValues.length === 1) return selectedValues[0] // or map to label
+        if (selectedValues.length === 1) return selectedValues[0]
         return `${selectedValues.length} selected`
     }
 

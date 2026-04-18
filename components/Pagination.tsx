@@ -1,6 +1,13 @@
 import React from 'react'
 
-export default function Pagination({ currentPage, totalPages, totalItems, onPageChange }) {
+interface PaginationProps {
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+    onPageChange: (page: number) => void;
+}
+
+export default function Pagination({ currentPage, totalPages, totalItems, onPageChange }: PaginationProps) {
     return (
         <div className="pagination-wrapper">
             <div className="total-count">
@@ -30,43 +37,36 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                     {/* Page Numbers */}
                     <div className="page-numbers">
                         {(() => {
-                            const pages = [];
-                            const maxVisible = 7; // Total number of slots (1, ..., 4, 5, 6, ..., 100)
+                            const pages: (number | string)[] = [];
+                            const maxVisible = 7;
 
                             if (totalPages <= maxVisible) {
                                 for (let i = 1; i <= totalPages; i++) pages.push(i);
                             } else {
-                                // Always show 1
                                 pages.push(1);
 
-                                // Determine start and end of sliding window
                                 let start = Math.max(2, currentPage - 1);
                                 let end = Math.min(totalPages - 1, currentPage + 1);
 
-                                // Adjust if at edges
                                 if (currentPage <= 3) {
-                                    end = 4; // 1, 2, 3, 4 ...
+                                    end = 4;
                                 }
                                 if (currentPage >= totalPages - 2) {
-                                    start = totalPages - 3; // ... 97, 98, 99, 100
+                                    start = totalPages - 3;
                                 }
 
-                                // Add left ellipsis
                                 if (start > 2) {
                                     pages.push('...');
                                 }
 
-                                // Add window
                                 for (let i = start; i <= end; i++) {
                                     pages.push(i);
                                 }
 
-                                // Add right ellipsis
                                 if (end < totalPages - 1) {
                                     pages.push('...');
                                 }
 
-                                // Always show last
                                 pages.push(totalPages);
                             }
 
@@ -77,7 +77,7 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                                     <button
                                         key={p}
                                         className={`page-number ${p === currentPage ? 'active' : ''}`}
-                                        onClick={() => onPageChange(p)}
+                                        onClick={() => onPageChange(p as number)}
                                     >
                                         {p}
                                     </button>

@@ -1,7 +1,8 @@
+import type { NextApiRequest, NextApiResponse } from 'next'
 import { supabase } from '../../lib/supabase'
 
 // Helper to map country to flag
-const getFlag = (location) => {
+const getFlag = (location: string | null): string => {
     if (!location) return '🏳️'; // Unknown
     const loc = location.toLowerCase();
 
@@ -36,7 +37,7 @@ const getFlag = (location) => {
     return '🏳️';
 }
 
-export default async function handler(req, res) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     try {
         const { data, error } = await supabase
             .from('beer_info_view')
@@ -47,11 +48,11 @@ export default async function handler(req, res) {
         if (error) throw error
 
         // Deduplicate by name, keeping the one with location if possible
-        const breweryMap = new Map();
+        const breweryMap = new Map<string, { name: string; location: string | null }>();
 
         data.forEach(item => {
             const name = item.untappd_brewery_name;
-            if (!breweryMap.has(name) || (!breweryMap.get(name).location && item.brewery_location)) {
+            if (!breweryMap.has(name) || (!breweryMap.get(name)!.location && item.brewery_location)) {
                 breweryMap.set(name, {
                     name: name,
                     location: item.brewery_location
@@ -67,7 +68,7 @@ export default async function handler(req, res) {
             .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 
         res.status(200).json({ breweries })
-    } catch (err) {
+    } catch (err: any) {
         console.error('Error fetching breweries:', err)
         res.status(500).json({ error: err.message })
     }

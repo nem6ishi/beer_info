@@ -5,16 +5,26 @@ import { useRouter } from 'next/router'
 import BeerTable from '../components/BeerTable'
 import Pagination from '../components/Pagination'
 import BeerFilters from '../components/BeerFilters'
+import type { Beer, FilterState, BreweryOption, StyleOption, BeersApiResponse } from '../types/beer'
 
 // Debug Logger Removed
 
-class ErrorBoundary extends React.Component {
-    constructor(props) {
+interface ErrorBoundaryProps {
+    children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+    hasError: boolean;
+    error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+    constructor(props: ErrorBoundaryProps) {
         super(props);
         this.state = { hasError: false, error: null };
     }
-    static getDerivedStateFromError(error) { return { hasError: true, error }; }
-    componentDidCatch(error, errorInfo) { console.error("Uncaught error:", error, errorInfo); }
+    static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
+    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) { console.error("Uncaught error:", error, errorInfo); }
     render() {
         if (this.state.hasError) {
             return (
@@ -37,15 +47,20 @@ export default function Home() {
     )
 }
 
+declare global {
+    interface Window {
+        searchTimeout?: NodeJS.Timeout;
+    }
+}
+
 function HomeContent() {
     const router = useRouter()
-    // console.log("[Render] HomeContent rendering. isReady:", router.isReady);
 
     // State for data
-    const [beers, setBeers] = useState([])
-    const [shopCounts, setShopCounts] = useState({})
-    const [loading, setLoading] = useState(false) // Start as false to avoid initial lock
-    const [error, setError] = useState(null)
+    const [beers, setBeers] = useState<Beer[]>([])
+    const [shopCounts, setShopCounts] = useState<Record<string, number>>({})
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
     const [totalPages, setTotalPages] = useState(0)
     const [totalItems, setTotalItems] = useState(0)
     const [mounted, setMounted] = useState(false)
@@ -54,19 +69,19 @@ function HomeContent() {
     // UI State
     const [searchInput, setSearchInput] = useState('')
     const [isFilterOpen, setIsFilterOpen] = useState(false)
-    const [availableStyles, setAvailableStyles] = useState([])
-    const [availableBreweries, setAvailableBreweries] = useState([])
+    const [availableStyles, setAvailableStyles] = useState<(string | StyleOption)[]>([])
+    const [availableBreweries, setAvailableBreweries] = useState<BreweryOption[]>([])
 
     // View Mode (Fixed as 'individual' for index.js)
     const viewMode = 'individual';
-    const handleViewModeChange = (mode) => {
+    const handleViewModeChange = (mode: string) => {
         if (mode === 'grouped') {
             updateURL({ page: '1' }, '/grouped');
         }
     }
 
     // Filter UI State
-    const [tempFilters, setTempFilters] = useState({
+    const [tempFilters, setTempFilters] = useState<FilterState>({
         min_abv: '',
         max_abv: '',
         min_ibu: '',
@@ -81,34 +96,33 @@ function HomeContent() {
     })
 
     // Derived state from URL (defaults)
-    const page = parseInt(router.query.page || '1', 10)
-    const limit = router.query.limit || '20'
-    const sort = router.query.sort || 'newest'
-    const stock_filter = router.query.stock_filter || 'in_stock'
+    const page = parseInt((router.query.page as string) || '1', 10)
+    const limit = (router.query.limit as string) || '20'
+    const sort = (router.query.sort as string) || 'newest'
 
     // Initialize search input from URL
     useEffect(() => {
         setMounted(true)
         if (router.isReady || forcedReady) {
-            setSearchInput(router.query.search || '')
+            setSearchInput((router.query.search as string) || '')
             setTempFilters({
-                min_abv: router.query.min_abv || '',
-                max_abv: router.query.max_abv || '',
-                min_ibu: router.query.min_ibu || '',
-                max_ibu: router.query.max_ibu || '',
-                min_rating: router.query.min_rating || '',
-                stock_filter: router.query.stock_filter || 'in_stock',
-                untappd_status: router.query.untappd_status || '',
-                shop: router.query.shop || '',
-                brewery_filter: router.query.brewery_filter || '',
-                style_filter: router.query.style_filter || '',
-                set_mode: router.query.set_mode || ''
+                min_abv: (router.query.min_abv as string) || '',
+                max_abv: (router.query.max_abv as string) || '',
+                min_ibu: (router.query.min_ibu as string) || '',
+                max_ibu: (router.query.max_ibu as string) || '',
+                min_rating: (router.query.min_rating as string) || '',
+                stock_filter: (router.query.stock_filter as string) || 'in_stock',
+                untappd_status: (router.query.untappd_status as string) || '',
+                shop: (router.query.shop as string) || '',
+                brewery_filter: (router.query.brewery_filter as string) || '',
+                style_filter: (router.query.style_filter as string) || '',
+                set_mode: (router.query.set_mode as string) || ''
             })
 
             fetch('/api/styles').then(res => res.json()).then(d => d.styles && setAvailableStyles(d.styles)).catch(console.error)
             fetch('/api/breweries').then(res => res.json()).then(d => d.breweries && setAvailableBreweries(d.breweries)).catch(console.error)
         }
-    }, [router.isReady, forcedReady])
+    }, [router.isReady, forcedReady, router.query])
 
     // Safety timeout for router.isReady
     useEffect(() => {
@@ -119,7 +133,7 @@ function HomeContent() {
             }
         }, 3000);
         return () => clearTimeout(timer);
-    }, [router.isReady, forcedReady]);
+    }, [router.isReady]);
 
     // Data Fetching
     const fetchBeers = useCallback(async () => {
@@ -132,17 +146,17 @@ function HomeContent() {
         try {
             const currentParams = router.query;
             const params = new URLSearchParams({
-                page: currentParams.page || '1',
-                limit: currentParams.limit || '20',
-                search: currentParams.search || '',
-                sort: currentParams.sort || 'newest',
-                stock_filter: currentParams.stock_filter || 'in_stock'
+                page: (currentParams.page as string) || '1',
+                limit: (currentParams.limit as string) || '20',
+                search: (currentParams.search as string) || '',
+                sort: (currentParams.sort as string) || 'newest',
+                stock_filter: (currentParams.stock_filter as string) || 'in_stock'
             });
-            if (currentParams.shop) params.append('shop', currentParams.shop);
+            if (currentParams.shop) params.append('shop', currentParams.shop as string);
 
             // Add filters if present
             ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'untappd_status', 'set_mode']
-                .forEach(key => { if (currentParams[key]) params.append(key, currentParams[key]) });
+                .forEach(key => { if (currentParams[key]) params.append(key, currentParams[key] as string) });
 
             // Fetch with timeout
             const controller = new AbortController();
@@ -154,12 +168,12 @@ function HomeContent() {
 
                 if (!res.ok) throw new Error('Failed to load beers');
 
-                const data = await res.json();
+                const data: BeersApiResponse = await res.json();
                 setBeers(data.beers || []);
-                setShopCounts(data.shopCounts || {}); // New state
+                setShopCounts(data.shopCounts || {});
                 setTotalPages(data.pagination.totalPages);
                 setTotalItems(data.pagination.total);
-            } catch (err) {
+            } catch (err: any) {
                 if (err.name === 'AbortError') {
                     setError('Request timed out. Please try again.');
                 } else {
@@ -180,7 +194,7 @@ function HomeContent() {
     }, [fetchBeers]);
 
     // Helper to update URL
-    const updateURL = (newParams, pathname = '/') => {
+    const updateURL = (newParams: Record<string, string>, pathname = '/') => {
         const query = { ...router.query, ...newParams }
         // Cleanups
         if (query.page == '1') delete query.page
@@ -189,7 +203,7 @@ function HomeContent() {
         if (!query.search) delete query.search
         if (!query.shop) delete query.shop
         if (query.stock_filter === 'in_stock') delete query.stock_filter // Cleanup default
-        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status', 'set_mode']
+        const filterKeys = ['style_filter', 'brewery_filter', 'min_abv', 'max_abv', 'min_ibu', 'max_ibu', 'min_rating', 'stock_filter', 'untappd_status', 'set_mode']
         filterKeys.forEach(key => { if (!query[key]) delete query[key] })
         router.push({ pathname, query }, undefined, { scroll: false })
     }
@@ -200,12 +214,12 @@ function HomeContent() {
         return keys.filter(k => !!router.query[k]).length
     })()
 
-    const handleFilterChange = (key, value) => {
+    const handleFilterChange = (key: string, value: string) => {
         updateURL({ [key]: value, page: '1' })
         setTempFilters(prev => ({ ...prev, [key]: value }))
     }
 
-    const handleMultiSelectChange = (key, value) => {
+    const handleMultiSelectChange = (key: string, value: string[]) => {
         handleFilterChange(key, value.join(','))
     }
 
@@ -217,18 +231,16 @@ function HomeContent() {
         router.push({ pathname: '/', query: {} }, undefined, { scroll: false })
     }
 
-    const handleSearchChange = (e) => {
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value
         setSearchInput(val)
-        // Debounce logic handled by simple timeout in user typing usually, but here we can just update URL on blur or verify debounce
-        // Simplified for this replacement:
         if (window.searchTimeout) clearTimeout(window.searchTimeout)
         window.searchTimeout = setTimeout(() => updateURL({ search: val, page: '1' }), 500)
     }
 
-    const handleSort = (e) => updateURL({ sort: e.target.value, page: '1' })
-    const handleLimitChange = (e) => updateURL({ limit: e.target.value, page: '1' })
-    const handlePageChange = (newPage) => {
+    const handleSort = (e: React.ChangeEvent<HTMLSelectElement>) => updateURL({ sort: e.target.value, page: '1' })
+    const handleLimitChange = (e: React.ChangeEvent<HTMLSelectElement>) => updateURL({ limit: e.target.value, page: '1' })
+    const handlePageChange = (newPage: number) => {
         if (newPage >= 1 && newPage <= totalPages) {
             updateURL({ page: newPage.toString() })
             window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -327,4 +339,3 @@ function HomeContent() {
         </>
     )
 }
-

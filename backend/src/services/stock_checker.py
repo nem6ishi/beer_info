@@ -1,17 +1,24 @@
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 import re
 import asyncio
+import ssl
+from typing import Optional, Dict, List, Tuple, TypedDict, Union, Any
 
-HEADERS = {
+class StockCheckResult(TypedDict):
+    """Result structure for stock and price checks."""
+    stock_status: str
+    price: Optional[str]
+
+HEADERS: Dict[str, str] = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
-async def fetch_url(client, url):
+async def fetch_url(client: httpx.AsyncClient, url: str) -> Tuple[Optional[str], int]:
+    """Fetches a URL and returns content and status code."""
     try:
         # Create custom SSL context for legacy support (Arome)
-        import ssl
-        verify_ssl = True
+        verify_ssl: Union[bool, ssl.SSLContext] = True
         try:
             ctx = ssl.create_default_context()
             ctx.set_ciphers('DEFAULT@SECLEVEL=1')
@@ -19,29 +26,16 @@ async def fetch_url(client, url):
         except Exception:
             pass # Fallback to default verification if this fails
             
-        # Use a new client for each request to apply specific SSL context??? 
-        # The passed 'client' might not support changing verify context on the fly if it's already open.
-        # But 'client' is passed from outside. 
-        # If we need custom SSL, we might need to ignore the passed client and create a new one?
-        # Or hopefully the caller can handle it?
-        # Actually, `fetch_url` takes `client`. If `client` is reused, we can't change its SSL context easily.
-        # However, creating a new client per request is expensive but necessary for Arome if the shared client is standard.
-        # Let's create a local client JUST for this request if Arome?
-        # Or better: The caller (`check_stock_for_url`) passes the client.
-        # I should probably modify `check_stock_for_url` to handle the client creation or context.
-        # BUT current architecture passes one client for concurrency.
-        # HACK: If url is Arome, create a temporary client with custom SSL.
-        
         if "arome.jp" in url:
             async with httpx.AsyncClient(verify=verify_ssl, timeout=15.0, follow_redirects=True) as local_client:
-                response = await local_client.get(url, headers=HEADERS)
+                response: httpx.Response = await local_client.get(url, headers=HEADERS)
         else:
             # Use shared client
             response = await client.get(url, headers=HEADERS, timeout=15.0)
 
         # Handle encoding
-        content = None
-        encodings = ['utf-8', 'euc-jp', 'shift_jis', 'cp932']
+        content: Optional[str] = None
+        encodings: List[str] = ['utf-8', 'euc-jp', 'shift_jis', 'cp932']
         
         for enc in encodings:
             try:
@@ -58,9 +52,10 @@ async def fetch_url(client, url):
         print(f"Error fetching {url}: {e}")
         return None, 0
 
-def check_stock_arome(soup):
+def check_stock_arome(soup: BeautifulSoup) -> str:
+    """Checks stock status for Arome (ECCube)."""
     # Logic from scraper: check for specific text zone or button
-    text_zone = soup.select_one("div.text-zone")
+    text_zone: Optional[Tag] = soup.select_one("div.text-zone")
     if text_zone and "在庫切れ" in text_zone.get_text():
         return "Sold Out"
     
@@ -68,16 +63,14 @@ def check_stock_arome(soup):
     if soup.select_one('img[alt="売り切れ"]') or soup.select_one('img[src*="soldout"]'):
         return "Sold Out"
         
-    # Check for Cart Button (input type="image" name="image" often in Arome/ECCube?)
-    # Arome usually has a form with class "cart_btn" or similar if in stock
-    cart_btn = soup.select_one("input[name='cart']") or soup.select_one("a.cart_btn")
-    # If explicit sold out not found, assume in stock, but maybe verify cart button?
-    # Listing scraper logic is "In Stock" default unless "Sold Out" found. let's stick to that.
+    # Check for Cart Button
+    cart_btn: Optional[Tag] = soup.select_one("input[name='cart']") or soup.select_one("a.cart_btn")
     return "In Stock"
 
-def check_stock_beervolta(soup):
+def check_stock_beervolta(soup: BeautifulSoup) -> str:
+    """Checks stock status for BeerVolta."""
     # Logic: Look for "SOLD OUT" or "売切"
-    text = soup.get_text()
+    text: str = soup.get_text()
     if "SOLD OUT" in text or "売切" in text:
         return "Sold Out"
     
@@ -85,34 +78,19 @@ def check_stock_beervolta(soup):
     if soup.select_one(".soldout"):
         return "Sold Out"
         
-    # Check for cart button presence to be sure?
-    # Hidden input names commonly found in Makeshop/ColorMe
-    if soup.find("input", {"name": "is_async_cart_in"}):
-        return "In Stock"
-        
     return "In Stock"
 
-def check_stock_chouseiya(soup):
+def check_stock_chouseiya(soup: BeautifulSoup) -> str:
+    """Checks stock status for Chouseiya (MakeShop)."""
     # Logic: Look for "売り切れ" or "SOLD OUT"
-    text = soup.get_text()
-    # Chouseiya detail page usually has "売り切れ" near price or cart if sold out
+    text: str = soup.get_text()
     if "売り切れ" in text or "SOLD OUT" in text:
-        # Be careful not to match "Selling out fast!" text if it existed, but usually Japanese sites are clear
-        # Check specific containers if possible
         return "Sold Out"
         
-    # Cart button presence
-    cart_btn = soup.select_one("input[value='カートに入れる']") or soup.select_one("img[alt='カートにれる']") # Typo safe?
-    # MakeShop usually "input type=submit value=カートに入れる" is standard
-    # If no cart button and no sold out text? 
     return "In Stock"
 
-def check_stock_ichigo_ichie(soup):
-    # Ichigo Ichie (151l.shop - MakeShop based)
-    # Key indicators found via browser inspection:
-    # - Sold Out: button.btn-soldout (disabled, text "SOLD OUT")
-    # - In Stock: button.btn-addcart.cart_in_async (text "カートに入れる")
-    
+def check_stock_ichigo_ichie(soup: BeautifulSoup) -> str:
+    """Checks stock status for Ichigo Ichie (MakeShop)."""
     # 1. Check for explicit Sold Out button
     if soup.select_one("button.btn-soldout") or soup.select_one(".btn-soldout"):
         return "Sold Out"
@@ -121,49 +99,44 @@ def check_stock_ichigo_ichie(soup):
     if soup.select_one("button.btn-addcart") or soup.select_one("button.cart_in_async"):
         return "In Stock"
         
-    # 3. Fallback: If neither found, default to In Stock (avoid false Sold Out)
     return "In Stock"
 
-def extract_price_arome(soup) -> str | None:
-    # Arome: Price is usually in .price or span containing ¥
-    price_el = soup.select_one(".price") or soup.select_one("#price")
-    if price_el:
-        return price_el.get_text(strip=True)
-    # Fallback: look for text with ¥ in product area
-    return None
-
-def extract_price_beervolta(soup) -> str | None:
-    # BeerVolta: .price or .product_price
-    price_el = soup.select_one(".price") or soup.select_one(".product_price")
+def extract_price_arome(soup: BeautifulSoup) -> Optional[str]:
+    """Extracts price for Arome."""
+    price_el: Optional[Tag] = soup.select_one(".price") or soup.select_one("#price")
     if price_el:
         return price_el.get_text(strip=True)
     return None
 
-def extract_price_chouseiya(soup) -> str | None:
-    # Chouseiya (MakeShop): .price or span in the detail area
-    price_el = soup.select_one(".price") or soup.select_one("#price")
+def extract_price_beervolta(soup: BeautifulSoup) -> Optional[str]:
+    """Extracts price for BeerVolta."""
+    price_el: Optional[Tag] = soup.select_one(".price") or soup.select_one(".product_price")
     if price_el:
         return price_el.get_text(strip=True)
     return None
 
-def extract_price_ichigo_ichie(soup) -> str | None:
-    # 151l.shop: .product_price or span with yen
-    price_el = soup.select_one(".product_price") or soup.select_one(".price")
+def extract_price_chouseiya(soup: BeautifulSoup) -> Optional[str]:
+    """Extracts price for Chouseiya."""
+    price_el: Optional[Tag] = soup.select_one(".price") or soup.select_one("#price")
     if price_el:
         return price_el.get_text(strip=True)
-    # Alternative: Look for span with 税込
-    price_area = soup.select_one(".product_data_price")
+    return None
+
+def extract_price_ichigo_ichie(soup: BeautifulSoup) -> Optional[str]:
+    """Extracts price for Ichigo Ichie."""
+    price_el: Optional[Tag] = soup.select_one(".product_price") or soup.select_one(".price")
+    if price_el:
+        return price_el.get_text(strip=True)
+    price_area: Optional[Tag] = soup.select_one(".product_data_price")
     if price_area:
         return price_area.get_text(strip=True)
     return None
 
-async def check_stock_for_url(client: httpx.AsyncClient, url: str, shop: str) -> dict:
+async def check_stock_for_url(client: httpx.AsyncClient, url: str, shop: str) -> StockCheckResult:
     """
-    Returns dict with:
-      - stock_status: "In Stock", "Sold Out", or "Error"
-      - price: extracted price string or None
+    Main entry point for checking stock and price of a product URL.
     """
-    result = {"stock_status": "Unknown", "price": None}
+    result: StockCheckResult = {"stock_status": "Unknown", "price": None}
     
     if not url: 
         return result
@@ -173,7 +146,7 @@ async def check_stock_for_url(client: httpx.AsyncClient, url: str, shop: str) ->
         result["stock_status"] = "Error"
         return result
         
-    soup = BeautifulSoup(content, 'lxml')
+    soup: BeautifulSoup = BeautifulSoup(content, 'lxml')
     
     if shop == "アローム":
         result["stock_status"] = check_stock_arome(soup)

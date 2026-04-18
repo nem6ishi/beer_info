@@ -4,12 +4,12 @@ Split from searcher.py for better modularity.
 """
 import re
 import logging
-from typing import Optional
+from typing import Optional, List, Dict, Match
 
 logger = logging.getLogger(__name__)
 
 # Common beer style suffixes (sorted by length descending for greedy matching)
-COMMON_SUFFIXES = [
+COMMON_SUFFIXES: List[str] = [
     " IPA", " Hazy IPA", " Double IPA", " DIPA", " Triple IPA", " TIPA", " NEIPA",
     " NE IPA", " NE-IPA", " WCIPA", " WC IPA", " West Coast IPA", " Session IPA",
     " DDH IPA", " TDH IPA",
@@ -21,7 +21,7 @@ COMMON_SUFFIXES = [
 COMMON_SUFFIXES.sort(key=len, reverse=True)
 
 # Ordinal number mapping for anniversary/edition names (e.g. 11th -> eleventh)
-_ORDINAL_MAP = {
+_ORDINAL_MAP: Dict[str, str] = {
     '1st': 'first', '2nd': 'second', '3rd': 'third', '4th': 'fourth',
     '5th': 'fifth', '6th': 'sixth', '7th': 'seventh', '8th': 'eighth',
     '9th': 'ninth', '10th': 'tenth', '11th': 'eleventh', '12th': 'twelfth',
@@ -41,7 +41,7 @@ def normalize_for_comparison(text: str) -> str:
 
 def normalize_ordinals(text: str) -> str:
     """Converts ordinal numbers (11th, 2nd, etc.) to their English word equivalents."""
-    def replace_ordinal(m):
+    def replace_ordinal(m: Match[str]) -> str:
         return _ORDINAL_MAP.get(m.group(0).lower(), m.group(0))
     return re.sub(r'\b\d+(?:st|nd|rd|th)\b', replace_ordinal, text, flags=re.IGNORECASE)
 
@@ -154,7 +154,7 @@ def clean_brewery_name(name: str) -> str:
     if not name:
         return name
 
-    suffixes = [
+    suffixes: List[str] = [
         # English
         ' Beer Company', ' Brewing Co.', ' Brewing Company', ' Brewery Co.',
         ' Beer Co', ' Brewing', ' Brewery', ' Beer', ' Co.', ' Company', ' Corporation', ' Corp.',

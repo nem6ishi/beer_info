@@ -1,12 +1,12 @@
-export const formatPrice = (price) => {
+export const formatPrice = (price: number | string | null | undefined): string => {
     if (!price) return '¥-';
     // Handle both number and string inputs (e.g. "¥1,200")
     const num = typeof price === 'number' ? price : parseInt(price.replace(/[^0-9]/g, ''), 10);
-    if (isNaN(num)) return price;
+    if (isNaN(num)) return String(price);
     return `¥${num.toLocaleString()}`;
 };
 
-export const formatSimpleDate = (isoString) => {
+export const formatSimpleDate = (isoString: string | null | undefined): string => {
     if (!isoString) return '-';
     try {
         // Safari friendly date parsing (replace space with T for ISO compliance if needed)

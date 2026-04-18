@@ -6,13 +6,15 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from typing import List, Dict, Optional, Set, Any, Union, cast
 
-from backend.src.core.db import get_supabase_client
-from backend.src.scrapers import beervolta, chouseiya, ichigo_ichie, arome
+from ..core.db import get_supabase_client
+from ..core.types import ScrapedProduct
+from ..sc scrapers import beervolta, chouseiya, ichigo_ichie, arome
 
 logger = logging.getLogger(__name__)
 
-def parse_price(price_str):
+def parse_price(price_str: Optional[str]) -> Optional[int]:
     """
     Extract numeric value from price string.
     """
@@ -20,14 +22,19 @@ def parse_price(price_str):
         return None
     try:
         # Remove non-digits
-        clean = re.sub(r'[^0-9]', '', str(price_str))
+        clean: str = re.sub(r'[^0-9]', '', str(price_str))
         if clean:
             return int(clean)
         return None
-    except:
+    except Exception:
         return None
 
-async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scrape: bool = False, reset_first_seen: bool = False):
+async def scrape_to_supabase(
+    limit: Optional[int] = None, 
+    new_only: bool = False, 
+    full_scrape: bool = False, 
+    reset_first_seen: bool = False
+) -> None:
     """
     Scrape and write directly to Supabase (scraped_beers table).
     """
@@ -39,18 +46,18 @@ async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scr
         logger.info("🔥 全件スクレイプ (Full Scrape) ENABLED: 停止リミットを無視して全件取得")
     logger.info("=" * 60)
     
-    supabase = get_supabase_client()
+    supabase: Any = get_supabase_client()
     
     # Get existing beers from Supabase to check for updates vs new items
     logger.info("\n📂 Loading existing beers from scraped_beers...")
     
-    all_existing_beers = []
-    chunk_size = 1000
-    start = 0
+    all_existing_beers: List[Dict[str, Any]] = []
+    chunk_size: int = 1000
+    start: int = 0
     
     while True:
         # Fetch in chunks
-        response = supabase.table('scraped_beers').select('url, first_seen, stock_status, untappd_url').range(start, start + chunk_size - 1).execute()
+        response: Any = supabase.table('scraped_beers').select('url, first_seen, stock_status, untappd_url').range(start, start + chunk_size - 1).execute()
         
         if not response.data:
             break
@@ -61,37 +68,31 @@ async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scr
             break
             
         start += chunk_size
-        # logger.info(f"  Loaded {len(all_existing_beers)} items...", end='\r') # Logging doesn't support 'end'
 
-    existing_data = {beer['url']: beer for beer in all_existing_beers}
-    existing_urls = set(existing_data.keys())
+    existing_data: Dict[str, Dict[str, Any]] = {beer['url']: beer for beer in all_existing_beers}
+    existing_urls: Set[str] = set(existing_data.keys())
     logger.info(f"  Loaded {len(existing_data)} existing beers (Complete)")
     
     # Define scrapers
-    # Note: Ensure these modules have the expected interface: scrape_*(limit, existing_urls, full_scrape)
-    scraper_names = ['beervolta', 'chouseiya', 'ichigo_ichie', 'arome']
-    display_names = ['BeerVolta', 'Chouseiya', 'Ichigo Ichie', 'Arôme']
+    display_names: List[str] = ['BeerVolta', 'Chouseiya', 'Ichigo Ichie', 'Arôme']
 
     # Run scrapers in parallel
     logger.info("\n🔍 Running scrapers in parallel...")
-    results = await asyncio.gather(
+    results: List[Union[List[ScrapedProduct], Exception]] = await asyncio.gather(
         beervolta.scrape_beervolta(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
         chouseiya.scrape_chouseiya(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
         ichigo_ichie.scrape_ichigo_ichie(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
-        arome.scrape_arome(limit=limit, existing_urls=existing_urls, full_scrape=full_scrape), # Arome matches signature
+        arome.scrape_arome(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
         return_exceptions=True
     )
     
     # Process each scraper result separately to maintain per-store order
-    scraper_results = []
+    scraper_results: List[List[ScrapedProduct]] = []
     
     for i, res in enumerate(results):
-        if i >= len(display_names):
-             display_name = f"Scraper {i}"
-        else:
-             display_name = display_names[i]
+        display_name: str = display_names[i] if i < len(display_names) else f"Scraper {i}"
         
-        items = []
+        items: List[ScrapedProduct] = []
         
         if isinstance(res, list):
             items = res
@@ -104,58 +105,52 @@ async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scr
         scraper_results.append(items)
 
     # Flatten for count
-    new_scraped_items = [item for sublist in scraper_results for item in sublist]
+    new_scraped_items: List[ScrapedProduct] = [item for sublist in scraper_results for item in sublist]
     logger.info(f"\n📊 Total scraped: {len(new_scraped_items)} items")
     
     # Process and upsert
-    current_time = datetime.now(timezone.utc)
-    current_time_iso = current_time.isoformat()
+    current_time_iso: str = datetime.now(timezone.utc).isoformat()
     
-    new_count = 0
-    updated_count = 0
+    new_count: int = 0
+    updated_count: int = 0
     
-    beers_to_upsert = []
+    beers_to_upsert: List[Dict[str, Any]] = []
     
-    global_index = 0
-    base_time = datetime.now(timezone.utc)
+    global_index: int = 0
+    base_time: datetime = datetime.now(timezone.utc)
     
     for store_items in scraper_results:
         if not store_items:
             continue
             
         # Items are likely Newest -> Oldest (Page 1 top -> Page N bottom)
-        # We want to process Oldest -> Newest to assign timestamps correctly for "First Seen" if strictly sequential
-        # But actually, 'first_seen' is set to NOW for new items.
-        # The 'global_index' logic in original script was to prevent collision or maintain sort stability?
-        # Original: assigned increasing timestamp with microseconds.
-        # So we keep the reverse logic.
-        items_to_process = list(reversed(store_items))
+        items_to_process: List[ScrapedProduct] = list(reversed(store_items))
 
         for new_item in items_to_process:
-            url = new_item.get('url')
+            url: str = new_item.get('url', '')
             if not url:
                 continue
             
-            existing = existing_data.get(url)
-            is_restock = False
+            existing: Optional[Dict[str, Any]] = existing_data.get(url)
+            is_restock: bool = False
             
             if existing:
-                prev_stock = (existing.get('stock_status') or '').lower()
-                new_stock = (new_item.get('stock_status') or '').lower()
+                prev_stock: str = (existing.get('stock_status') or '').lower()
+                new_stock: str = (new_item.get('stock_status') or '').lower()
                 
-                was_sold_out = 'sold' in prev_stock or 'out' in prev_stock
-                is_now_available = not ('sold' in new_stock or 'out' in new_stock)
+                was_sold_out: bool = 'sold' in prev_stock or 'out' in prev_stock
+                is_now_available: bool = not ('sold' in new_stock or 'out' in new_stock)
                 
                 if was_sold_out and is_now_available:
                     is_restock = True
                     logger.info(f"  🔄 Restock: {new_item.get('name', 'Unknown')[:50]}")
 
             # Assign increasing timestamp with minimal difference
-            item_time = base_time + timedelta(microseconds=global_index)
-            item_time_iso = item_time.isoformat()
+            item_time: datetime = base_time + timedelta(microseconds=global_index)
+            item_time_iso: str = item_time.isoformat()
             global_index += 1
 
-            beer_data = {
+            beer_data: Dict[str, Any] = {
                 'url': url,
                 'name': new_item.get('name'),
                 'price': new_item.get('price'),
@@ -191,9 +186,9 @@ async def scrape_to_supabase(limit: int = None, new_only: bool = False, full_scr
     
     # Batch upsert to Supabase
     if beers_to_upsert:
-        batch_size = 1000
+        batch_size: int = 1000
         for i in range(0, len(beers_to_upsert), batch_size):
-            batch = beers_to_upsert[i:i + batch_size]
+            batch: List[Dict[str, Any]] = beers_to_upsert[i:i + batch_size]
             logger.info(f"\n💾 Upserting batch {i // batch_size + 1} ({len(batch)} beers)...")
             try:
                 # Upsert to scraped_beers

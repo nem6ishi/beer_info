@@ -1,10 +1,17 @@
 import BeerInfoCell from './cells/BeerInfoCell';
 import RatingCell from './cells/RatingCell';
 import React from 'react'
+import type { Beer } from '../types/beer'
 
 import { formatPrice, formatSimpleDate } from './utils/formatters';
 
-export default function BeerTable({ beers, loading, error }) {
+interface BeerTableProps {
+    beers: Beer[];
+    loading: boolean;
+    error: string | null;
+}
+
+export default function BeerTable({ beers, loading, error }: BeerTableProps) {
 
     if (error) return <div className="status-message error">Error: {error}</div>
 
@@ -14,6 +21,9 @@ export default function BeerTable({ beers, loading, error }) {
     if (loading && beers.length === 0) {
         return <div className="status-message">Loading...</div>
     }
+
+    const hasUntappdBeerData = (beer: Beer): boolean =>
+        !!(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer');
 
     return (
         <div className="table-container" style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s' }}>
@@ -33,14 +43,15 @@ export default function BeerTable({ beers, loading, error }) {
                             <td className="col-img">
                                 <div className="beer-image-wrapper">
                                     <img
-                                        src={beer.image || beer.untappd_image || 'https://placehold.co/100x100?text=No+Image'}
+                                        src={beer.untappd_image || beer.image || 'https://placehold.co/100x100?text=No+Image'}
                                         alt={beer.name}
                                         loading="lazy"
                                         onError={(e) => {
-                                            if (beer.untappd_image && e.target.src !== beer.untappd_image) {
-                                                e.target.src = beer.untappd_image;
+                                            const target = e.target as HTMLImageElement;
+                                            if (beer.image && target.src !== beer.image) {
+                                                target.src = beer.image;
                                             } else {
-                                                e.target.src = 'https://placehold.co/100x100?text=No+Image';
+                                                target.src = 'https://placehold.co/100x100?text=No+Image';
                                             }
                                         }}
                                     />
@@ -48,11 +59,11 @@ export default function BeerTable({ beers, loading, error }) {
                             </td>
                             <td className="col-name">
                                 <BeerInfoCell
-                                    brewery={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.untappd_brewery_name : null}
-                                    beer={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.untappd_beer_name : beer.name}
-                                    logo={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.brewery_logo : null}
-                                    location={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.brewery_location : null}
-                                    type={(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer') ? beer.brewery_type : null}
+                                    brewery={hasUntappdBeerData(beer) ? beer.untappd_brewery_name : null}
+                                    beer={hasUntappdBeerData(beer) ? beer.untappd_beer_name : beer.name}
+                                    logo={hasUntappdBeerData(beer) ? beer.brewery_logo : null}
+                                    location={hasUntappdBeerData(beer) ? beer.brewery_location : null}
+                                    type={hasUntappdBeerData(beer) ? beer.brewery_type : null}
                                     fallbackName={beer.name}
                                 />
                             </td>
@@ -116,7 +127,7 @@ export default function BeerTable({ beers, loading, error }) {
                     ))}
                     {beers.length === 0 && !loading && (
                         <tr>
-                            <td colSpan="5" style={{ textAlign: 'center', padding: '2rem' }}>
+                            <td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>
                                 No beers found.
                             </td>
                         </tr>

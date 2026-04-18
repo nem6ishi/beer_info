@@ -1,10 +1,17 @@
 import BeerInfoCell from './cells/BeerInfoCell';
 import RatingCell from './cells/RatingCell';
 import React from 'react'
+import type { GroupedBeer } from '../types/beer'
 
 import { formatPrice, formatSimpleDate } from './utils/formatters';
 
-export default function GroupedBeerTable({ groups, loading, error }) {
+interface GroupedBeerTableProps {
+    groups: GroupedBeer[];
+    loading: boolean;
+    error: string | null;
+}
+
+export default function GroupedBeerTable({ groups, loading, error }: GroupedBeerTableProps) {
 
     if (error) return <div className="status-message error">Error: {error}</div>
 
@@ -55,25 +62,25 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                         }
 
                         return (
-                            <tr key={group.untappd_url || group.url}>
+                            <tr key={group.untappd_url || group.beer_name}>
                                 <td className="col-img">
                                     <div className="beer-image-wrapper">
                                         <img
-                                            src={displayImage}
+                                            src={displayImage || 'https://placehold.co/100x100?text=No+Image'}
                                             alt={group.beer_name}
                                             loading="lazy"
-                                            onError={(e) => { e.target.src = 'https://placehold.co/100x100?text=No+Image'; }}
+                                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100?text=No+Image'; }}
                                         />
                                     </div>
                                 </td>
                                 <td className="col-name">
                                     <BeerInfoCell
                                         brewery={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery : null}
-                                        beer={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.beer_name : (cheapestItem?.name || group.beer_name)}
+                                        beer={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.beer_name : (cheapestItem?.shop ? cheapestItem.shop : group.beer_name)}
                                         logo={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_logo : null}
                                         location={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_location : null}
                                         type={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_type : null}
-                                        fallbackName={cheapestItem?.name || group.beer_name}
+                                        fallbackName={cheapestItem?.shop ? cheapestItem.shop : group.beer_name}
                                     />
                                 </td>
                                 <td className="col-beer-style">
@@ -141,7 +148,7 @@ export default function GroupedBeerTable({ groups, loading, error }) {
                     })}
                     {groups.length === 0 && !loading && (
                         <tr>
-                            <td colSpan="5" style={{ textAlign: 'center', padding: '2rem' }}>
+                            <td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>
                                 No grouped beers found.
                             </td>
                         </tr>

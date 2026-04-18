@@ -6,45 +6,55 @@ Optimized to reduce N+1 queries by caching existing records.
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
-from dateutil import parser
+from typing import List, Optional, Dict, Any, Set, cast
+from dateutil import parser as dateutil_parser
 
-from backend.src.core.db import get_supabase_client
-from backend.src.services.untappd.searcher import scrape_brewery_details
+from ..core.db import get_supabase_client
+from ..core.types import UntappdBreweryDetails
+from ..services.untappd.searcher import scrape_brewery_details
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
-async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: list = None):
+async def enrich_breweries(
+    limit: int = 50, 
+    force: bool = False, 
+    target_urls: Optional[List[str]] = None
+) -> None:
+    """
+    Enriches the `breweries` table with details from Untappd.
+    """
     logger.info("=" * 70)
     logger.info(f"🏭 Brewery Enrichment (Limit: {limit}, Force: {force})")
     if target_urls:
          logger.info(f"🎯 Target: {len(target_urls)} specific breweries")
     logger.info("=" * 70)
     
-    supabase = get_supabase_client()
+    supabase: Any = get_supabase_client()
     
     # Cache existing breweries
     logger.info("  🔍 Caching existing breweries from DB...")
-    all_breweries_res = supabase.table('breweries').select('id, untappd_url, name_en, updated_at').execute()
+    all_breweries_res: Any = supabase.table('breweries').select('id, untappd_url, name_en, updated_at').execute()
+    all_breweries_data: List[Dict[str, Any]] = all_breweries_res.data or []
     
-    breweries_by_url = {b['untappd_url']: b for b in all_breweries_res.data if b.get('untappd_url')}
-    breweries_by_name = {b['name_en']: b for b in all_breweries_res.data if b.get('name_en')}
-    logger.info(f"    ✅ Cached {len(all_breweries_res.data)} breweries.")
+    breweries_by_url: Dict[str, Dict[str, Any]] = {b['untappd_url']: b for b in all_breweries_data if b.get('untappd_url')}
+    breweries_by_name: Dict[str, Dict[str, Any]] = {b['name_en']: b for b in all_breweries_data if b.get('name_en')}
+    logger.info(f"    ✅ Cached {len(all_breweries_data)} breweries.")
     
-    total_processed = 0
-    processed_urls = set()
+    total_processed: int = 0
+    processed_urls: Set[str] = set()
     
     # Helper to check freshness locally
     def should_process_url(url: str) -> bool:
         if force:
             return True
-        existing = breweries_by_url.get(url)
+        existing: Optional[Dict[str, Any]] = breweries_by_url.get(url)
         if not existing:
             return True
-        updated_at = existing.get('updated_at')
+        updated_at: Optional[str] = existing.get('updated_at')
         if not updated_at:
             return True
         try:
-            last_update = parser.parse(updated_at)
+            last_update: datetime = dateutil_parser.parse(updated_at)
             # If updated in the last 7 days, skip
             if datetime.now(timezone.utc) - last_update < timedelta(days=7):
                 return False
@@ -64,21 +74,25 @@ async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: li
             
         logger.info(f"  🔄 Enriching: {url}")
         await asyncio.sleep(2) # Rate limit
-        details = scrape_brewery_details(url)
+        details: UntappdBreweryDetails = scrape_brewery_details(url)
         
         if not details:
             logger.warning(f"  ⚠️ Failed to scrape: {url}")
             processed_urls.add(url)
             return False
             
-        brewery_name = details.get('brewery_name')
-        
+        brewery_name: Optional[str] = details.get('brewery_name')
+        if not brewery_name:
+            logger.warning(f"  ⚠️ No brewery name found for: {url}")
+            processed_urls.add(url)
+            return False
+            
         # Check by name in cache
-        target_id = None
-        existing_by_name = breweries_by_name.get(brewery_name)
+        target_id: Optional[int] = None
+        existing_by_name: Optional[Dict[str, Any]] = breweries_by_name.get(brewery_name)
         
         if existing_by_name:
-            existing_url = existing_by_name.get('untappd_url')
+            existing_url: Optional[str] = existing_by_name.get('untappd_url')
             # Same brewery but different URL (e.g., vanity URL vs /w/ URL)
             if existing_url and existing_url != url:
                 logger.info(f"  ⏭️  Skipped: '{brewery_name}' already exists with different URL: {existing_url}")
@@ -86,17 +100,17 @@ async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: li
                 return False
             elif not existing_url:
                 logger.info(f"  📝 Matching to existing record with null URL: {brewery_name}")
-                target_id = existing_by_name['id']
+                target_id = existing_by_name.get('id')
             elif existing_url == url:
-                target_id = existing_by_name['id']
+                target_id = existing_by_name.get('id')
                 
         # If not found by name, try by URL just in case name changed
         if not target_id:
-            existing_by_url = breweries_by_url.get(url)
+            existing_by_url: Optional[Dict[str, Any]] = breweries_by_url.get(url)
             if existing_by_url:
-                target_id = existing_by_url['id']
+                target_id = existing_by_url.get('id')
         
-        payload = {
+        payload: Dict[str, Any] = {
              'untappd_url': url,
              'name_en': brewery_name,
              'location': details.get('location'),
@@ -114,10 +128,10 @@ async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: li
                 logger.info(f"  ✅ Updated: {brewery_name}")
             else:
                 # Insert new record
-                res = supabase.table('breweries').insert(payload).execute()
+                res: Any = supabase.table('breweries').insert(payload).execute()
                 if res.data:
                     # Add to cache for subsequent checks
-                    new_rec = res.data[0]
+                    new_rec: Dict[str, Any] = res.data[0]
                     breweries_by_url[url] = new_rec
                     breweries_by_name[brewery_name] = new_rec
                 logger.info(f"  ✅ Inserted: {brewery_name}")
@@ -139,18 +153,18 @@ async def enrich_breweries(limit: int = 50, force: bool = False, target_urls: li
     
     # PRIORITY 2: Process additional breweries from untappd_data (up to limit)
     if total_processed < limit:
-        remaining_limit = limit - total_processed
+        remaining_limit: int = limit - total_processed
         logger.info(f"\n📂 Processing additional breweries from database (up to {remaining_limit})...")
         
         # Get distinct brewery URLs from untappd_data
         logger.info("  🔍 Collecting unique brewery URLs from beer data...")
-        res = supabase.table('untappd_data').select('untappd_brewery_url').not_.is_('untappd_brewery_url', 'null').limit(5000).execute()
+        res: Any = supabase.table('untappd_data').select('untappd_brewery_url').not_.is_('untappd_brewery_url', 'null').limit(5000).execute()
         
-        data = res.data
+        data: List[Dict[str, Any]] = res.data or []
         if not data:
             logger.info("  ✨ No brewery URLs found in untappd_data.")
         else:
-            unique_urls = list(set([item['untappd_brewery_url'] for item in data if item.get('untappd_brewery_url')]))
+            unique_urls: List[str] = list(set([item['untappd_brewery_url'] for item in data if item.get('untappd_brewery_url')]))
             logger.info(f"  Found {len(unique_urls)} unique brewery URLs.")
             
             for url in unique_urls:
