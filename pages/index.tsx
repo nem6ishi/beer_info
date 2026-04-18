@@ -67,7 +67,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const { data: beers, count } = await q.range(offset, offset + limitNum - 1);
 
     // Optimized aggregation via RPC
-    const { data: filterData } = await supabase.rpc('get_available_filters').single();
+    const { data: filterData } = await supabase.rpc('get_available_filters').single() as any;
     
     const styles = filterData?.styles || [];
     const breweries = filterData?.breweries?.map((b: any) => ({
