@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS scraped_beers (
   url TEXT PRIMARY KEY,
   name TEXT,
   price TEXT,
+  price_num NUMERIC, -- Numeric value for sorting/filtering
   image TEXT,
   stock_status TEXT,
   shop TEXT NOT NULL,
@@ -37,9 +38,13 @@ CREATE TABLE IF NOT EXISTS untappd_data (
   brewery_name TEXT,
   style TEXT,
   abv TEXT,
+  abv_num NUMERIC,
   ibu TEXT,
+  ibu_num NUMERIC,
   rating TEXT,
+  rating_num NUMERIC,
   rating_count TEXT,
+  rating_count_num NUMERIC,
   image_url TEXT,
   untappd_brewery_url TEXT, -- Link to brewery page
   fetched_at TIMESTAMPTZ DEFAULT NOW()
@@ -81,12 +86,17 @@ CREATE TABLE IF NOT EXISTS untappd_search_failures (
   notes TEXT
 );
 
--- 5. Indices for Performance
+-- 6. Indices for Performance
 CREATE INDEX IF NOT EXISTS idx_scraped_beers_shop ON scraped_beers(shop);
 CREATE INDEX IF NOT EXISTS idx_scraped_beers_last_seen ON scraped_beers(last_seen DESC);
 CREATE INDEX IF NOT EXISTS idx_scraped_beers_first_seen ON scraped_beers(first_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_scraped_beers_price_num ON scraped_beers(price_num);
 -- Full-text search index (optional, but good for raw name search)
 CREATE INDEX IF NOT EXISTS idx_scraped_name ON scraped_beers USING gin(to_tsvector('english', name));
+
+-- Indices for untappd_data
+CREATE INDEX IF NOT EXISTS idx_untappd_data_abv_num ON untappd_data(abv_num);
+CREATE INDEX IF NOT EXISTS idx_untappd_data_rating_num ON untappd_data(rating_num);
 
 -- Indices for untappd_search_failures
 CREATE INDEX IF NOT EXISTS idx_untappd_failures_product_url ON untappd_search_failures(product_url);
@@ -95,17 +105,15 @@ CREATE INDEX IF NOT EXISTS idx_untappd_failures_reason ON untappd_search_failure
 CREATE INDEX IF NOT EXISTS idx_untappd_failures_last_failed ON untappd_search_failures(last_failed_at DESC);
 
 
--- 6. beer_info_view: Unified view for API
--- Casts prices and ratings to numeric for sorting
--- Using SECURITY INVOKER so RLS policies of the querying user are applied
+-- 7. beer_info_view: Unified view for API
+-- Using physical numeric columns for speed
 CREATE OR REPLACE VIEW beer_info_view
 WITH (security_invoker = on) AS
 SELECT
   s.url,
   s.name,
   s.price,
-  -- Extract numeric value from price string (remove non-digits, keep only numbers)
-  NULLIF(regexp_replace(s.price, '[^0-9]', '', 'g'), '')::numeric as price_value,
+  s.price_num as price_value,
   s.image,
   s.stock_status,
   s.shop,
@@ -125,11 +133,10 @@ SELECT
   u.beer_name as untappd_beer_name,
   u.brewery_name as untappd_brewery_name,
   u.style as untappd_style,
-  -- Numeric casting for sorting/filtering
-  NULLIF(regexp_replace(u.abv, '[^0-9.]', '', 'g'), '')::numeric as untappd_abv,
-  NULLIF(regexp_replace(u.ibu, '[^0-9.]', '', 'g'), '')::numeric as untappd_ibu,
-  NULLIF(regexp_replace(u.rating, '[^0-9.]', '', 'g'), '')::numeric as untappd_rating,
-  NULLIF(regexp_replace(u.rating_count, '[^0-9.]', '', 'g'), '')::numeric as untappd_rating_count,
+  u.abv_num as untappd_abv,
+  u.ibu_num as untappd_ibu,
+  u.rating_num as untappd_rating,
+  u.rating_count_num as untappd_rating_count,
   u.image_url as untappd_image,
   u.untappd_brewery_url, -- Link key
   u.fetched_at as untappd_fetched_at,
@@ -144,6 +151,47 @@ FROM scraped_beers s
 LEFT JOIN gemini_data g ON s.url = g.url
 LEFT JOIN untappd_data u ON s.untappd_url = u.untappd_url
 LEFT JOIN breweries b ON u.untappd_brewery_url = b.untappd_url;
+
+
+-- 8. beer_groups_view: Unified view for grouped comparisons
+-- This view aggregates items by Untappd URL for faster comparisons
+CREATE OR REPLACE VIEW beer_groups_view
+WITH (security_invoker = on) AS
+SELECT
+    untappd_url,
+    MAX(untappd_beer_name) as beer_name,
+    MAX(untappd_brewery_name) as brewery_name,
+    MAX(untappd_style) as style,
+    MAX(untappd_abv) as abv,
+    MAX(untappd_ibu) as ibu,
+    MAX(untappd_rating) as rating,
+    MAX(untappd_rating_count) as rating_count,
+    MAX(untappd_image) as beer_image,
+    MAX(brewery_logo) as brewery_logo,
+    MAX(brewery_location) as brewery_location,
+    MAX(brewery_type) as brewery_type,
+    MAX(untappd_fetched_at) as untappd_updated_at,
+    MAX(is_set) as is_set,
+    MAX(product_type) as product_type,
+    -- Aggregated item data
+    MIN(price_value) as min_price,
+    MAX(price_value) as max_price,
+    MAX(first_seen) as newest_seen,
+    COUNT(*) as total_items,
+    json_agg(json_build_object(
+        'shop', shop,
+        'price', price,
+        'price_value', price_value,
+        'url', url,
+        'stock_status', stock_status,
+        'last_seen', last_seen,
+        'first_seen', first_seen,
+        'image', image
+    )) as items
+FROM beer_info_view
+WHERE untappd_url IS NOT NULL 
+  AND untappd_url NOT LIKE '%/search?%'
+GROUP BY untappd_url;
 
 
 -- 7. Row Level Security (RLS) policies

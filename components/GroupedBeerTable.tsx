@@ -1,6 +1,7 @@
 import BeerInfoCell from './cells/BeerInfoCell';
 import RatingCell from './cells/RatingCell';
 import React from 'react'
+import BeerImage from './BeerImage'
 import type { GroupedBeer } from '../types/beer'
 
 import { formatPrice, formatSimpleDate } from './utils/formatters';
@@ -64,14 +65,10 @@ export default function GroupedBeerTable({ groups, loading, error }: GroupedBeer
                         return (
                             <tr key={group.untappd_url || group.beer_name}>
                                 <td className="col-img">
-                                    <div className="beer-image-wrapper">
-                                        <img
-                                            src={displayImage || 'https://placehold.co/100x100?text=No+Image'}
-                                            alt={group.beer_name}
-                                            loading="lazy"
-                                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100?text=No+Image'; }}
-                                        />
-                                    </div>
+                                    <BeerImage 
+                                        src={displayImage} 
+                                        alt={group.beer_name} 
+                                    />
                                 </td>
                                 <td className="col-name">
                                     <BeerInfoCell

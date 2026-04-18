@@ -154,7 +154,7 @@ async def scrape_to_supabase(
                 'url': url,
                 'name': new_item.get('name'),
                 'price': new_item.get('price'),
-                'price_value': parse_price(new_item.get('price')),
+                'price_num': parse_price(new_item.get('price')),
                 'image': new_item.get('image'),
                 'stock_status': new_item.get('stock_status'),
                 'shop': new_item.get('shop'),

@@ -1,6 +1,8 @@
 import BeerInfoCell from './cells/BeerInfoCell';
 import RatingCell from './cells/RatingCell';
 import React from 'react'
+import Image from 'next/image'
+import BeerImage from './BeerImage'
 import type { Beer } from '../types/beer'
 
 import { formatPrice, formatSimpleDate } from './utils/formatters';
@@ -41,21 +43,11 @@ export default function BeerTable({ beers, loading, error }: BeerTableProps) {
                     {beers.map(beer => (
                         <tr key={beer.id || beer.url}>
                             <td className="col-img">
-                                <div className="beer-image-wrapper">
-                                    <img
-                                        src={beer.untappd_image || beer.image || 'https://placehold.co/100x100?text=No+Image'}
-                                        alt={beer.name}
-                                        loading="lazy"
-                                        onError={(e) => {
-                                            const target = e.target as HTMLImageElement;
-                                            if (beer.image && target.src !== beer.image) {
-                                                target.src = beer.image;
-                                            } else {
-                                                target.src = 'https://placehold.co/100x100?text=No+Image';
-                                            }
-                                        }}
-                                    />
-                                </div>
+                                <BeerImage 
+                                    src={beer.image} 
+                                    alt={beer.name} 
+                                    fallbackSrc={beer.untappd_image || undefined} 
+                                />
                             </td>
                             <td className="col-name">
                                 <BeerInfoCell
