@@ -1,6 +1,6 @@
 import { GetServerSideProps } from 'next'
 import Head from 'next/head'
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import GroupedBeerTable from '../components/GroupedBeerTable'
@@ -84,6 +84,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
 export default function GroupedBeers({ initialData, availableStyles, availableBreweries }: GroupedProps) {
     const router = useRouter()
+    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
     const [groups, setGroups] = useState<GroupedBeer[]>(initialData.groups)
     const [shopCounts, setShopCounts] = useState<Record<string, number>>(initialData.shopCounts)
@@ -91,6 +92,7 @@ export default function GroupedBeers({ initialData, availableStyles, availableBr
     const [error, setError] = useState<string | null>(null)
     const [totalPages, setTotalPages] = useState(initialData.pagination.totalPages)
     const [totalItems, setTotalItems] = useState(initialData.pagination.total)
+    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
     const [searchInput, setSearchInput] = useState((router.query.search as string) || '')
     const [isFilterOpen, setIsFilterOpen] = useState(false)
@@ -142,8 +144,8 @@ export default function GroupedBeers({ initialData, availableStyles, availableBr
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value
         setSearchInput(val)
-        if ((window as any).searchTimeout) clearTimeout((window as any).searchTimeout)
-        (window as any).searchTimeout = setTimeout(() => updateURL({ search: val, page: '1' }), 500)
+        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+        searchTimeoutRef.current = setTimeout(() => updateURL({ search: val, page: '1' }), 500)
     }
 
     const handleFilterChange = (key: string, value: string) => updateURL({ [key]: value, page: '1' })

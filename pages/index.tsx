@@ -1,6 +1,6 @@
 import { GetServerSideProps } from 'next'
 import Head from 'next/head'
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import BeerTable from '../components/BeerTable'
@@ -113,6 +113,7 @@ export default function Home({ initialData, availableStyles, availableBreweries 
         brewery_filter: '', style_filter: '', set_mode: ''
     })
 
+    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
     const page = parseInt((router.query.page as string) || '1', 10)
     const sort = (router.query.sort as string) || 'newest'
     const limit = (router.query.limit as string) || '20'
@@ -160,8 +161,8 @@ export default function Home({ initialData, availableStyles, availableBreweries 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value
         setSearchInput(val)
-        if ((window as any).searchTimeout) clearTimeout((window as any).searchTimeout)
-        (window as any).searchTimeout = setTimeout(() => updateURL({ search: val, page: '1' }), 500)
+        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+        searchTimeoutRef.current = setTimeout(() => updateURL({ search: val, page: '1' }), 500)
     }
 
     const handleFilterChange = (key: string, value: string) => updateURL({ [key]: value, page: '1' })
