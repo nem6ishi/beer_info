@@ -26,8 +26,8 @@ class GeminiExtractor:
         self.last_request_time = 0
         self.daily_request_count = 0
         
-        # Model Configuration: Gemma 3 27B (30 RPM, 14,400 RPD)
-        self.model_id = "gemma-3-27b-it"
+        # Model Configuration: Gemma 4 31B (30 RPM, 14,400 RPD)
+        self.model_id = "gemma-4-31b-it"
         self.model_interval = 3.0
         self.global_daily_limit = 14400
 
