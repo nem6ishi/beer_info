@@ -160,8 +160,8 @@ export default function Home({ initialData, availableStyles, availableBreweries 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value
         setSearchInput(val)
-        if (window.searchTimeout) clearTimeout(window.searchTimeout)
-        window.searchTimeout = setTimeout(() => updateURL({ search: val, page: '1' }), 500)
+        if ((window as any).searchTimeout) clearTimeout((window as any).searchTimeout)
+        (window as any).searchTimeout = setTimeout(() => updateURL({ search: val, page: '1' }), 500)
     }
 
     const handleFilterChange = (key: string, value: string) => updateURL({ [key]: value, page: '1' })

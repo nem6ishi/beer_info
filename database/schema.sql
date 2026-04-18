@@ -176,7 +176,7 @@ SELECT
     MAX(brewery_location) as brewery_location,
     MAX(brewery_type) as brewery_type,
     MAX(untappd_fetched_at) as untappd_updated_at,
-    MAX(is_set) as is_set,
+    bool_or(is_set) as is_set,
     MAX(product_type) as product_type,
     -- Aggregated item data
     MIN(price_value) as min_price,
