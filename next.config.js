@@ -30,6 +30,21 @@ const nextConfig = {
       },
       {
         protocol: 'https',
+        hostname: 'www.arome.jp',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'beer-chouseiya.shop',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '151l.shop',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
         hostname: 'ichigo-ichie.beer',
         pathname: '/**',
       },
