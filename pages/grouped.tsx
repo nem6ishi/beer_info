@@ -92,7 +92,6 @@ export default function GroupedBeers({ initialData, availableStyles, availableBr
     const [error, setError] = useState<string | null>(null)
     const [totalPages, setTotalPages] = useState(initialData.pagination.totalPages)
     const [totalItems, setTotalItems] = useState(initialData.pagination.total)
-    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
     const [searchInput, setSearchInput] = useState((router.query.search as string) || '')
     const [isFilterOpen, setIsFilterOpen] = useState(false)
