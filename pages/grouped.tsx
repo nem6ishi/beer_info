@@ -18,64 +18,82 @@ interface GroupedProps {
 export const getServerSideProps: GetServerSideProps = async (context) => {
     const { query } = context;
     
-    const page = (query.page as string) || '1';
-    const limit = (query.limit as string) || '20';
-    const search = (query.search as string) || '';
-    const sort = (query.sort as string) || 'newest';
-    
-    const pageNum = parseInt(page, 10);
-    const limitNum = parseInt(limit, 10);
-    const offset = (pageNum - 1) * limitNum;
+    try {
+        const page = (query.page as string) || '1';
+        const limit = (query.limit as string) || '20';
+        const search = (query.search as string) || '';
+        const sort = (query.sort as string) || 'newest';
+        
+        const pageNum = parseInt(page, 10);
+        const limitNum = parseInt(limit, 10);
+        const offset = (pageNum - 1) * limitNum;
 
-    // Use beer_groups_view for SQL-level grouping and sorting
-    let q = supabase.from('beer_groups_view').select('*', { count: 'exact' });
+        // Use beer_groups_view for SQL-level grouping and sorting
+        let q = supabase.from('beer_groups_view').select('*', { count: 'exact' });
 
-    if (search) q = q.or(`beer_name.ilike.%${search}%,brewery_name.ilike.%${search}%`);
-    if (query.min_abv) q = q.gte('abv', query.min_abv);
-    if (query.max_abv) q = q.lte('abv', query.max_abv);
-    if (query.min_rating) q = q.gte('rating', query.min_rating as string);
-    if (query.style_filter) {
-        const styles = (query.style_filter as string).split(',').filter(Boolean);
-        if (styles.length > 0) q = q.in('style', styles);
-    }
-    if (query.brewery_filter) {
-        const breweries = (query.brewery_filter as string).split(',').filter(Boolean);
-        if (breweries.length > 0) q = q.in('brewery_name', breweries);
-    }
+        if (search) q = q.or(`beer_name.ilike.%${search}%,brewery_name.ilike.%${search}%`);
+        if (query.min_abv) q = q.gte('abv', query.min_abv);
+        if (query.max_abv) q = q.lte('abv', query.max_abv);
+        if (query.min_rating) q = q.gte('rating', query.min_rating as string);
+        if (query.style_filter) {
+            const styles = (query.style_filter as string).split(',').filter(Boolean);
+            if (styles.length > 0) q = q.in('style', styles);
+        }
+        if (query.brewery_filter) {
+            const breweries = (query.brewery_filter as string).split(',').filter(Boolean);
+            if (breweries.length > 0) q = q.in('brewery_name', breweries);
+        }
 
-    switch (sort) {
-        case 'newest': q = q.order('newest_seen', { ascending: false }); break;
-        case 'price_asc': q = q.order('min_price', { ascending: true }); break;
-        case 'price_desc': q = q.order('max_price', { ascending: false }); break;
-        case 'rating_desc': q = q.order('rating', { ascending: false }); break;
-        default: q = q.order('newest_seen', { ascending: false });
-    }
+        switch (sort) {
+            case 'newest': q = q.order('newest_seen', { ascending: false }); break;
+            case 'price_asc': q = q.order('min_price', { ascending: true }); break;
+            case 'price_desc': q = q.order('max_price', { ascending: false }); break;
+            case 'rating_desc': q = q.order('rating', { ascending: false }); break;
+            default: q = q.order('newest_seen', { ascending: false });
+        }
 
-    const { data: groups, count } = await q.range(offset, offset + limitNum - 1);
+        const { data: groups, count, error: dataError } = await q.range(offset, offset + limitNum - 1);
+        if (dataError) throw dataError;
 
-    // Optimized aggregation via RPC
-    const { data: filterData } = await supabase.rpc('get_available_filters').single() as any;
-    
-    const styles = filterData?.styles || [];
-    const breweries = filterData?.breweries?.map((b: any) => ({
-        name: b.name_en || b.name_jp,
-        flag: ''
-    })) || [];
+        // Optimized aggregation via RPC
+        const { data: filterData, error: rpcError } = await supabase.rpc('get_available_filters').single();
+        if (rpcError) console.error('RPC Error in getServerSideProps (Grouped):', rpcError);
+        
+        const typedFilterData = filterData as any;
+        const styles = typedFilterData?.styles || [];
+        const breweries = typedFilterData?.breweries?.map((b: any) => ({
+            name: b.name_en || b.name_jp || 'Unknown',
+            flag: ''
+        })) || [];
 
-    return {
-        props: {
-            initialData: {
-                groups: groups || [],
-                shopCounts: {},
-                pagination: {
-                    page: pageNum,
-                    limit: limitNum,
-                    total: count || 0,
-                    totalPages: Math.ceil((count || 0) / limitNum)
-                }
-            },
-            availableStyles: styles,
-            availableBreweries: breweries
+        return {
+            props: {
+                initialData: {
+                    groups: groups || [],
+                    shopCounts: {},
+                    pagination: {
+                        page: pageNum,
+                        limit: limitNum,
+                        total: count || 0,
+                        totalPages: Math.ceil((count || 0) / limitNum)
+                    }
+                },
+                availableStyles: styles,
+                availableBreweries: breweries
+            }
+        }
+    } catch (err) {
+        console.error('getServerSideProps error in GroupedBeers:', err);
+        return {
+            props: {
+                initialData: {
+                    groups: [],
+                    shopCounts: {},
+                    pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+                },
+                availableStyles: [],
+                availableBreweries: []
+            }
         }
     }
 }

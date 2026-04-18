@@ -18,77 +18,90 @@ interface HomeProps {
 export const getServerSideProps: GetServerSideProps = async (context) => {
     const { query } = context;
     
-    // Construct the absolute URL for the internal API call
-    // Since we are on Vercel or local, we can use the relative URL trick or call the local handler directly.
-    // However, it's cleaner to reuse the logic. For now, we'll fetch styles and breweries from Supabase directly here 
-    // to avoid an extra internal HTTP hop, or just use the API logic.
-    
-    const page = (query.page as string) || '1';
-    const limit = (query.limit as string) || '20';
-    const search = (query.search as string) || '';
-    const sort = (query.sort as string) || 'newest';
-    const shop = (query.shop as string) || '';
-    
-    // We'll mimic the /api/beers logic here for the initial fetch
-    const pageNum = parseInt(page, 10);
-    const limitNum = parseInt(limit, 10);
-    const offset = (pageNum - 1) * limitNum;
+    try {
+        const page = (query.page as string) || '1';
+        const limit = (query.limit as string) || '20';
+        const search = (query.search as string) || '';
+        const sort = (query.sort as string) || 'newest';
+        const shop = (query.shop as string) || '';
+        
+        const pageNum = parseInt(page, 10);
+        const limitNum = parseInt(limit, 10);
+        const offset = (pageNum - 1) * limitNum;
 
-    let q = supabase.from('beer_info_view').select('*', { count: 'exact' });
+        let q = supabase.from('beer_info_view').select('*', { count: 'exact' });
 
-    if (search) q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,brewery_name_en.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`);
-    if (query.min_abv) q = q.gte('untappd_abv', query.min_abv);
-    if (query.max_abv) q = q.lte('untappd_abv', query.max_abv);
-    if (query.min_rating) q = q.gte('untappd_rating', query.min_rating as string);
-    if (shop) {
-        const shopList = shop.split(',').filter(Boolean);
-        if (shopList.length > 0) q = q.in('shop', shopList);
-    }
-    if (query.style_filter) {
-        const styles = (query.style_filter as string).split(',').filter(Boolean);
-        if (styles.length > 0) q = q.in('untappd_style', styles);
-    }
-    if (query.brewery_filter) {
-        const breweries = (query.brewery_filter as string).split(',').filter(Boolean);
-        if (breweries.length > 0) q = q.in('untappd_brewery_name', breweries);
-    }
-    
-    if (query.stock_filter === 'in_stock') q = q.eq('stock_status', 'In Stock');
-    else if (query.stock_filter === 'sold_out') q = q.eq('stock_status', 'Sold Out');
+        if (search) q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,brewery_name_en.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`);
+        if (query.min_abv) q = q.gte('untappd_abv', query.min_abv as string);
+        if (query.max_abv) q = q.lte('untappd_abv', query.max_abv as string);
+        if (query.min_rating) q = q.gte('untappd_rating', query.min_rating as string);
+        
+        if (shop) {
+            const shopList = shop.split(',').filter(Boolean);
+            if (shopList.length > 0) q = q.in('shop', shopList);
+        }
+        if (query.style_filter) {
+            const styles = (query.style_filter as string).split(',').filter(Boolean);
+            if (styles.length > 0) q = q.in('untappd_style', styles);
+        }
+        if (query.brewery_filter) {
+            const breweries = (query.brewery_filter as string).split(',').filter(Boolean);
+            if (breweries.length > 0) q = q.in('untappd_brewery_name', breweries);
+        }
+        
+        if (query.stock_filter === 'in_stock') q = q.eq('stock_status', 'In Stock');
+        else if (query.stock_filter === 'sold_out') q = q.eq('stock_status', 'Sold Out');
 
-    switch (sort) {
-        case 'newest': q = q.order('first_seen', { ascending: false }); break;
-        case 'price_asc': q = q.order('price_value', { ascending: true }); break;
-        case 'price_desc': q = q.order('price_value', { ascending: false }); break;
-        case 'rating_desc': q = q.order('untappd_rating', { ascending: false }); break;
-        default: q = q.order('first_seen', { ascending: false });
-    }
+        switch (sort) {
+            case 'newest': q = q.order('first_seen', { ascending: false }); break;
+            case 'price_asc': q = q.order('price_value', { ascending: true }); break;
+            case 'price_desc': q = q.order('price_value', { ascending: false }); break;
+            case 'rating_desc': q = q.order('untappd_rating', { ascending: false }); break;
+            default: q = q.order('first_seen', { ascending: false });
+        }
 
-    const { data: beers, count } = await q.range(offset, offset + limitNum - 1);
+        const { data: beers, count, error: dataError } = await q.range(offset, offset + limitNum - 1);
+        if (dataError) throw dataError;
 
-    // Optimized aggregation via RPC
-    const { data: filterData } = await supabase.rpc('get_available_filters').single() as any;
-    
-    const styles = filterData?.styles || [];
-    const breweries = filterData?.breweries?.map((b: any) => ({
-        name: b.name_en || b.name_jp,
-        flag: ''
-    })) || [];
+        // Optimized aggregation via RPC
+        const { data: filterData, error: rpcError } = await supabase.rpc('get_available_filters').single();
+        if (rpcError) console.error('RPC Error in getServerSideProps:', rpcError);
+        
+        const typedFilterData = filterData as any;
+        const styles = typedFilterData?.styles || [];
+        const breweries = typedFilterData?.breweries?.map((b: any) => ({
+            name: b.name_en || b.name_jp || 'Unknown',
+            flag: ''
+        })) || [];
 
-    return {
-        props: {
-            initialData: {
-                beers: beers || [],
-                shopCounts: {}, // Can be calculated if needed
-                pagination: {
-                    page: pageNum,
-                    limit: limitNum,
-                    total: count || 0,
-                    totalPages: Math.ceil((count || 0) / limitNum)
-                }
-            },
-            availableStyles: styles,
-            availableBreweries: breweries
+        return {
+            props: {
+                initialData: {
+                    beers: beers || [],
+                    shopCounts: {},
+                    pagination: {
+                        page: pageNum,
+                        limit: limitNum,
+                        total: count || 0,
+                        totalPages: Math.ceil((count || 0) / limitNum)
+                    }
+                },
+                availableStyles: styles,
+                availableBreweries: breweries
+            }
+        }
+    } catch (err) {
+        console.error('getServerSideProps error in Home:', err);
+        return {
+            props: {
+                initialData: {
+                    beers: [],
+                    shopCounts: {},
+                    pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+                },
+                availableStyles: [],
+                availableBreweries: []
+            }
         }
     }
 }
