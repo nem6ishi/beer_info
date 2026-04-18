@@ -74,3 +74,10 @@ class GeminiExtraction(TypedDict):
     product_type: str
     is_set: bool
     raw_response: Optional[str]
+
+class UntappdSearchResult(TypedDict):
+    """Result of an Untappd search attempt."""
+    url: Optional[str]
+    success: bool
+    failure_reason: Optional[str]
+    error_message: Optional[str]
