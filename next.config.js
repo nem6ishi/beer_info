@@ -6,30 +6,37 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'untappd.akamaized.net',
-        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.untappd.com',
         pathname: '/**',
       },
       {
         protocol: 'https',
         hostname: 'lh3.googleusercontent.com',
-        port: '',
         pathname: '/**',
       },
       {
         protocol: 'https',
         hostname: '*.beervolta.com',
+        pathname: '/**',
       },
       {
         protocol: 'https',
         hostname: '*.arome.tokyo',
+        pathname: '/**',
       },
       {
         protocol: 'https',
         hostname: 'ichigo-ichie.beer',
+        pathname: '/**',
       },
       {
         protocol: 'https',
         hostname: 'placehold.co',
+        pathname: '/**',
       }
     ],
   },

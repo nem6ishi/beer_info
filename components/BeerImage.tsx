@@ -35,7 +35,21 @@ const BeerImage: React.FC<BeerImageProps> = ({
     }, [src, fallbackSrc]);
 
     return (
-        <div className={`beer-image-container ${isLoaded ? 'loaded' : 'loading'}`} style={{ width, height, position: 'relative', overflow: 'hidden', borderRadius: '8px', background: '#f0f0f0' }}>
+        <div 
+            className={`beer-image-container ${isLoaded ? 'loaded' : 'loading'}`} 
+            style={{ 
+                width, 
+                height, 
+                position: 'relative', 
+                overflow: 'hidden', 
+                borderRadius: '8px', 
+                background: '#f8f9fa',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+            }}
+        >
             <Image
                 src={imgSrc}
                 alt={alt}
@@ -55,9 +69,20 @@ const BeerImage: React.FC<BeerImageProps> = ({
                         setImgSrc(defaultPlaceholder);
                     }
                 }}
-                unoptimized={imgSrc.startsWith('data:')} // Optimization: unoptimized for data URLs if any
-                style={{ objectFit: 'cover' }}
+                unoptimized={imgSrc.startsWith('http') && !imgSrc.includes('googleusercontent') && !imgSrc.includes('akamaized')} // Partially bypass proxy for problematic ones if needed, but for now let's hope remotePatterns works
+                style={{ 
+                    objectFit: 'contain',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    opacity: isLoaded ? 1 : 0,
+                    transition: 'opacity 0.2s ease-in-out'
+                }}
             />
+            {!isLoaded && !hasError && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div className="spinner-small" style={{ width: '16px', height: '16px', border: '2px solid #ddd', borderTopColor: '#666', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                </div>
+            )}
         </div>
     )
 }
