@@ -39,28 +39,13 @@ export default function GroupedBeerTable({ groups, loading, error }: GroupedBeer
 
                         // Image selection logic:
                         // 1. Untappd image if available and NOT default
-                        // 2. Cheapest shop item image
-                        // 3. Any shop item image
-                        // 4. Placeholder (never show Untappd default)
-
-                        let displayImage = group.beer_image;
-                        const isDefaultUntappd = !displayImage || (displayImage && displayImage.includes('badge-beer-default'));
-
-                        if (isDefaultUntappd) {
-                            // Try cheapest first
-                            if (cheapestItem && cheapestItem.image) {
-                                displayImage = cheapestItem.image;
-                            } else {
-                                // Try finding ANY item with an image
-                                const itemWithImage = sortedItems.find(i => i.image);
-                                if (itemWithImage) {
-                                    displayImage = itemWithImage.image;
-                                } else {
-                                    // No shop images found. Force placeholder/empty so we don't show the Untappd default.
-                                    displayImage = ''; // This will trigger onError or show nothing, better than default
-                                }
-                            }
-                        }
+                        // 2. Cheapest shop item image as fallback
+                        
+                        const untappdImg = group.beer_image;
+                        const hasValidUntappd = untappdImg && !untappdImg.includes('badge-beer-default');
+                        
+                        const displayImage = hasValidUntappd ? untappdImg : (cheapestItem?.image || '');
+                        const fallbackImage = hasValidUntappd ? (cheapestItem?.image || '') : '';
 
                         return (
                             <tr key={group.untappd_url || group.beer_name}>
@@ -68,6 +53,7 @@ export default function GroupedBeerTable({ groups, loading, error }: GroupedBeer
                                     <BeerImage 
                                         src={displayImage} 
                                         alt={group.beer_name} 
+                                        fallbackSrc={fallbackImage}
                                     />
                                 </td>
                                 <td className="col-name">

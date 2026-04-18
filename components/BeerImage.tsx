@@ -23,15 +23,14 @@ const BeerImage: React.FC<BeerImageProps> = ({
     const [isLoaded, setIsLoaded] = useState(false);
     const [hasError, setHasError] = useState(false);
 
-    // Initial check for default Untappd images which we want to skip if possible
-    const isDefaultUntappd = (url: string) => url.includes('badge-beer-default');
+    const isDefaultUntappd = (url: string) => 
+        url.includes('badge-beer-default') || 
+        url.includes('no_image') || 
+        url.includes('placeholder');
 
     React.useEffect(() => {
-        if (!src && !fallbackSrc) {
-            setImgSrc(defaultPlaceholder);
-        } else {
-            setImgSrc(src || fallbackSrc || defaultPlaceholder);
-        }
+        const primary = src && !isDefaultUntappd(src) ? src : (fallbackSrc && !isDefaultUntappd(fallbackSrc) ? fallbackSrc : defaultPlaceholder);
+        setImgSrc(primary);
     }, [src, fallbackSrc]);
 
     return (
