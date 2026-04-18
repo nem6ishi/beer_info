@@ -26,7 +26,11 @@ CREATE INDEX IF NOT EXISTS idx_scraped_beers_price_num ON scraped_beers(price_nu
 CREATE INDEX IF NOT EXISTS idx_untappd_data_abv_num ON untappd_data(abv_num);
 CREATE INDEX IF NOT EXISTS idx_untappd_data_rating_num ON untappd_data(rating_num);
 
--- 4. Update beer_info_view
+-- 4. Re-define Views
+-- We use DROP ... CASCADE because CREATE OR REPLACE VIEW cannot remove or rename columns
+DROP VIEW IF EXISTS beer_groups_view CASCADE;
+DROP VIEW IF EXISTS beer_info_view CASCADE;
+
 CREATE OR REPLACE VIEW beer_info_view
 WITH (security_invoker = on) AS
 SELECT

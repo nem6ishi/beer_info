@@ -105,7 +105,12 @@ CREATE INDEX IF NOT EXISTS idx_untappd_failures_reason ON untappd_search_failure
 CREATE INDEX IF NOT EXISTS idx_untappd_failures_last_failed ON untappd_search_failures(last_failed_at DESC);
 
 
--- 7. beer_info_view: Unified view for API
+-- 7. Re-define Views
+-- We use DROP ... CASCADE because CREATE OR REPLACE VIEW cannot remove or rename columns
+DROP VIEW IF EXISTS beer_groups_view CASCADE;
+DROP VIEW IF EXISTS beer_info_view CASCADE;
+
+-- Unified view for API
 -- Using physical numeric columns for speed
 CREATE OR REPLACE VIEW beer_info_view
 WITH (security_invoker = on) AS
