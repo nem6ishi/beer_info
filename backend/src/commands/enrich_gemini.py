@@ -77,7 +77,7 @@ async def enrich_gemini(
 
 def _get_count(supabase: Any, shop: Optional[str], keyword: Optional[str], offline: bool, force: bool) -> int:
     """Gets total count of items requiring enrichment."""
-    query: Any = supabase.table('beer_info_view').select('count', count='exact', head=True)
+    query: Any = supabase.table('beer_info_view').select('url', count='exact', head=True)
     query = _apply_filters(query, shop, keyword, offline, force)
     res: Any = query.execute()
     return cast(int, res.count)
