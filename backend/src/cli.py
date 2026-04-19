@@ -3,7 +3,7 @@ import argparse
 import sys
 import os
 import logging
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Set
 
 from .core.logging import setup_logging
 
