@@ -1,6 +1,11 @@
 name: Enrich Beer Data (Combined - Manual Only)
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/enrich.yml'
   workflow_dispatch:  # Manual trigger only
 
 jobs:

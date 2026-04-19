@@ -1,6 +1,11 @@
 name: Untappd Data Refresh
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/enrich_untappd_refresh.yml'
   schedule:
     # Runs at 4:30 AM JST every day (19:30 UTC previous day)
     - cron: '30 19 * * *'

@@ -10,7 +10,7 @@ from typing import List, Dict, Optional, Set, Any, Union, cast
 
 from ..core.db import get_supabase_client
 from ..core.types import ScrapedProduct
-from ..sc scrapers import beervolta, chouseiya, ichigo_ichie, arome
+from ..scrapers import beervolta, chouseiya, ichigo_ichie, arome
 
 logger = logging.getLogger(__name__)
 
