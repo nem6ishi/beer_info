@@ -97,8 +97,7 @@ def _apply_filters(query: Any, shop: Optional[str], keyword: Optional[str], offl
         query = query.or_(
             'brewery_name_en.is.null,'
             'untappd_url.is.null,'
-            'untappd_url.ilike.%/search?%,'
-            'search_hint.is.null'
+            'untappd_url.ilike.%/search?%'
         )
 
     if shop:
