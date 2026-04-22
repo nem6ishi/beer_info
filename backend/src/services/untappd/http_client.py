@@ -91,14 +91,14 @@ def scrape_beer_details(url: str) -> UntappdBeerDetails:
         if style_tag:
             details['untappd_style'] = style_tag.get_text(strip=True)
 
-        # Label Image: Prioritize og:image for higher resolution
-        og_image: Optional[Tag] = soup.find('meta', property='og:image')
-        if og_image and og_image.get('content'):
-            details['untappd_label'] = og_image['content']
+        # Label Image: Prioritize the actual beer label over the og:image social card
+        label_tag: Optional[Tag] = soup.select_one('.label img')
+        if label_tag and label_tag.has_attr('src'):
+            details['untappd_label'] = label_tag['src']
         else:
-            label_tag: Optional[Tag] = soup.select_one('.label img')
-            if label_tag and label_tag.has_attr('src'):
-                details['untappd_label'] = label_tag['src']
+            og_image: Optional[Tag] = soup.find('meta', property='og:image')
+            if og_image and og_image.get('content'):
+                details['untappd_label'] = og_image['content']
 
         abv_tag: Optional[Tag] = soup.select_one('.details .abv')
         if abv_tag:
