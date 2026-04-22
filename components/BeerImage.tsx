@@ -19,7 +19,8 @@ const BeerImage: React.FC<BeerImageProps> = ({
     const isDefaultUntappd = (url: string) => 
         url.includes('badge-beer-default') || 
         url.includes('no_image') || 
-        url.includes('placeholder');
+        url.includes('placeholder') ||
+        url.includes('next.untappd.com/og/');
 
     const getPrimarySrc = () => {
         if (src && !isDefaultUntappd(src)) return src;
