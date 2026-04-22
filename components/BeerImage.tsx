@@ -5,8 +5,6 @@ interface BeerImageProps {
     src?: string | null;
     alt: string;
     fallbackSrc?: string;
-    width?: number;
-    height?: number;
     className?: string;
 }
 
@@ -14,47 +12,43 @@ const BeerImage: React.FC<BeerImageProps> = ({
     src, 
     alt, 
     fallbackSrc, 
-    width = 64, 
-    height = 64,
-    className = "beer-image"
+    className = ""
 }) => {
     const defaultPlaceholder = 'https://placehold.co/100x100?text=No+Image';
-    const [imgSrc, setImgSrc] = useState<string>(src || fallbackSrc || defaultPlaceholder);
-    const [isLoaded, setIsLoaded] = useState(false);
-    const [hasError, setHasError] = useState(false);
-
+    
     const isDefaultUntappd = (url: string) => 
         url.includes('badge-beer-default') || 
         url.includes('no_image') || 
         url.includes('placeholder');
 
+    const getPrimarySrc = () => {
+        if (src && !isDefaultUntappd(src)) return src;
+        if (fallbackSrc && !isDefaultUntappd(fallbackSrc)) return fallbackSrc;
+        return defaultPlaceholder;
+    };
+
+    const [imgSrc, setImgSrc] = useState<string>(getPrimarySrc());
+    const [isLoaded, setIsLoaded] = useState(false);
+    const [hasError, setHasError] = useState(false);
+
     React.useEffect(() => {
-        const primary = src && !isDefaultUntappd(src) ? src : (fallbackSrc && !isDefaultUntappd(fallbackSrc) ? fallbackSrc : defaultPlaceholder);
-        setImgSrc(primary);
+        setImgSrc(getPrimarySrc());
+        setIsLoaded(false);
+        setHasError(false);
     }, [src, fallbackSrc]);
 
     return (
         <div 
-            className={`beer-image-container ${isLoaded ? 'loaded' : 'loading'}`} 
+            className={`beer-image-wrapper ${isLoaded ? 'loaded' : 'loading'} ${className}`} 
             style={{ 
-                width, 
-                height, 
-                position: 'relative', 
-                overflow: 'hidden', 
-                borderRadius: '8px', 
-                background: '#f8f9fa',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
+                position: 'relative'
             }}
         >
             <Image
                 src={imgSrc}
                 alt={alt}
-                width={width}
-                height={height}
-                className={className}
+                fill
+                sizes="(max-width: 768px) 80px, 90px"
                 onLoad={() => setIsLoaded(true)}
                 onError={() => {
                     if (!hasError) {
@@ -71,8 +65,6 @@ const BeerImage: React.FC<BeerImageProps> = ({
                 unoptimized={imgSrc.startsWith('http') && !imgSrc.includes('googleusercontent') && !imgSrc.includes('akamaized')} // Partially bypass proxy for problematic ones if needed, but for now let's hope remotePatterns works
                 style={{ 
                     objectFit: 'contain',
-                    maxWidth: '100%',
-                    maxHeight: '100%',
                     opacity: isLoaded ? 1 : 0,
                     transition: 'opacity 0.2s ease-in-out'
                 }}
