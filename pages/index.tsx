@@ -34,6 +34,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         if (search) q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,brewery_name_en.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`);
         if (query.min_abv) q = q.gte('untappd_abv', query.min_abv as string);
         if (query.max_abv) q = q.lte('untappd_abv', query.max_abv as string);
+        if (query.min_ibu) q = q.gte('untappd_ibu', query.min_ibu as string);
+        if (query.max_ibu) q = q.lte('untappd_ibu', query.max_ibu as string);
         if (query.min_rating) q = q.gte('untappd_rating', query.min_rating as string);
         
         if (shop) {
@@ -51,6 +53,15 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         
         if (query.stock_filter === 'in_stock') q = q.eq('stock_status', 'In Stock');
         else if (query.stock_filter === 'sold_out') q = q.eq('stock_status', 'Sold Out');
+
+        if (query.untappd_status === 'missing') {
+            q = q.or('untappd_url.is.null,untappd_url.ilike.%/search?%');
+            q = q.or('product_type.is.null,product_type.eq.beer');
+        } else if (query.untappd_status === 'linked') {
+            q = q.not('untappd_url', 'is', null).not('untappd_url', 'ilike', '%/search?%');
+        }
+
+        if (query.product_type) q = q.eq('product_type', query.product_type as string);
 
         switch (sort) {
             case 'newest': q = q.order('first_seen', { ascending: false }); break;

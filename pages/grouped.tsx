@@ -34,6 +34,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         if (search) q = q.or(`beer_name.ilike.%${search}%,brewery_name.ilike.%${search}%`);
         if (query.min_abv) q = q.gte('abv', query.min_abv);
         if (query.max_abv) q = q.lte('abv', query.max_abv);
+        if (query.min_ibu) q = q.gte('ibu', query.min_ibu as string);
+        if (query.max_ibu) q = q.lte('ibu', query.max_ibu as string);
         if (query.min_rating) q = q.gte('rating', query.min_rating as string);
         if (query.style_filter) {
             const styles = (query.style_filter as string).split(',').filter(Boolean);
@@ -43,6 +45,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
             const breweries = (query.brewery_filter as string).split(',').filter(Boolean);
             if (breweries.length > 0) q = q.in('brewery_name', breweries);
         }
+        if (query.product_type) q = q.eq('product_type', query.product_type as string);
 
         switch (sort) {
             case 'newest': q = q.order('newest_seen', { ascending: false }); break;
