@@ -90,7 +90,7 @@ export interface GroupedBeer {
   ibu: number | null;
   rating: number | null;
   rating_count: number | null;
-  brewery: string | null;
+  brewery_name: string | null;
   brewery_logo: string | null;
   brewery_location: string | null;
   brewery_type: string | null;

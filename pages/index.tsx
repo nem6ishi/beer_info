@@ -190,6 +190,10 @@ export default function Home({ initialData, availableStyles, availableBreweries 
         if (!query.shop) delete query.shop
         if (query.stock_filter === 'in_stock') delete query.stock_filter
         
+        Object.keys(query).forEach(key => {
+            if (query[key] === '') delete query[key];
+        });
+
         router.push({ pathname, query }, undefined, { scroll: false, shallow: false }) // Use shallow=false to trigger getServerSideProps
     }
 

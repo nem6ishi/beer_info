@@ -58,7 +58,7 @@ export default function GroupedBeerTable({ groups, loading, error }: GroupedBeer
                                 </td>
                                 <td className="col-name">
                                     <BeerInfoCell
-                                        brewery={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery : null}
+                                        brewery={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_name : null}
                                         beer={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.beer_name : (cheapestItem?.shop ? cheapestItem.shop : group.beer_name)}
                                         logo={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_logo : null}
                                         location={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_location : null}
@@ -101,7 +101,7 @@ export default function GroupedBeerTable({ groups, loading, error }: GroupedBeer
                                             count={group.rating_count}
                                             url={group.untappd_url}
                                             productType={group.product_type}
-                                            breweryName={group.brewery}
+                                            breweryName={group.brewery_name}
                                         />
                                     )}
                                 </td>

@@ -176,6 +176,11 @@ export default function GroupedBeers({ initialData, availableStyles, availableBr
         if (query.limit == '20') delete query.limit
         if (query.sort === 'newest') delete query.sort
         if (!query.search) delete query.search
+        
+        Object.keys(query).forEach(key => {
+            if (query[key] === '') delete query[key];
+        });
+
         router.push({ pathname, query }, undefined, { scroll: false, shallow: false })
     }
 
