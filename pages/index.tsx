@@ -121,12 +121,21 @@ export default function Home({ initialData, availableStyles, availableBreweries 
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     
     const [tempFilters, setTempFilters] = useState<FilterState>({
-        min_abv: '', max_abv: '', min_ibu: '', max_ibu: '', min_rating: '',
-        stock_filter: 'in_stock', untappd_status: '', shop: '',
-        brewery_filter: '', style_filter: '', set_mode: ''
+        min_abv: (router.query.min_abv as string) || '', 
+        max_abv: (router.query.max_abv as string) || '', 
+        min_ibu: (router.query.min_ibu as string) || '', 
+        max_ibu: (router.query.max_ibu as string) || '', 
+        min_rating: (router.query.min_rating as string) || '',
+        stock_filter: (router.query.stock_filter as string) || 'in_stock', 
+        untappd_status: (router.query.untappd_status as string) || '', 
+        shop: (router.query.shop as string) || '',
+        brewery_filter: (router.query.brewery_filter as string) || '', 
+        style_filter: (router.query.style_filter as string) || '', 
+        set_mode: (router.query.set_mode as string) || ''
     })
 
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+    const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null)
     const page = parseInt((router.query.page as string) || '1', 10)
     const sort = (router.query.sort as string) || 'newest'
     const limit = (router.query.limit as string) || '20'
@@ -138,7 +147,20 @@ export default function Home({ initialData, availableStyles, availableBreweries 
         setTotalItems(initialData.pagination.total);
         setShopCounts(initialData.shopCounts);
         setSearchInput((router.query.search as string) || '');
-    }, [initialData]);
+        setTempFilters({
+            min_abv: (router.query.min_abv as string) || '',
+            max_abv: (router.query.max_abv as string) || '',
+            min_ibu: (router.query.min_ibu as string) || '',
+            max_ibu: (router.query.max_ibu as string) || '',
+            min_rating: (router.query.min_rating as string) || '',
+            stock_filter: (router.query.stock_filter as string) || 'in_stock',
+            untappd_status: (router.query.untappd_status as string) || '',
+            shop: (router.query.shop as string) || '',
+            brewery_filter: (router.query.brewery_filter as string) || '',
+            style_filter: (router.query.style_filter as string) || '',
+            set_mode: (router.query.set_mode as string) || ''
+        });
+    }, [initialData, router.query]);
 
     const fetchBeers = useCallback(async () => {
         // This is now only for explicit refresh action
@@ -178,7 +200,13 @@ export default function Home({ initialData, availableStyles, availableBreweries 
         searchTimeoutRef.current = setTimeout(() => updateURL({ search: val, page: '1' }), 500)
     }
 
-    const handleFilterChange = (key: string, value: string) => updateURL({ [key]: value, page: '1' })
+    const handleFilterChange = (key: string, value: string) => {
+        setTempFilters(prev => ({ ...prev, [key]: value }));
+        if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
+        filterTimeoutRef.current = setTimeout(() => {
+            updateURL({ [key]: value, page: '1' });
+        }, 500);
+    }
     const handleMultiSelectChange = (key: string, value: string[]) => updateURL({ [key]: value.join(','), page: '1' })
     const resetFilters = () => router.push({ pathname: '/', query: {} }, undefined, { scroll: false })
     const handlePageChange = (newPage: number) => updateURL({ page: newPage.toString() })
