@@ -16,7 +16,7 @@ from .text_utils import (
     clean_beer_name, clean_brewery_name, strip_beer_suffix,
     normalize_for_comparison, COMMON_SUFFIXES
 )
-from .validators import validate_beer_match, validate_brewery_match, set_brewery_aliases
+from .validators import validate_beer_match, validate_brewery_match, score_beer_match, set_brewery_aliases
 from .http_client import (
     search_brewery_beer, scrape_beer_details, scrape_brewery_details, search_brewery
 )
@@ -84,7 +84,8 @@ def get_untappd_url(
             u_brewery_url, 
             target_beer_name, 
             validate_beer_fn=validate_beer_match,
-            validate_beer=target_beer_name
+            validate_beer=target_beer_name,
+            score_beer_fn=score_beer_match,
         )
         if found_url:
             logger.info(f" Beer found via brewery search: {found_url}")
@@ -101,26 +102,37 @@ def get_untappd_url(
     if search_hint:
         query = f"untappd {search_hint}"
     else:
-        query = f"untappd {brewery_name} {target_beer_name}".strip()
+        primary_brewery_search = re.split(r'\s*[xX×&]\s*', brewery_name)[0] if brewery_name else ""
+        query = f"untappd {primary_brewery_search} {target_beer_name}".strip()
 
     logger.info(f"Falling back to DuckDuckGo search for: '{query}'")
 
     try:
         from ddgs import DDGS
-        from .text_utils import normalize_for_comparison, strip_for_core_comparison
+        from .text_utils import normalize_for_comparison, strip_for_core_comparison, has_variant_mismatch
 
         def title_is_valid(title: str, exp_brewery: str, exp_beer: str) -> bool:
             t_norm: str = normalize_for_comparison(title)
             
             # Check brewery
             if exp_brewery:
-                b_norm: str = normalize_for_comparison(exp_brewery)
-                if b_norm not in t_norm:
+                primary_breweries = re.split(r'\s*[xX×&]\s*', exp_brewery)
+                brewery_match = False
+                for p_brew in primary_breweries:
+                    b_norm: str = normalize_for_comparison(p_brew)
+                    if b_norm and b_norm in t_norm:
+                        brewery_match = True
+                        break
                     # check aliases
                     if BREWERY_ALIASES:
-                        for alias in BREWERY_ALIASES.get(exp_brewery, []):
+                        for alias in BREWERY_ALIASES.get(p_brew, []):
                             if normalize_for_comparison(alias) in t_norm:
-                                return True
+                                brewery_match = True
+                                break
+                    if brewery_match:
+                        break
+                
+                if not brewery_match:
                     return False
                     
             # Check beer
@@ -131,26 +143,51 @@ def get_untappd_url(
                         pass
                     else:
                         return False
+                # Check for variant modifier mismatch in the title
+                if has_variant_mismatch(title, exp_beer):
+                    logger.debug(f"  [DDG] Variant mismatch in title: '{title}' vs '{exp_beer}'")
+                    return False
             return True
 
-        with DDGS() as ddgs:
-            results: Any = ddgs.text(query, max_results=5)
-            
-            for res in results:
-                href: str = res.get("href", "")
-                title: str = res.get("title", "")
-                
-                if "untappd.com/b/" in href:
-                    if title_is_valid(title, brewery_name, target_beer_name):
-                        logger.info(f" Found via DuckDuckGo: {href}")
-                        return {
-                            'url': href,
-                            'success': True,
-                            'failure_reason': None,
-                            'error_message': None
-                        }
-                    else:
-                        logger.debug(f" DDG result failed validation: {title}")
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with DDGS(timeout=10) as ddgs:
+                    results: Any = ddgs.text(query, max_results=5)
+                    
+                    if not results:
+                        results = []
+                        
+                    for res in results:
+                        href: str = res.get("href", "")
+                        title: str = res.get("title", "")
+                        
+                        if "untappd.com/b/" in href:
+                            if title_is_valid(title, brewery_name, target_beer_name):
+                                logger.info(f" Found via DuckDuckGo: {href}")
+                                return {
+                                    'url': href,
+                                    'success': True,
+                                    'failure_reason': None,
+                                    'error_message': None
+                                }
+                            else:
+                                logger.debug(f" DDG result failed validation: {title}")
+                    
+                    # If we finish the loop without returning, it means we either got 0 results or none validated.
+                    # This is a normal failure, not a rate limit exception, so break and fallback.
+                    break
+            except Exception as inner_e:
+                error_str = str(inner_e).lower()
+                if "rate limit" in error_str or "202" in error_str or "timeout" in error_str or "ratelimit" in error_str:
+                    wait_time = 15 * (attempt + 1)
+                    logger.warning(f"  [DDG] Rate limit or timeout hit. Sleeping for {wait_time}s... (Attempt {attempt+1}/{max_retries})")
+                    import time
+                    time.sleep(wait_time)
+                    if attempt == max_retries - 1:
+                        raise inner_e
+                else:
+                    raise inner_e
                     
         # Fallback if no result
         fallback_url: str = f"https://untappd.com/search?q={urllib.parse.quote(query.replace('untappd ', ''))}"

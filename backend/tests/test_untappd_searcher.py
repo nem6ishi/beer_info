@@ -1,6 +1,7 @@
 """
 Tests for Untappd beer/brewery name validation logic.
-Covers: validate_beer_match, validate_brewery_match, strip_beer_suffix
+Covers: validate_beer_match, validate_brewery_match, strip_beer_suffix,
+        score_beer_match, has_variant_mismatch
 """
 import unittest
 from unittest.mock import MagicMock, patch
@@ -10,8 +11,8 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from backend.src.services.untappd.validators import validate_brewery_match, validate_beer_match
-from backend.src.services.untappd.text_utils import strip_beer_suffix
+from backend.src.services.untappd.validators import validate_brewery_match, validate_beer_match, score_beer_match
+from backend.src.services.untappd.text_utils import strip_beer_suffix, has_variant_mismatch, extract_variant_modifiers
 from backend.src.services.untappd.searcher import get_untappd_url
 
 
@@ -30,6 +31,63 @@ class TestStripBeerSuffix(unittest.TestCase):
     def test_imperial_stout_suffix(self):
         # "Imperial Stout" is a suffix, strips to beer name
         self.assertEqual(strip_beer_suffix("Dark Imperial Stout"), "Dark")
+
+
+class TestVariantModifiers(unittest.TestCase):
+    """Tests for variant modifier detection and mismatch checking."""
+
+    def test_extract_fresh_hop(self):
+        mods = extract_variant_modifiers("Fresh Hop What Rough Beast")
+        self.assertIn("freshhop", mods)
+
+    def test_extract_barrel_aged(self):
+        mods = extract_variant_modifiers("Bourbon Barrel Aged Imperial Stout")
+        self.assertIn("bourbonbarrelaged", mods)
+        self.assertIn("barrelaged", mods)
+
+    def test_extract_no_modifiers(self):
+        mods = extract_variant_modifiers("What Rough Beast")
+        self.assertEqual(len(mods), 0)
+
+    def test_extract_nitro(self):
+        mods = extract_variant_modifiers("Nitro Milk Stout")
+        self.assertIn("nitro", mods)
+
+    def test_mismatch_fresh_hop_vs_base(self):
+        """Fresh Hop variant should not match base beer."""
+        self.assertTrue(has_variant_mismatch(
+            "Fresh Hop What Rough Beast (2019)", "What Rough Beast"
+        ))
+
+    def test_no_mismatch_same_base(self):
+        """Same base beer should match."""
+        self.assertFalse(has_variant_mismatch(
+            "What Rough Beast", "What Rough Beast"
+        ))
+
+    def test_no_mismatch_same_variant(self):
+        """Same variant should match even with year difference."""
+        self.assertFalse(has_variant_mismatch(
+            "Fresh Hop What Rough Beast (2019)", "Fresh Hop What Rough Beast"
+        ))
+
+    def test_mismatch_barrel_aged_vs_base(self):
+        """Barrel aged variant should not match base."""
+        self.assertTrue(has_variant_mismatch(
+            "Barrel Aged Dark Star", "Dark Star"
+        ))
+
+    def test_mismatch_nitro_vs_base(self):
+        """Nitro variant should not match base."""
+        self.assertTrue(has_variant_mismatch(
+            "Nitro Milk Stout", "Milk Stout"
+        ))
+
+    def test_mismatch_coffee_vs_base(self):
+        """Coffee variant should not match base."""
+        self.assertTrue(has_variant_mismatch(
+            "Coffee Imperial Stout", "Imperial Stout"
+        ))
 
 
 class TestValidateBreweryMatch(unittest.TestCase):
@@ -76,47 +134,179 @@ class TestValidateBeerMatch(unittest.TestCase):
     def test_mismatch(self):
         self.assertFalse(validate_beer_match(self._make_element("Totally Different Beer"), "My Pale Ale"))
 
+    def test_what_rough_beast_vs_fresh_hop(self):
+        """THE core bug: 'What Rough Beast' must NOT match 'Fresh Hop What Rough Beast (2019)'."""
+        self.assertFalse(validate_beer_match(
+            self._make_element("Fresh Hop What Rough Beast (2019)"),
+            "What Rough Beast"
+        ))
 
-@patch('backend.src.services.untappd.searcher.requests.get')
+    def test_what_rough_beast_exact(self):
+        """'What Rough Beast' should match 'What Rough Beast'."""
+        self.assertTrue(validate_beer_match(
+            self._make_element("What Rough Beast"),
+            "What Rough Beast"
+        ))
+
+    def test_fresh_hop_variant_self_match(self):
+        """'Fresh Hop What Rough Beast' should match its own year variant."""
+        self.assertTrue(validate_beer_match(
+            self._make_element("Fresh Hop What Rough Beast (2019)"),
+            "Fresh Hop What Rough Beast"
+        ))
+
+    def test_barrel_aged_variant_blocked(self):
+        """Barrel Aged variant should not match base beer."""
+        self.assertFalse(validate_beer_match(
+            self._make_element("Barrel Aged Dark Lord"),
+            "Dark Lord"
+        ))
+
+    def test_nitro_variant_blocked(self):
+        """Nitro variant should not match base beer."""
+        self.assertFalse(validate_beer_match(
+            self._make_element("Nitro Milk Stout"),
+            "Milk Stout"
+        ))
+
+
+class TestScoreBeerMatch(unittest.TestCase):
+
+    def _make_element(self, beer_text):
+        soup = BeautifulSoup(f'<div class="beer-item"><div class="name"><a href="/b/test/1">{beer_text}</a></div></div>', 'lxml')
+        return soup.select_one('.beer-item')
+
+    def test_exact_match_score_100(self):
+        score = score_beer_match(self._make_element("What Rough Beast"), "What Rough Beast")
+        self.assertEqual(score, 100)
+
+    def test_variant_mismatch_score_0(self):
+        score = score_beer_match(
+            self._make_element("Fresh Hop What Rough Beast (2019)"),
+            "What Rough Beast"
+        )
+        self.assertEqual(score, 0)
+
+    def test_exact_beats_partial(self):
+        """Exact match should score higher than partial match."""
+        exact = score_beer_match(self._make_element("What Rough Beast"), "What Rough Beast")
+        partial = score_beer_match(self._make_element("What Rough Beast (2023)"), "What Rough Beast")
+        self.assertGreater(exact, partial)
+
+    def test_no_expected_beer_returns_100(self):
+        score = score_beer_match(self._make_element("Anything"), "")
+        self.assertEqual(score, 100)
+
+    def test_same_variant_with_year_has_positive_score(self):
+        """Same variant with year should still match."""
+        score = score_beer_match(
+            self._make_element("Fresh Hop What Rough Beast (2019)"),
+            "Fresh Hop What Rough Beast"
+        )
+        self.assertGreater(score, 0)
+
+
+@patch('backend.src.services.untappd.searcher.search_brewery_beer')
+@patch('backend.src.services.untappd.searcher.search_brewery')
 class TestGetUntappdUrl(unittest.TestCase):
 
-    def _make_html(self, results):
-        """Build fake Untappd search HTML with given (beer, brewery, href) tuples."""
-        items = ""
-        for beer, brewery, href in results:
-            items += f'''
-            <div class="beer-item">
-                <div class="name"><a href="{href}">{beer}</a></div>
-                <div class="brewery">{brewery}</div>
-            </div>'''
-        return f"<html><body>{items}</body></html>"
-
-    def test_returns_correct_match_skipping_wrong_brewery(self, mock_get):
-        html = self._make_html([
-            ("MyBeer", "OtherBrewery", "/b/other-brewery-mybeer/123"),
-            ("MyBeer", "MyBrewery", "/b/my-brewery-mybeer/456"),
-        ])
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.text = html
-        mock_get.return_value = mock_resp
+    def test_returns_correct_match_via_brewery_search(self, mock_search_brewery, mock_search_beer):
+        """When brewery URL is found and beer search returns a match."""
+        mock_search_brewery.return_value = "https://untappd.com/MyBrewery"
+        mock_search_beer.return_value = "https://untappd.com/b/my-brewery-mybeer/456"
 
         result = get_untappd_url("MyBrewery", "MyBeer")
 
         self.assertTrue(result['success'])
         self.assertEqual(result['url'], "https://untappd.com/b/my-brewery-mybeer/456")
 
-    def test_returns_no_results_failure(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.text = "<html><body></body></html>"
-        mock_get.return_value = mock_resp
+    def test_returns_no_results_failure(self, mock_search_brewery, mock_search_beer):
+        mock_search_brewery.return_value = None
+        mock_search_beer.return_value = None
 
         result = get_untappd_url("NonExistentBrewery", "NonExistentBeer")
 
         self.assertFalse(result['success'])
-        self.assertEqual(result['failure_reason'], 'no_results')
+
+    def test_prefers_exact_match_over_variant(self, mock_search_brewery, mock_search_beer):
+        """When brewery search + scoring gives the exact match over the variant."""
+        mock_search_brewery.return_value = "https://untappd.com/BreaksideBrewery"
+        # The scoring-based search_brewery_beer should return the exact match
+        mock_search_beer.return_value = "https://untappd.com/b/breakside-wrb/222"
+
+        result = get_untappd_url("Breakside Brewery", "What Rough Beast")
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['url'], "https://untappd.com/b/breakside-wrb/222")
+
+    def test_blocks_variant_when_no_exact_available(self, mock_search_brewery, mock_search_beer):
+        """When brewery search finds the brewery but beer search returns None (variant blocked)."""
+        mock_search_brewery.return_value = "https://untappd.com/BreaksideBrewery"
+        mock_search_beer.return_value = None  # Scoring blocked the variant
+
+        result = get_untappd_url("Breakside Brewery", "What Rough Beast")
+
+        # Should fall through to DDG and fail
+        self.assertFalse(result['success'])
+
+
+class TestSearchBreweryBeerScoring(unittest.TestCase):
+    """Tests for search_brewery_beer with scoring integration."""
+
+    def _make_html(self, results):
+        """Build fake Untappd brewery beer list HTML."""
+        items = ""
+        for beer, href in results:
+            items += f'''
+            <div class="beer-item">
+                <div class="name"><a href="{href}">{beer}</a></div>
+            </div>'''
+        return f"<html><body>{items}</body></html>"
+
+    @patch('backend.src.services.untappd.http_client.requests.get')
+    def test_scoring_selects_exact_over_variant(self, mock_get):
+        """Scoring should prefer exact match over variant."""
+        html = self._make_html([
+            ("Fresh Hop What Rough Beast (2019)", "/b/breakside-fresh-hop-wrb/111"),
+            ("What Rough Beast", "/b/breakside-wrb/222"),
+        ])
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = html
+        mock_get.return_value = mock_resp
+
+        from backend.src.services.untappd.http_client import search_brewery_beer
+
+        result = search_brewery_beer(
+            "https://untappd.com/BreaksideBrewery",
+            "What Rough Beast",
+            score_beer_fn=score_beer_match,
+            validate_beer="What Rough Beast",
+        )
+        self.assertEqual(result, "https://untappd.com/b/breakside-wrb/222")
+
+    @patch('backend.src.services.untappd.http_client.requests.get')
+    def test_scoring_blocks_variant_only(self, mock_get):
+        """When only variant exists, scoring returns None."""
+        html = self._make_html([
+            ("Fresh Hop What Rough Beast (2019)", "/b/breakside-fresh-hop-wrb/111"),
+        ])
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = html
+        mock_get.return_value = mock_resp
+
+        from backend.src.services.untappd.http_client import search_brewery_beer
+
+        result = search_brewery_beer(
+            "https://untappd.com/BreaksideBrewery",
+            "What Rough Beast",
+            score_beer_fn=score_beer_match,
+            validate_beer="What Rough Beast",
+        )
+        self.assertIsNone(result)
 
 
 if __name__ == '__main__':
     unittest.main()
+

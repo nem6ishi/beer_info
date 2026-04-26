@@ -18,16 +18,27 @@ _UA: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (
 _HEADERS: Dict[str, str] = {"User-Agent": _UA}
 
 
-def search_brewery_beer(brewery_url: str, query: str, validate_beer_fn: Optional[Callable[[Tag, str], bool]] = None, validate_beer: Optional[str] = None) -> Optional[str]:
+def search_brewery_beer(
+    brewery_url: str,
+    query: str,
+    validate_beer_fn: Optional[Callable[[Tag, str], bool]] = None,
+    validate_beer: Optional[str] = None,
+    score_beer_fn: Optional[Callable[[Tag, str], int]] = None,
+) -> Optional[str]:
     """
     Searches for a beer within a specific brewery's page on Untappd.
     Navigate to /beer?q={query}&sort=created_at_desc
 
+    When score_beer_fn is provided, all matching candidates are scored and
+    the best match is returned.  Falls back to validate_beer_fn for
+    backwards compatibility.
+
     Args:
         brewery_url: Untappd brewery page URL.
         query: Search query string for the beer.
-        validate_beer_fn: Callable[[element, str], bool] for beer name validation.
-        validate_beer: Expected beer name string (used with validate_beer_fn).
+        validate_beer_fn: Callable[[element, str], bool] for beer name validation (legacy).
+        validate_beer: Expected beer name string.
+        score_beer_fn: Callable[[element, str], int] that returns a match score (higher = better).
     """
     if not brewery_url or not query:
         return None
@@ -41,14 +52,43 @@ def search_brewery_beer(brewery_url: str, query: str, validate_beer_fn: Optional
         if resp.status_code == 200:
             soup: BeautifulSoup = BeautifulSoup(resp.text, 'lxml')
             results: List[Tag] = soup.select('.beer-item')
+
+            # --- Scoring mode (preferred) ---
+            if score_beer_fn and validate_beer:
+                candidates: List[tuple] = []
+                for res in results[:10]:
+                    name_tag: Optional[Tag] = res.select_one('.name a')
+                    if name_tag:
+                        href: Optional[str] = name_tag.get('href')
+                        if href and "/b/" in href:
+                            score = score_beer_fn(res, validate_beer)
+                            if score > 0:
+                                full_url = f"https://untappd.com{href}"
+                                beer_text = name_tag.get_text(strip=True)
+                                candidates.append((score, full_url, beer_text))
+
+                if candidates:
+                    candidates.sort(key=lambda x: x[0], reverse=True)
+                    best_score, best_url, best_name = candidates[0]
+                    logger.info(
+                        f"  [Scoring] Best match: '{best_name}' (score={best_score}) "
+                        f"from {len(candidates)} candidates"
+                    )
+                    if len(candidates) > 1:
+                        for s, u, n in candidates[1:]:
+                            logger.debug(f"  [Scoring]   Also matched: '{n}' (score={s})")
+                    return best_url
+                return None
+
+            # --- Legacy validation mode ---
             for res in results[:5]:
-                name_tag: Optional[Tag] = res.select_one('.name a')
-                if name_tag:
-                    href: Optional[str] = name_tag.get('href')
-                    if href and "/b/" in href:
+                name_tag_legacy: Optional[Tag] = res.select_one('.name a')
+                if name_tag_legacy:
+                    href_legacy: Optional[str] = name_tag_legacy.get('href')
+                    if href_legacy and "/b/" in href_legacy:
                         if validate_beer and validate_beer_fn and not validate_beer_fn(res, validate_beer):
                             continue
-                        return f"https://untappd.com{href}"
+                        return f"https://untappd.com{href_legacy}"
     except Exception as e:
         logger.error(f"Brewery beer search error for '{query}' at {brewery_url}: {e}")
 

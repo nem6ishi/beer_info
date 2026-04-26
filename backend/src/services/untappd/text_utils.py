@@ -8,6 +8,14 @@ from typing import Optional, List, Dict, Match
 
 logger = logging.getLogger(__name__)
 
+
+def normalize_for_comparison(text: str) -> str:
+    """Removes whitespace and non-alphanumeric characters for fuzzy comparison."""
+    if not text:
+        return ""
+    return "".join(c.lower() for c in text if c.isalnum())
+
+
 # Common beer style suffixes (sorted by length descending for greedy matching)
 COMMON_SUFFIXES: List[str] = [
     " IPA", " Hazy IPA", " Double IPA", " DIPA", " Triple IPA", " TIPA", " NEIPA",
@@ -31,12 +39,67 @@ _ORDINAL_MAP: Dict[str, str] = {
     '25th': 'twentyfifth', '30th': 'thirtieth',
 }
 
+# Variant modifier phrases that distinguish different versions of the same base beer.
+# These are checked as normalized (lowered, alphanumeric-only) substrings.
+# Order: longer phrases first to allow greedy matching.
+VARIANT_MODIFIERS: List[str] = sorted([
+    "fresh hop", "fresh hopped",
+    "barrel aged", "bourbon barrel aged", "rum barrel aged",
+    "whiskey barrel aged", "wine barrel aged",
+    "oak aged",
+    "nitro",
+    "cask",
+    "double dry hopped", "triple dry hopped",
+    "single dry hopped",
+    "coffee", "vanilla", "coconut", "chocolate", "hazelnut",
+    "mango", "guava", "passion fruit", "raspberry", "blueberry",
+    "strawberry", "peach", "pineapple", "cherry",
+    "lactose", "milkshake",
+    "with brett", "brett",
+    "reserve",
+    "small batch",
+    "collaboration",
+    "on the rocks",
+], key=len, reverse=True)
 
-def normalize_for_comparison(text: str) -> str:
-    """Removes whitespace and non-alphanumeric characters for fuzzy comparison."""
-    if not text:
-        return ""
-    return "".join(c.lower() for c in text if c.isalnum())
+# Pre-computed normalized modifiers for fast comparison
+_VARIANT_MODIFIERS_NORM: List[str] = [normalize_for_comparison(m) for m in VARIANT_MODIFIERS]
+
+
+def extract_variant_modifiers(name: str) -> set:
+    """
+    Extracts variant modifier keywords found in a beer name.
+    Returns a set of normalized modifier strings present in the name.
+    """
+    name_norm = normalize_for_comparison(name)
+    found: set = set()
+    for mod_norm in _VARIANT_MODIFIERS_NORM:
+        if mod_norm in name_norm:
+            found.add(mod_norm)
+    return found
+
+
+def has_variant_mismatch(name_a: str, name_b: str) -> bool:
+    """
+    Returns True if the two beer names have different variant modifiers,
+    indicating they are different variants of the same base beer.
+    
+    Example:
+        "What Rough Beast" vs "Fresh Hop What Rough Beast" → True (mismatch)
+        "What Rough Beast" vs "What Rough Beast" → False (no mismatch)
+        "Fresh Hop What Rough Beast" vs "Fresh Hop What Rough Beast (2019)" → False
+    """
+    mods_a = extract_variant_modifiers(name_a)
+    mods_b = extract_variant_modifiers(name_b)
+    
+    # Symmetric difference: modifiers in one but not the other
+    diff = mods_a.symmetric_difference(mods_b)
+    
+    if diff:
+        logger.info(f"  [Variant] Modifier mismatch: '{name_a}' has {mods_a}, '{name_b}' has {mods_b}, diff={diff}")
+        return True
+    return False
+
 
 
 def normalize_ordinals(text: str) -> str:

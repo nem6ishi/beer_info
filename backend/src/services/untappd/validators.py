@@ -6,7 +6,10 @@ import re
 import logging
 from typing import Dict, List, Optional
 from bs4 import BeautifulSoup, Tag
-from .text_utils import normalize_for_comparison, normalize_ordinals, strip_for_core_comparison, clean_brewery_name
+from .text_utils import (
+    normalize_for_comparison, normalize_ordinals, strip_for_core_comparison,
+    clean_brewery_name, has_variant_mismatch,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,45 +24,86 @@ def set_brewery_aliases(aliases: Dict[str, List[str]]) -> None:
 
 def validate_beer_match(result_element: Tag, expected_beer: str) -> bool:
     """Checks if the beer name in the search result matches the expected beer."""
+    return score_beer_match(result_element, expected_beer) > 0
+
+
+def score_beer_match(result_element: Tag, expected_beer: str) -> int:
+    """
+    Scores how well a search result matches the expected beer name.
+    Returns a score (higher = better match):
+      - 100: Exact normalized match
+      -  90: Direct inclusion match (no variant mismatch)
+      -  80: Ordinal-normalized match
+      -  70: Core comparison match (no variant mismatch)
+      -  60: Ordinal + Core match (no variant mismatch)
+      -   0: No match or variant mismatch detected
+    """
     if not expected_beer:
-        return True
+        return 100  # No expected name = any match is fine
 
     name_tag = result_element.select_one('.name a')
     if not name_tag:
-        return False
+        return 0
 
     result_beer: str = name_tag.get_text(strip=True)
     rb_norm: str = normalize_for_comparison(result_beer)
     eb_norm: str = normalize_for_comparison(expected_beer)
 
-    # 1. Direct inclusion check
-    if rb_norm in eb_norm or eb_norm in rb_norm:
-        logger.info(f"  [Validation] Beer MATCH: '{result_beer}' matches '{expected_beer}'")
-        return True
+    # 1. Exact normalized match
+    if rb_norm == eb_norm:
+        logger.info(f"  [Validation] Beer EXACT MATCH: '{result_beer}' == '{expected_beer}'")
+        return 100
 
-    # 2. Ordinal normalization check (11th -> eleventh, etc.)
+    # 2. Direct inclusion check (with variant guard)
+    if rb_norm in eb_norm or eb_norm in rb_norm:
+        if has_variant_mismatch(result_beer, expected_beer):
+            logger.info(f"  [Validation] Beer BLOCKED (Variant): '{result_beer}' vs '{expected_beer}'")
+            # Don't return 0 yet — fall through to see if other checks might work
+        else:
+            logger.info(f"  [Validation] Beer MATCH (90): '{result_beer}' matches '{expected_beer}'")
+            return 90
+
+    # 3. Ordinal normalization check (11th -> eleventh, etc.)
     rb_ord: str = normalize_for_comparison(normalize_ordinals(result_beer))
     eb_ord: str = normalize_for_comparison(normalize_ordinals(expected_beer))
+    if rb_ord == eb_ord:
+        logger.info(f"  [Validation] Beer MATCH (Ordinal Exact, 85): '{result_beer}' matches '{expected_beer}'")
+        return 85
     if rb_ord in eb_ord or eb_ord in rb_ord:
-        logger.info(f"  [Validation] Beer MATCH (Ordinal): '{result_beer}' matches '{expected_beer}'")
-        return True
+        if not has_variant_mismatch(result_beer, expected_beer):
+            logger.info(f"  [Validation] Beer MATCH (Ordinal, 80): '{result_beer}' matches '{expected_beer}'")
+            return 80
 
-    # 3. Core name comparison: strip year, dashes, style suffixes
+    # 4. Core name comparison: strip year, dashes, style suffixes
     rb_core: str = normalize_for_comparison(strip_for_core_comparison(result_beer))
     eb_core: str = normalize_for_comparison(strip_for_core_comparison(expected_beer))
-    if rb_core and eb_core and (rb_core in eb_core or eb_core in rb_core):
-        logger.info(f"  [Validation] Beer MATCH (Core): '{result_beer}' matches '{expected_beer}'")
-        return True
+    if rb_core and eb_core:
+        if rb_core == eb_core:
+            # Core names are identical — only variant modifiers differ
+            if has_variant_mismatch(result_beer, expected_beer):
+                logger.info(f"  [Validation] Beer BLOCKED (Core Exact + Variant): '{result_beer}' vs '{expected_beer}'")
+            else:
+                logger.info(f"  [Validation] Beer MATCH (Core Exact, 75): '{result_beer}' matches '{expected_beer}'")
+                return 75
+        elif rb_core in eb_core or eb_core in rb_core:
+            if has_variant_mismatch(result_beer, expected_beer):
+                logger.info(f"  [Validation] Beer BLOCKED (Core + Variant): '{result_beer}' vs '{expected_beer}'")
+            else:
+                logger.info(f"  [Validation] Beer MATCH (Core, 70): '{result_beer}' matches '{expected_beer}'")
+                return 70
 
-    # 4. Combined: ordinal + core stripping
+    # 5. Combined: ordinal + core stripping
     rb_ord_core: str = normalize_for_comparison(strip_for_core_comparison(normalize_ordinals(result_beer)))
     eb_ord_core: str = normalize_for_comparison(strip_for_core_comparison(normalize_ordinals(expected_beer)))
     if rb_ord_core and eb_ord_core and (rb_ord_core in eb_ord_core or eb_ord_core in rb_ord_core):
-        logger.info(f"  [Validation] Beer MATCH (Ordinal+Core): '{result_beer}' matches '{expected_beer}'")
-        return True
+        if has_variant_mismatch(result_beer, expected_beer):
+            logger.info(f"  [Validation] Beer BLOCKED (Ordinal+Core + Variant): '{result_beer}' vs '{expected_beer}'")
+        else:
+            logger.info(f"  [Validation] Beer MATCH (Ordinal+Core, 60): '{result_beer}' matches '{expected_beer}'")
+            return 60
 
     logger.info(f"  [Validation] Beer FAIL: '{result_beer}' ({rb_norm}) != '{expected_beer}' ({eb_norm})")
-    return False
+    return 0
 
 
 def validate_brewery_match(result_element: Tag, expected_brewery: str) -> bool:

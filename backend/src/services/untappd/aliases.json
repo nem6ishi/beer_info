@@ -48,6 +48,9 @@
     "富士桜": [
         "Fujizakura Heights Beer"
     ],
+    "富士桜高原麦酒": [
+        "Fujizakura Heights Beer"
+    ],
     "ロコビア": [
         "Locobeer"
     ],
@@ -137,5 +140,14 @@
     ],
     "Otomi Hantou Brewing": [
         "Atsumi Peninsula Brewing Co"
+    ],
+    "Beard": [
+        "Baird Brewing Company"
+    ],
+    "Delayira": [
+        "Derailleur Brew Works"
+    ],
+    "Let'sBeerWorks": [
+        "Let's Beer Works"
     ]
 }
