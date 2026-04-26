@@ -4,15 +4,43 @@ Split from searcher.py for better modularity.
 """
 import re
 import logging
-from typing import Optional, List, Dict, Match
+from typing import Optional, List, Dict, Match, Set
 
 logger = logging.getLogger(__name__)
 
+# Common abbreviations expanded for matching (applied before normalization).
+# Keys are lowercase abbreviation patterns; values are the expanded form.
+_ABBREVIATION_MAP: Dict[str, str] = {
+    'ddh': 'double dry hopped',
+    'tdh': 'triple dry hopped',
+    'sdh': 'single dry hopped',
+    'ba ': 'barrel aged ',
+    'bba ': 'bourbon barrel aged ',
+}
 
-def normalize_for_comparison(text: str) -> str:
-    """Removes whitespace and non-alphanumeric characters for fuzzy comparison."""
+
+def expand_abbreviations(text: str) -> str:
+    """Expands common beer abbreviations (DDH, TDH, etc.) for better matching."""
+    if not text:
+        return text
+    result = text
+    for abbr, expanded in _ABBREVIATION_MAP.items():
+        # Case-insensitive replacement of whole-word abbreviations
+        result = re.sub(r'\b' + re.escape(abbr.strip()) + r'\b', expanded.strip(), result, flags=re.IGNORECASE)
+    return result
+
+
+def normalize_for_comparison(text: str, expand_abbr: bool = False) -> str:
+    """Removes whitespace and non-alphanumeric characters for fuzzy comparison.
+    
+    Args:
+        text: Input string to normalize.
+        expand_abbr: If True, expand abbreviations (DDH→Double Dry Hopped) before normalizing.
+    """
     if not text:
         return ""
+    if expand_abbr:
+        text = expand_abbreviations(text)
     return "".join(c.lower() for c in text if c.isalnum())
 
 
@@ -96,7 +124,7 @@ def has_variant_mismatch(name_a: str, name_b: str) -> bool:
     diff = mods_a.symmetric_difference(mods_b)
     
     if diff:
-        logger.info(f"  [Variant] Modifier mismatch: '{name_a}' has {mods_a}, '{name_b}' has {mods_b}, diff={diff}")
+        logger.debug(f"  [Variant] Modifier mismatch: '{name_a}' has {mods_a}, '{name_b}' has {mods_b}, diff={diff}")
         return True
     return False
 

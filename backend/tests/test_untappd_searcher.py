@@ -12,7 +12,10 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from backend.src.services.untappd.validators import validate_brewery_match, validate_beer_match, score_beer_match
-from backend.src.services.untappd.text_utils import strip_beer_suffix, has_variant_mismatch, extract_variant_modifiers
+from backend.src.services.untappd.text_utils import (
+    strip_beer_suffix, has_variant_mismatch, extract_variant_modifiers,
+    expand_abbreviations, normalize_for_comparison,
+)
 from backend.src.services.untappd.searcher import get_untappd_url
 
 
@@ -205,6 +208,40 @@ class TestScoreBeerMatch(unittest.TestCase):
         )
         self.assertGreater(score, 0)
 
+    def test_ddh_abbreviation_matches_expanded(self):
+        """DDH Caligula should match Double Dry Hopped Caligula via abbreviation expansion."""
+        score = score_beer_match(
+            self._make_element("Double Dry Hopped Caligula"),
+            "DDH Caligula"
+        )
+        self.assertEqual(score, 95)
+
+    def test_tdh_abbreviation_matches_expanded(self):
+        """TDH should match Triple Dry Hopped."""
+        score = score_beer_match(
+            self._make_element("Triple Dry Hopped Congress Street"),
+            "TDH Congress Street"
+        )
+        self.assertEqual(score, 95)
+
+
+class TestAbbreviationExpansion(unittest.TestCase):
+    """Tests for expand_abbreviations utility."""
+
+    def test_ddh_expansion(self):
+        self.assertEqual(expand_abbreviations("DDH Caligula"), "double dry hopped Caligula")
+
+    def test_tdh_expansion(self):
+        self.assertEqual(expand_abbreviations("TDH IPA"), "triple dry hopped IPA")
+
+    def test_no_expansion_for_normal_text(self):
+        self.assertEqual(expand_abbreviations("What Rough Beast"), "What Rough Beast")
+
+    def test_normalize_with_expansion(self):
+        """normalize_for_comparison with expand_abbr=True should match DDH to expanded."""
+        a = normalize_for_comparison("DDH Caligula", expand_abbr=True)
+        b = normalize_for_comparison("Double Dry Hopped Caligula", expand_abbr=True)
+        self.assertEqual(a, b)
 
 @patch('backend.src.services.untappd.searcher.search_brewery_beer')
 @patch('backend.src.services.untappd.searcher.search_brewery')
@@ -239,14 +276,21 @@ class TestGetUntappdUrl(unittest.TestCase):
         self.assertTrue(result['success'])
         self.assertEqual(result['url'], "https://untappd.com/b/breakside-wrb/222")
 
-    def test_blocks_variant_when_no_exact_available(self, mock_search_brewery, mock_search_beer):
+    @patch('ddgs.DDGS')
+    def test_blocks_variant_when_no_exact_available(self, mock_ddgs_cls, mock_search_brewery, mock_search_beer):
         """When brewery search finds the brewery but beer search returns None (variant blocked)."""
         mock_search_brewery.return_value = "https://untappd.com/BreaksideBrewery"
         mock_search_beer.return_value = None  # Scoring blocked the variant
+        # Mock DDG to return no results
+        mock_ddgs_instance = MagicMock()
+        mock_ddgs_instance.__enter__ = MagicMock(return_value=mock_ddgs_instance)
+        mock_ddgs_instance.__exit__ = MagicMock(return_value=False)
+        mock_ddgs_instance.text.return_value = []
+        mock_ddgs_cls.return_value = mock_ddgs_instance
 
         result = get_untappd_url("Breakside Brewery", "What Rough Beast")
 
-        # Should fall through to DDG and fail
+        # Should fall through to DDG (mocked empty) and fail
         self.assertFalse(result['success'])
 
 

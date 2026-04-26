@@ -14,7 +14,8 @@ from bs4 import BeautifulSoup
 
 from .text_utils import (
     clean_beer_name, clean_brewery_name, strip_beer_suffix,
-    normalize_for_comparison, COMMON_SUFFIXES
+    normalize_for_comparison, strip_for_core_comparison,
+    has_variant_mismatch, COMMON_SUFFIXES
 )
 from .validators import validate_beer_match, validate_brewery_match, score_beer_match, set_brewery_aliases
 from .http_client import (
@@ -109,7 +110,6 @@ def get_untappd_url(
 
     try:
         from ddgs import DDGS
-        from .text_utils import normalize_for_comparison, strip_for_core_comparison, has_variant_mismatch
 
         def title_is_valid(title: str, exp_brewery: str, exp_beer: str) -> bool:
             t_norm: str = normalize_for_comparison(title)
