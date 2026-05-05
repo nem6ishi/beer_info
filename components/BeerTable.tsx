@@ -1,9 +1,8 @@
-import BeerInfoCell from './cells/BeerInfoCell';
-import RatingCell from './cells/RatingCell';
+// Imports removed
 import React from 'react'
 import Image from 'next/image'
-import BeerImage from './BeerImage'
 import type { Beer } from '../types/beer'
+import BeerTableRow from './BeerTableRow';
 
 import { formatPrice, formatSimpleDate } from './utils/formatters';
 
@@ -40,83 +39,49 @@ export default function BeerTable({ beers, loading, error }: BeerTableProps) {
                     </tr>
                 </thead>
                 <tbody>
-                    {beers.map(beer => (
-                        <tr key={beer.id || beer.url}>
-                            <td className="col-img">
-                                <BeerImage 
-                                    src={beer.image} 
-                                    alt={beer.name} 
-                                    fallbackSrc={beer.untappd_image || undefined} 
-                                />
-                            </td>
-                            <td className="col-name">
-                                <BeerInfoCell
-                                    brewery={hasUntappdBeerData(beer) ? beer.untappd_brewery_name : null}
-                                    beer={hasUntappdBeerData(beer) ? beer.untappd_beer_name : beer.name}
-                                    logo={hasUntappdBeerData(beer) ? beer.brewery_logo : null}
-                                    location={hasUntappdBeerData(beer) ? beer.brewery_location : null}
-                                    type={hasUntappdBeerData(beer) ? beer.brewery_type : null}
-                                    fallbackName={beer.name}
-                                />
-                            </td>
-                            <td className="col-beer-style">
-                                <div className="style-specs-group">
-                                    <span className={beer.untappd_style ? "beer-style-text" : "na-text"}>
-                                        {beer.untappd_style || 'Style N/A'}
-                                    </span>
-                                    <div className="stats-row">
-                                        <div className="stat-item">
-                                            {beer.untappd_abv ? `${beer.untappd_abv}% ABV` : <span className="na-text">Top ABV N/A</span>}
-                                        </div>
-                                        <span className="separator">•</span>
-                                        <div className="stat-item">
-                                            {beer.untappd_ibu ? `${beer.untappd_ibu} IBU` : <span className="na-text">IBU N/A</span>}
-                                        </div>
+                    {beers.map(beer => {
+                        const shopContent = (
+                            <div className="shop-list-flat">
+                                <a href={beer.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
+                                    <div className="shop-info-primary">
+                                        <span className="price-text">{formatPrice(beer.price)}</span>
+                                        <span className="shop-name-text">{beer.shop}</span>
+                                        {beer.stock_status && (
+                                            <span className={`stock-dot ${beer.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={beer.stock_status}></span>
+                                        )}
                                     </div>
-                                </div>
-                            </td>
-                            <td className="col-rating">
-                                {beer.product_type === 'set' ? (
-                                    <div className="set-badge-container">
-                                        <span className="set-badge">📦 Set Product</span>
+                                    <div className="shop-info-secondary">
+                                        <span className="check-date">{formatSimpleDate(beer.last_seen)}</span>
+                                        <span className="external-link-arrow">↗</span>
                                     </div>
-                                ) : beer.product_type === 'glass' ? (
-                                    <div className="set-badge-container">
-                                        <span className="set-badge" style={{ background: '#17a2b8' }}>🍺 Glass</span>
-                                    </div>
-                                ) : beer.product_type === 'other' ? (
-                                    <div className="set-badge-container">
-                                        <span className="set-badge" style={{ background: '#6c757d' }}>📦 Other</span>
-                                    </div>
-                                ) : (
-                                    <RatingCell
-                                        rating={beer.untappd_rating}
-                                        count={beer.untappd_rating_count}
-                                        url={beer.untappd_url}
-                                        productType={beer.product_type}
-                                        breweryName={beer.untappd_brewery_name}
-                                    />
-                                )}
-                            </td>
-                            <td className="col-shop">
-                                <div className="shop-list-flat">
-                                    <a href={beer.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
-                                        <div className="shop-info-primary">
-                                            <span className="price-text">{formatPrice(beer.price)}</span>
-                                            <span className="shop-name-text">{beer.shop}</span>
-                                            {beer.stock_status && (
-                                                <span className={`stock-dot ${beer.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={beer.stock_status}></span>
-                                            )}
-                                        </div>
-                                        <div className="shop-info-secondary">
-                                            <span className="check-date">{formatSimpleDate(beer.last_seen)}</span>
-                                            <span className="external-link-arrow">↗</span>
-                                        </div>
-                                    </a>
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
+                                </a>
+                            </div>
+                        );
+
+                        return (
+                            <BeerTableRow
+                                key={beer.id || beer.url}
+                                idKey={beer.id || beer.url}
+                                imageSrc={beer.image}
+                                imageFallbackSrc={beer.untappd_image || undefined}
+                                altText={beer.name}
+                                breweryName={hasUntappdBeerData(beer) ? beer.untappd_brewery_name : null}
+                                beerName={hasUntappdBeerData(beer) ? beer.untappd_beer_name || beer.name : beer.name}
+                                breweryLogo={hasUntappdBeerData(beer) ? beer.brewery_logo : null}
+                                breweryLocation={hasUntappdBeerData(beer) ? beer.brewery_location : null}
+                                breweryType={hasUntappdBeerData(beer) ? beer.brewery_type : null}
+                                fallbackName={beer.name}
+                                styleText={beer.untappd_style}
+                                abv={beer.untappd_abv}
+                                ibu={beer.untappd_ibu}
+                                productType={beer.product_type}
+                                rating={beer.untappd_rating}
+                                ratingCount={beer.untappd_rating_count}
+                                untappdUrl={beer.untappd_url}
+                                shopContent={shopContent}
+                            />
+                        );
+                    })}
                     {beers.length === 0 && !loading && (
                         <tr>
                             <td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>

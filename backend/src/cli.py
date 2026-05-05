@@ -57,6 +57,10 @@ def main() -> None:
     # Sync command
     subparsers.add_parser("sync", help="Download Supabase data to local JSON")
 
+    # Check variants command
+    check_variants_parser = subparsers.add_parser("check-variants", help="Check for variant mismatches in beer data")
+    check_variants_parser.add_argument("--clear", action="store_true", help="Automatically clear mismatched untappd_urls")
+
     # Clear command
     subparsers.add_parser("clear", help="Clear all data from the database")
 
@@ -111,6 +115,10 @@ def main() -> None:
             sync_from_supabase()
         except ImportError:
             logger.error("Sync script not found.")
+            
+    elif args.command == "check-variants":
+        from .commands.check_variants import check_variants
+        asyncio.run(check_variants(auto_clear=args.clear))
             
     elif args.command == "clear":
         try:

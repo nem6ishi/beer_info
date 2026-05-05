@@ -1,8 +1,6 @@
-import BeerInfoCell from './cells/BeerInfoCell';
-import RatingCell from './cells/RatingCell';
 import React from 'react'
-import BeerImage from './BeerImage'
 import type { GroupedBeer } from '../types/beer'
+import BeerTableRow from './BeerTableRow';
 
 import { formatPrice, formatSimpleDate } from './utils/formatters';
 
@@ -47,86 +45,50 @@ export default function GroupedBeerTable({ groups, loading, error }: GroupedBeer
                         const displayImage = hasValidUntappd ? untappdImg : (cheapestItem?.image || '');
                         const fallbackImage = hasValidUntappd ? (cheapestItem?.image || '') : '';
 
+                        const shopContent = (
+                            <div className="shop-list-flat">
+                                {sortedItems.map((item, idx) => (
+                                    <div key={idx} className="shop-item-flat">
+                                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
+                                            <div className="shop-info-primary">
+                                                <span className="price-text">{formatPrice(item.price)}</span>
+                                                <span className="shop-name-text">{item.shop}</span>
+                                                {item.stock_status && (
+                                                    <span className={`stock-dot ${item.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={item.stock_status}></span>
+                                                )}
+                                            </div>
+                                            <div className="shop-info-secondary">
+                                                {item.last_seen && <span className="check-date">{formatSimpleDate(item.last_seen)}</span>}
+                                                <span className="external-link-arrow">↗</span>
+                                            </div>
+                                        </a>
+                                    </div>
+                                ))}
+                            </div>
+                        );
+
                         return (
-                            <tr key={group.untappd_url || group.beer_name}>
-                                <td className="col-img">
-                                    <BeerImage 
-                                        src={displayImage} 
-                                        alt={group.beer_name} 
-                                        fallbackSrc={fallbackImage}
-                                    />
-                                </td>
-                                <td className="col-name">
-                                    <BeerInfoCell
-                                        brewery={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_name : null}
-                                        beer={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.beer_name : (cheapestItem?.shop ? cheapestItem.shop : group.beer_name)}
-                                        logo={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_logo : null}
-                                        location={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_location : null}
-                                        type={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_type : null}
-                                        fallbackName={cheapestItem?.shop ? cheapestItem.shop : group.beer_name}
-                                    />
-                                </td>
-                                <td className="col-beer-style">
-                                    <div className="style-specs-group">
-                                        <span className={group.style ? "beer-style-text" : "na-text"}>
-                                            {group.style || 'Style N/A'}
-                                        </span>
-                                        <div className="stats-row">
-                                            <div className="stat-item">
-                                                {group.abv ? `${group.abv}% ABV` : <span className="na-text">N/A ABV</span>}
-                                            </div>
-                                            <span className="separator">•</span>
-                                            <div className="stat-item">
-                                                {group.ibu ? `${group.ibu} IBU` : <span className="na-text">N/A IBU</span>}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="col-rating">
-                                    {group.product_type === 'set' ? (
-                                        <div className="set-badge-container">
-                                            <span className="set-badge">📦 Set Product</span>
-                                        </div>
-                                    ) : group.product_type === 'glass' ? (
-                                        <div className="set-badge-container">
-                                            <span className="set-badge" style={{ background: '#17a2b8' }}>🍺 Glass</span>
-                                        </div>
-                                    ) : group.product_type === 'other' ? (
-                                        <div className="set-badge-container">
-                                            <span className="set-badge" style={{ background: '#6c757d' }}>📦 Other</span>
-                                        </div>
-                                    ) : (
-                                        <RatingCell
-                                            rating={group.rating}
-                                            count={group.rating_count}
-                                            url={group.untappd_url}
-                                            productType={group.product_type}
-                                            breweryName={group.brewery_name}
-                                        />
-                                    )}
-                                </td>
-                                <td className="col-shop">
-                                    <div className="shop-list-flat">
-                                        {sortedItems.map((item, idx) => (
-                                            <div key={idx} className="shop-item-flat">
-                                                <a href={item.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
-                                                    <div className="shop-info-primary">
-                                                        <span className="price-text">{formatPrice(item.price)}</span>
-                                                        <span className="shop-name-text">{item.shop}</span>
-                                                        {item.stock_status && (
-                                                            <span className={`stock-dot ${item.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={item.stock_status}></span>
-                                                        )}
-                                                    </div>
-                                                    <div className="shop-info-secondary">
-                                                        {item.last_seen && <span className="check-date">{formatSimpleDate(item.last_seen)}</span>}
-                                                        <span className="external-link-arrow">↗</span>
-                                                    </div>
-                                                </a>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </td>
-                            </tr>
+                            <BeerTableRow
+                                key={group.untappd_url || group.beer_name}
+                                idKey={group.untappd_url || group.beer_name}
+                                imageSrc={displayImage}
+                                imageFallbackSrc={fallbackImage}
+                                altText={group.beer_name}
+                                breweryName={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_name : null}
+                                beerName={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.beer_name : (cheapestItem?.shop ? cheapestItem.shop : group.beer_name)}
+                                breweryLogo={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_logo : null}
+                                breweryLocation={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_location : null}
+                                breweryType={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_type : null}
+                                fallbackName={cheapestItem?.shop ? cheapestItem.shop : group.beer_name}
+                                styleText={group.style}
+                                abv={group.abv}
+                                ibu={group.ibu}
+                                productType={group.product_type}
+                                rating={group.rating}
+                                ratingCount={group.rating_count}
+                                untappdUrl={group.untappd_url}
+                                shopContent={shopContent}
+                            />
                         );
                     })}
                     {groups.length === 0 && !loading && (
