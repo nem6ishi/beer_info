@@ -32,6 +32,9 @@ export interface BeerTableRowProps {
 
     // Shop availability content (varies between list and grouped)
     shopContent: ReactNode;
+
+    // Debug
+    isDebug?: boolean;
 }
 
 export default function BeerTableRow({
@@ -52,7 +55,8 @@ export default function BeerTableRow({
     rating,
     ratingCount,
     untappdUrl,
-    shopContent
+    shopContent,
+    isDebug
 }: BeerTableRowProps) {
     return (
         <tr key={idKey}>
@@ -71,6 +75,7 @@ export default function BeerTableRow({
                     location={breweryLocation}
                     type={breweryType}
                     fallbackName={fallbackName}
+                    isDebug={isDebug}
                 />
             </td>
             <td className="col-beer-style">

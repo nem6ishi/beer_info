@@ -10,9 +10,10 @@ interface BeerTableProps {
     beers: Beer[];
     loading: boolean;
     error: string | null;
+    isDebug?: boolean;
 }
 
-export default function BeerTable({ beers, loading, error }: BeerTableProps) {
+export default function BeerTable({ beers, loading, error, isDebug }: BeerTableProps) {
 
     if (error) return <div className="status-message error">Error: {error}</div>
 
@@ -79,6 +80,7 @@ export default function BeerTable({ beers, loading, error }: BeerTableProps) {
                                 ratingCount={beer.untappd_rating_count}
                                 untappdUrl={beer.untappd_url}
                                 shopContent={shopContent}
+                                isDebug={isDebug}
                             />
                         );
                     })}

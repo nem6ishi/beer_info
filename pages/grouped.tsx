@@ -265,6 +265,7 @@ export default function GroupedBeers({ initialData, availableStyles, availableBr
                     groups={groups}
                     loading={loading}
                     error={error}
+                    isDebug={router.query.debug === '1'}
                 />
 
                 {!loading && !error && (

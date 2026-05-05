@@ -8,9 +8,10 @@ interface GroupedBeerTableProps {
     groups: GroupedBeer[];
     loading: boolean;
     error: string | null;
+    isDebug?: boolean;
 }
 
-export default function GroupedBeerTable({ groups, loading, error }: GroupedBeerTableProps) {
+export default function GroupedBeerTable({ groups, loading, error, isDebug }: GroupedBeerTableProps) {
 
     if (error) return <div className="status-message error">Error: {error}</div>
 
@@ -88,6 +89,7 @@ export default function GroupedBeerTable({ groups, loading, error }: GroupedBeer
                                 ratingCount={group.rating_count}
                                 untappdUrl={group.untappd_url}
                                 shopContent={shopContent}
+                                isDebug={isDebug}
                             />
                         );
                     })}

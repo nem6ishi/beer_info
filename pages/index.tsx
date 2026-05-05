@@ -281,7 +281,7 @@ export default function Home({ initialData, availableStyles, availableBreweries 
                     onRefresh={fetchBeers}
                 />
 
-                <BeerTable beers={beers} loading={loading} error={error} />
+                <BeerTable beers={beers} loading={loading} error={error} isDebug={router.query.debug === '1'} />
 
                 {!loading && !error && (
                     <Pagination

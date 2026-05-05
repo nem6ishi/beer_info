@@ -50,9 +50,10 @@ interface BeerInfoCellProps {
     location: string | null;
     type: string | null;
     fallbackName: string;
+    isDebug?: boolean;
 }
 
-export default function BeerInfoCell({ brewery, beer, logo, location, type, fallbackName }: BeerInfoCellProps) {
+export default function BeerInfoCell({ brewery, beer, logo, location, type, fallbackName, isDebug }: BeerInfoCellProps) {
     const flag = getFlag(location);
 
     // Use beer name if available, otherwise use fallback (original product name)
@@ -85,6 +86,12 @@ export default function BeerInfoCell({ brewery, beer, logo, location, type, fall
             <div className="beer-name">
                 {displayName}
             </div>
+            {isDebug && beer && fallbackName && beer !== fallbackName && (
+                <div className="debug-original-name" style={{ fontSize: '0.8rem', color: '#ff6b6b', marginTop: '4px', fontFamily: 'monospace' }}>
+                    [Original]: {fallbackName}
+                </div>
+            )}
         </div>
     );
 }
+
