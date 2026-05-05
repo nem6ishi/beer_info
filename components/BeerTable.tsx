@@ -44,9 +44,9 @@ export default function BeerTable({ beers, loading, error }: BeerTableProps) {
                         <tr key={beer.id || beer.url}>
                             <td className="col-img">
                                 <BeerImage 
-                                    src={beer.untappd_image} 
+                                    src={beer.image} 
                                     alt={beer.name} 
-                                    fallbackSrc={beer.image || undefined} 
+                                    fallbackSrc={beer.untappd_image || undefined} 
                                 />
                             </td>
                             <td className="col-name">
