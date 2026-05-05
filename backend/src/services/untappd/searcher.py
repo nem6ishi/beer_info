@@ -72,9 +72,11 @@ def get_untappd_url(
     u_brewery_url: Optional[str] = brewery_url
 
     # --- Stage 1: Identify Brewery URL if not provided ---
-    if not u_brewery_url and brewery_name:
-        logger.info(f"Brewery URL missing. Searching for brewery: '{brewery_name}'")
-        u_brewery_url = search_brewery(brewery_name)
+    primary_brewery_search = re.split(r'\s*[xX×&/]\s*', brewery_name)[0] if brewery_name else ""
+
+    if not u_brewery_url and primary_brewery_search:
+        logger.info(f"Brewery URL missing. Searching for brewery: '{primary_brewery_search}'")
+        u_brewery_url = search_brewery(primary_brewery_search)
         if u_brewery_url:
             logger.info(f" Brewery found: {u_brewery_url}")
 
@@ -103,7 +105,6 @@ def get_untappd_url(
     if search_hint:
         query = f"untappd {search_hint}"
     else:
-        primary_brewery_search = re.split(r'\s*[xX×&]\s*', brewery_name)[0] if brewery_name else ""
         query = f"untappd {primary_brewery_search} {target_beer_name}".strip()
 
     logger.info(f"Falling back to DuckDuckGo search for: '{query}'")
