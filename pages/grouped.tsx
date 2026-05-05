@@ -126,7 +126,8 @@ export default function GroupedBeers({ initialData, availableStyles, availableBr
         shop: (router.query.shop as string) || '',
         brewery_filter: (router.query.brewery_filter as string) || '', 
         style_filter: (router.query.style_filter as string) || '', 
-        set_mode: (router.query.set_mode as string) || ''
+        set_mode: (router.query.set_mode as string) || '',
+        debug: (router.query.debug as string) || ''
     })
 
     const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -152,7 +153,8 @@ export default function GroupedBeers({ initialData, availableStyles, availableBr
             shop: (router.query.shop as string) || '',
             brewery_filter: (router.query.brewery_filter as string) || '',
             style_filter: (router.query.style_filter as string) || '',
-            set_mode: (router.query.set_mode as string) || ''
+            set_mode: (router.query.set_mode as string) || '',
+            debug: (router.query.debug as string) || ''
         });
     }, [initialData, router.query]);
 

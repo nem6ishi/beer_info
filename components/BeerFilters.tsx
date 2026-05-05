@@ -300,6 +300,23 @@ export default function BeerFilters({
                                 </select>
                             </div>
                         </div>
+
+                        {/* Debug Mode Filter */}
+                        <div className="filter-item">
+                            <label>Debug Mode</label>
+                            <div className="checkbox-wrapper" style={{ display: 'flex', alignItems: 'center', height: '100%', gap: '8px', paddingLeft: '4px' }}>
+                                <input
+                                    type="checkbox"
+                                    id="debugToggle"
+                                    checked={tempFilters.debug === '1'}
+                                    onChange={(e) => onFilterChange('debug', e.target.checked ? '1' : '')}
+                                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                />
+                                <label htmlFor="debugToggle" style={{ margin: 0, cursor: 'pointer', fontWeight: 'normal', color: 'var(--text-main, #333)' }}>
+                                    Show Original Names
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

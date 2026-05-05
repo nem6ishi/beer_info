@@ -78,6 +78,7 @@ export interface FilterState {
   style_filter: string;
   set_mode: string;
   product_type?: string;
+  debug?: string;
 }
 
 /** Grouped beer record for the /grouped view. */
