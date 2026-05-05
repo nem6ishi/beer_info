@@ -8,6 +8,11 @@ interface PaginationProps {
 }
 
 export default function Pagination({ currentPage, totalPages, totalItems, onPageChange }: PaginationProps) {
+    const handlePageClick = (page: number) => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        onPageChange(page);
+    };
+
     return (
         <div className="pagination-wrapper">
             <div className="total-count">
@@ -19,7 +24,7 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                     <button
                         className="page-btn icon-btn"
                         disabled={currentPage <= 1}
-                        onClick={() => onPageChange(1)}
+                        onClick={() => handlePageClick(1)}
                         aria-label="First Page"
                     >
                         «
@@ -29,7 +34,7 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                     <button
                         className="page-btn"
                         disabled={currentPage <= 1}
-                        onClick={() => onPageChange(currentPage - 1)}
+                        onClick={() => handlePageClick(currentPage - 1)}
                     >
                         ‹ Prev
                     </button>
@@ -77,7 +82,7 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                                     <button
                                         key={p}
                                         className={`page-number ${p === currentPage ? 'active' : ''}`}
-                                        onClick={() => onPageChange(p as number)}
+                                        onClick={() => handlePageClick(p as number)}
                                     >
                                         {p}
                                     </button>
@@ -90,7 +95,7 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                     <button
                         className="page-btn"
                         disabled={currentPage >= totalPages}
-                        onClick={() => onPageChange(currentPage + 1)}
+                        onClick={() => handlePageClick(currentPage + 1)}
                     >
                         Next ›
                     </button>
@@ -99,7 +104,7 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                     <button
                         className="page-btn icon-btn"
                         disabled={currentPage >= totalPages}
-                        onClick={() => onPageChange(totalPages)}
+                        onClick={() => handlePageClick(totalPages)}
                         aria-label="Last Page"
                     >
                         »
