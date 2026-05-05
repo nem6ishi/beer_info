@@ -99,7 +99,7 @@ def extract_variant_modifiers(name: str) -> set:
     Extracts variant modifier keywords found in a beer name.
     Returns a set of normalized modifier strings present in the name.
     """
-    name_norm = normalize_for_comparison(name)
+    name_norm = normalize_for_comparison(name, expand_abbr=True)
     found: set = set()
     for mod_norm in _VARIANT_MODIFIERS_NORM:
         if mod_norm in name_norm:
