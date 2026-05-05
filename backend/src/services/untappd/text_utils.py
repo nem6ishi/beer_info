@@ -8,6 +8,9 @@ from typing import Optional, List, Dict, Match, Set
 
 logger = logging.getLogger(__name__)
 
+# Regex pattern to safely split collaboration brewery names without breaking names like "Oxford"
+COLLAB_SPLIT_PATTERN = r'\s+(?:x|X|with)\s+|\s*[×&/+]\s*|\s*w/\s*'
+
 # Common abbreviations expanded for matching (applied before normalization).
 # Keys are lowercase abbreviation patterns; values are the expanded form.
 _ABBREVIATION_MAP: Dict[str, str] = {

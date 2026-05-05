@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from .text_utils import (
     clean_beer_name, clean_brewery_name, strip_beer_suffix,
     normalize_for_comparison, strip_for_core_comparison,
-    has_variant_mismatch, COMMON_SUFFIXES
+    has_variant_mismatch, COMMON_SUFFIXES, COLLAB_SPLIT_PATTERN
 )
 from .validators import validate_beer_match, validate_brewery_match, score_beer_match, set_brewery_aliases
 from .http_client import (
@@ -72,7 +72,7 @@ def get_untappd_url(
     u_brewery_url: Optional[str] = brewery_url
 
     # --- Stage 1: Identify Brewery URL if not provided ---
-    primary_brewery_search = re.split(r'\s*[xX×&/]\s*', brewery_name)[0] if brewery_name else ""
+    primary_brewery_search = re.split(COLLAB_SPLIT_PATTERN, brewery_name)[0] if brewery_name else ""
 
     if not u_brewery_url and primary_brewery_search:
         logger.info(f"Brewery URL missing. Searching for brewery: '{primary_brewery_search}'")
@@ -117,7 +117,7 @@ def get_untappd_url(
             
             # Check brewery
             if exp_brewery:
-                primary_breweries = re.split(r'\s*[xX×&]\s*', exp_brewery)
+                primary_breweries = re.split(COLLAB_SPLIT_PATTERN, exp_brewery)
                 brewery_match = False
                 for p_brew in primary_breweries:
                     b_norm: str = normalize_for_comparison(p_brew)

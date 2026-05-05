@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup, Tag
 from .text_utils import (
     normalize_for_comparison, normalize_ordinals, strip_for_core_comparison,
     clean_brewery_name, has_variant_mismatch, expand_abbreviations,
+    COLLAB_SPLIT_PATTERN,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,9 +158,10 @@ def validate_brewery_match(result_element: Tag, expected_brewery: str) -> bool:
                 logger.info(f"  [Validation] Brewery MATCH (Alias): '{result_brewery}' matches alias '{alias}'")
                 return True
 
-    # 4. Collaboration Check (x, ×, /)
-    if any(sep in expected_brewery for sep in [' x ', ' x', 'x ', '×', '/']):
-        parts: List[str] = re.split(r'\s*[x×/]\s*', expected_brewery)
+    # 4. Collaboration Check (x, ×, /, &)
+    if any(sep in expected_brewery for sep in [' x ', ' X ', 'x', 'X', '×', '/', '&', '+']):
+        # Treat both target and expected breweries as potential lists of collaborators
+        parts: List[str] = re.split(COLLAB_SPLIT_PATTERN, expected_brewery)
         for part in parts:
             if not part:
                 continue
