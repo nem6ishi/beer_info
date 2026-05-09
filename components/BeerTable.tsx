@@ -40,7 +40,7 @@ export default function BeerTable({ beers, loading, error, isDebug }: BeerTableP
                     </tr>
                 </thead>
                 <tbody>
-                    {beers.map(beer => {
+                    {beers.map((beer, index) => {
                         const shopContent = (
                             <div className="shop-list-flat">
                                 <a href={beer.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
@@ -81,6 +81,7 @@ export default function BeerTable({ beers, loading, error, isDebug }: BeerTableP
                                 untappdUrl={beer.untappd_url}
                                 shopContent={shopContent}
                                 isDebug={isDebug}
+                                priority={index < 5}
                             />
                         );
                     })}

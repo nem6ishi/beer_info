@@ -32,7 +32,7 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug }: Gr
                     </tr>
                 </thead>
                 <tbody>
-                    {groups.map(group => {
+                    {groups.map((group, index) => {
                         const sortedItems = [...(group.items || [])].sort((a, b) => (a.price_value || Infinity) - (b.price_value || Infinity));
                         const cheapestItem = sortedItems[0];
 
@@ -90,6 +90,7 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug }: Gr
                                 untappdUrl={group.untappd_url}
                                 shopContent={shopContent}
                                 isDebug={isDebug}
+                                priority={index < 5}
                             />
                         );
                     })}

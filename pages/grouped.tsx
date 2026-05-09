@@ -16,7 +16,10 @@ interface GroupedProps {
 }
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
-    const { query } = context;
+    const { query, res } = context;
+    
+    // Add Cache-Control header
+    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     
     try {
         const page = (query.page as string) || '1';

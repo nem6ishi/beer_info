@@ -6,13 +6,15 @@ interface BeerImageProps {
     alt: string;
     fallbackSrc?: string;
     className?: string;
+    priority?: boolean;
 }
 
 const BeerImage: React.FC<BeerImageProps> = ({ 
     src, 
     alt, 
     fallbackSrc, 
-    className = ""
+    className = "",
+    priority = false
 }) => {
     const defaultPlaceholder = 'https://placehold.co/100x100?text=No+Image';
     
@@ -49,6 +51,7 @@ const BeerImage: React.FC<BeerImageProps> = ({
                 src={imgSrc}
                 alt={alt}
                 fill
+                priority={priority}
                 sizes="(max-width: 768px) 80px, 90px"
                 onLoad={() => setIsLoaded(true)}
                 onError={() => {

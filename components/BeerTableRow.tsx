@@ -35,6 +35,9 @@ export interface BeerTableRowProps {
 
     // Debug
     isDebug?: boolean;
+
+    // Performance
+    priority?: boolean;
 }
 
 export default function BeerTableRow({
@@ -56,7 +59,8 @@ export default function BeerTableRow({
     ratingCount,
     untappdUrl,
     shopContent,
-    isDebug
+    isDebug,
+    priority = false
 }: BeerTableRowProps) {
     return (
         <tr key={idKey}>
@@ -65,6 +69,7 @@ export default function BeerTableRow({
                     src={imageSrc} 
                     alt={altText} 
                     fallbackSrc={imageFallbackSrc} 
+                    priority={priority}
                 />
             </td>
             <td className="col-name">
