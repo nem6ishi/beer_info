@@ -11,7 +11,7 @@ from dateutil import parser as dateutil_parser
 
 from ..core.db import get_supabase_client
 from ..core.types import UntappdBreweryDetails
-from ..services.untappd.searcher import scrape_brewery_details
+from ..services.untappd.http_client import scrape_brewery_details
 
 logger: logging.Logger = logging.getLogger(__name__)
 
