@@ -1,29 +1,26 @@
-import type { NextApiRequest, NextApiResponse } from 'next'
-import { supabase } from '../../lib/supabase'
+import { NextResponse } from 'next/server'
+import { supabase } from '../../../lib/supabase'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-    if (req.method !== 'GET') {
-        return res.status(405).json({ error: 'Method not allowed' })
-    }
-    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
-
+export async function GET(request: Request) {
     try {
-        const search = (req.query.search as string) || ''
-        const sort = (req.query.sort as string) || 'newest'
-        const page = (req.query.page as string) || '1'
-        const limit = (req.query.limit as string) || '100'
-        const shop = (req.query.shop as string) || ''
+        const { searchParams } = new URL(request.url)
         
-        const {
-            min_abv,
-            max_abv,
-            min_ibu,
-            max_ibu,
-            min_rating,
-            style_filter,
-            stock_filter,
-            product_type
-        } = req.query as Record<string, string | undefined>
+        const search = searchParams.get('search') || ''
+        const sort = searchParams.get('sort') || 'newest'
+        const page = searchParams.get('page') || '1'
+        const limit = searchParams.get('limit') || '100'
+        const shop = searchParams.get('shop') || ''
+        
+        const min_abv = searchParams.get('min_abv')
+        const max_abv = searchParams.get('max_abv')
+        const min_ibu = searchParams.get('min_ibu')
+        const max_ibu = searchParams.get('max_ibu')
+        const min_rating = searchParams.get('min_rating')
+        const style_filter = searchParams.get('style_filter')
+        const stock_filter = searchParams.get('stock_filter')
+        const product_type = searchParams.get('product_type')
+        const untappd_status = searchParams.get('untappd_status')
+        const brewery_filter = searchParams.get('brewery_filter')
 
         const pageNum = parseInt(page, 10)
         const limitNum = parseInt(limit, 10)
@@ -35,12 +32,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 .from('beer_info_view')
                 .select('*', { count: 'exact' })
 
-            // Apply search filter if provided
             if (search) {
                 q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
             }
 
-            // Apply advanced filters using NUMERIC columns via the view (which now uses physical columns)
             if (min_abv) q = q.gte('untappd_abv', min_abv)
             if (max_abv) q = q.lte('untappd_abv', max_abv)
             if (min_ibu) q = q.gte('untappd_ibu', min_ibu)
@@ -57,8 +52,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 if (styles.length > 0) q = q.in('untappd_style', styles)
             }
 
-            if (req.query.brewery_filter) {
-                const breweries = (req.query.brewery_filter as string).normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+            if (brewery_filter) {
+                const breweries = brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
                 if (breweries.length > 0) q = q.in('untappd_brewery_name', breweries)
             }
 
@@ -68,16 +63,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 q = q.eq('stock_status', 'Sold Out')
             }
 
-            if (req.query.untappd_status === 'missing') {
+            if (untappd_status === 'missing') {
                 q = q.or('untappd_url.is.null,untappd_url.ilike.%/search?%')
                 q = q.or('product_type.is.null,product_type.eq.beer')
-            } else if (req.query.untappd_status === 'linked') {
+            } else if (untappd_status === 'linked') {
                 q = q.not('untappd_url', 'is', null).not('untappd_url', 'ilike', '%/search?%')
             }
 
             if (product_type) q = q.eq('product_type', product_type)
 
-            // Sorting
             switch (sort) {
                 case 'newest':
                     q = q.order('first_seen', { ascending: false, nullsFirst: false })
@@ -104,55 +98,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return q
         }
 
-        // Build count query (for shop filters)
-        const buildCountQuery = () => {
-            let q = supabase
-                .from('beer_info_view')
-                .select('shop')
+        const fetchShopCounts = async () => {
+            const styles = style_filter ? style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean) : null;
+            const breweries = brewery_filter ? brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean) : null;
 
-            if (search) {
-                q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
-            }
-            if (min_abv) q = q.gte('untappd_abv', min_abv)
-            if (max_abv) q = q.lte('untappd_abv', max_abv)
-            if (min_ibu) q = q.gte('untappd_ibu', min_ibu)
-            if (max_ibu) q = q.lte('untappd_ibu', max_ibu)
-            if (min_rating) q = q.gte('untappd_rating', min_rating)
-            if (stock_filter === 'in_stock') q = q.eq('stock_status', 'In Stock')
-            else if (stock_filter === 'sold_out') q = q.eq('stock_status', 'Sold Out')
-            if (style_filter) {
-                const styles = style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
-                if (styles.length > 0) q = q.in('untappd_style', styles)
-            }
-            if (req.query.brewery_filter) {
-                const breweries = (req.query.brewery_filter as string).normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
-                if (breweries.length > 0) q = q.in('untappd_brewery_name', breweries)
-            }
-            if (product_type) q = q.eq('product_type', product_type)
-            if (req.query.untappd_status === 'missing') {
-                q = q.or('untappd_url.is.null,untappd_url.ilike.%/search?%')
-            } else if (req.query.untappd_status === 'linked') {
-                q = q.not('untappd_url', 'is', null).not('untappd_url', 'ilike', '%/search?%')
-            }
-            return q
+            return supabase.rpc('get_filtered_shop_counts', {
+                search_query: search || null,
+                p_min_abv: min_abv ? parseFloat(min_abv) : null,
+                p_max_abv: max_abv ? parseFloat(max_abv) : null,
+                p_min_ibu: min_ibu ? parseFloat(min_ibu) : null,
+                p_max_ibu: max_ibu ? parseFloat(max_ibu) : null,
+                p_min_rating: min_rating ? parseFloat(min_rating) : null,
+                p_stock_filter: stock_filter || null,
+                p_style_filter: styles && styles.length > 0 ? styles : null,
+                p_brewery_filter: breweries && breweries.length > 0 ? breweries : null,
+                p_product_type: product_type || null,
+                p_untappd_status: untappd_status || null
+            });
         }
 
-        // Parallel execution
         const [dataRes, countRes] = await Promise.all([
             buildQuery().range(offset, offset + limitNum - 1),
-            buildCountQuery().limit(1000).select('shop') // Reduce to 1000 to avoid 500 errors
+            fetchShopCounts()
         ])
 
         if (dataRes.error) throw dataRes.error
 
         const shopCounts: Record<string, number> = {};
         if (countRes.data) {
-            countRes.data.forEach(item => {
-                shopCounts[item.shop] = (shopCounts[item.shop] || 0) + 1;
+            countRes.data.forEach((item: any) => {
+                shopCounts[item.shop] = Number(item.shop_count);
             });
         }
 
-        return res.status(200).json({
+        const response = NextResponse.json({
             beers: dataRes.data || [],
             shopCounts,
             pagination: {
@@ -162,8 +141,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 totalPages: Math.ceil((dataRes.count || 0) / limitNum)
             }
         })
+        
+        response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300')
+        return response
+
     } catch (error) {
         console.error('API error:', error)
-        return res.status(500).json({ error: 'Internal server error' })
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 }

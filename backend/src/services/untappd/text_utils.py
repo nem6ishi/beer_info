@@ -4,7 +4,7 @@ Split from searcher.py for better modularity.
 """
 import re
 import logging
-from typing import Optional, List, Dict, Match, Set
+from typing import Optional, List, Dict, Match
 
 logger = logging.getLogger(__name__)
 

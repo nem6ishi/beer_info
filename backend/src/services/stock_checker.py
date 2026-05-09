@@ -1,9 +1,7 @@
 import httpx
 from bs4 import BeautifulSoup, Tag
-import re
-import asyncio
 import ssl
-from typing import Optional, Dict, List, Tuple, TypedDict, Union, Any
+from typing import Optional, Dict, List, Tuple, TypedDict, Union
 
 class StockCheckResult(TypedDict):
     """Result structure for stock and price checks."""

@@ -6,10 +6,9 @@ import logging
 import urllib.parse
 import subprocess
 from datetime import datetime
-from typing import Optional, Dict, Any, Callable, List
+from typing import Optional, Dict, Callable, List
 import requests
 from bs4 import BeautifulSoup, Tag
-from .text_utils import normalize_for_comparison
 from ...core.types import UntappdBeerDetails, UntappdBreweryDetails
 
 logger = logging.getLogger(__name__)

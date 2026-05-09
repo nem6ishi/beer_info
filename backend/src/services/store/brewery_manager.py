@@ -1,6 +1,5 @@
 import os
 from typing import List, Dict, Optional
-from datetime import datetime, timezone
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -38,10 +37,7 @@ class BreweryManager:
             print(f"[BreweryManager] Error loading breweries: {e}")
             self.breweries = []
     
-    def save_breweries(self) -> None:
-        """Save is now handled per-operation via upsert. This is a no-op for compatibility."""
-        pass
-    
+
     def _build_index(self) -> None:
         """Build index for fast brewery lookup."""
         self.brewery_index = {}
@@ -53,52 +49,7 @@ class BreweryManager:
             for alias in (brewery.get('aliases') or []):
                 self.brewery_index[alias.lower()] = brewery
     
-    def extract_breweries_from_beers(self, beers: List[Dict]) -> int:
-        """
-        Extract unique breweries from beer data (Untappd field).
-        Upserts to Supabase.
-        Returns number of new breweries added.
-        """
-        existing_names = {b.get('name_en', '').lower() for b in self.breweries}
-        new_breweries = []
-        
-        for beer in beers:
-            untappd_brewery = beer.get('untappd_brewery_name')
-            if not untappd_brewery:
-                continue
-            
-            if untappd_brewery.lower() in existing_names:
-                continue
-            
-            brewery_name_jp = beer.get('brewery_name_jp')
-            aliases = self._generate_aliases(untappd_brewery, brewery_name_jp)
-            
-            new_brewery = {
-                "name_en": untappd_brewery,
-                "name_jp": brewery_name_jp,
-                "aliases": aliases,
-            }
-            
-            new_breweries.append(new_brewery)
-            existing_names.add(untappd_brewery.lower())
-        
-        # Upsert to Supabase
-        if new_breweries:
-            try:
-                self.supabase.table('breweries').upsert(
-                    new_breweries, 
-                    on_conflict='name_en'
-                ).execute()
-                print(f"[BreweryManager] Upserted {len(new_breweries)} breweries to Supabase")
-                
-                # Reload to get IDs
-                self.load_breweries()
-            except Exception as e:
-                print(f"[BreweryManager] Error upserting breweries: {e}")
-                return 0
-        
-        return len(new_breweries)
-    
+
     def _generate_aliases(self, name_en: Optional[str], name_jp: Optional[str]) -> List[str]:
         """Generate common aliases for a brewery name."""
         aliases = []
@@ -162,27 +113,7 @@ class BreweryManager:
         breweries = self.find_breweries_in_text(text)
         return breweries[0] if breweries else None
     
-    def add_brewery(self, name_en: str, name_jp: Optional[str] = None) -> None:
-        """Manually add a brewery to the database."""
-        if name_en.lower() in {b.get('name_en', '').lower() for b in self.breweries}:
-            print(f"[BreweryManager] Brewery '{name_en}' already exists")
-            return
-        
-        aliases = self._generate_aliases(name_en, name_jp)
-        
-        new_brewery = {
-            "name_en": name_en,
-            "name_jp": name_jp,
-            "aliases": aliases,
-        }
-        
-        try:
-            self.supabase.table('breweries').insert(new_brewery).execute()
-            self.load_breweries()
-            print(f"[BreweryManager] Added brewery: {name_en}")
-        except Exception as e:
-            print(f"[BreweryManager] Error adding brewery: {e}")
-    
+
     def get_stats(self) -> Dict:
         """Get statistics about brewery database."""
         total = len(self.breweries)

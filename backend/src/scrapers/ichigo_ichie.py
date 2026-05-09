@@ -2,7 +2,7 @@ import asyncio
 import os
 import httpx
 from bs4 import BeautifulSoup, Tag
-from typing import List, Dict, Optional, Set, Any, Union
+from typing import List, Dict, Optional, Set, Any
 import time
 import re
 from ..core.types import ScrapedProduct

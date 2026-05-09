@@ -7,21 +7,18 @@ import logging
 import re
 import urllib.parse
 from pathlib import Path
-from typing import Optional, List, Dict, Any, cast
+from typing import Optional, List, Dict, Any
 
-import requests
-from bs4 import BeautifulSoup
 
 from .text_utils import (
-    clean_beer_name, clean_brewery_name, strip_beer_suffix,
     normalize_for_comparison, strip_for_core_comparison,
-    has_variant_mismatch, COMMON_SUFFIXES, COLLAB_SPLIT_PATTERN
+    has_variant_mismatch, COLLAB_SPLIT_PATTERN
 )
-from .validators import validate_beer_match, validate_brewery_match, score_beer_match, set_brewery_aliases
+from .validators import validate_beer_match, score_beer_match, set_brewery_aliases
 from .http_client import (
-    search_brewery_beer, scrape_beer_details, scrape_brewery_details, search_brewery
+    search_brewery_beer, scrape_beer_details, search_brewery
 )
-from ...core.types import UntappdBeerDetails, UntappdBreweryDetails, UntappdSearchResult
+from ...core.types import UntappdSearchResult
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@ import logging
 import asyncio
 from typing import Optional, Dict, Any, List, Tuple, cast
 from google import genai
-from google.genai.types import GenerateContentConfig
 from dotenv import load_dotenv
+from tenacity import retry, stop_after_attempt, wait_exponential
 from ...core.types import GeminiExtraction
 
 load_dotenv()
@@ -56,6 +56,7 @@ class GeminiExtractor:
             logger.error(f"Failed to load shop rules: {e}")
         return {}
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=4, max=20))
     async def _generate_content(self, prompt: str) -> Optional[Dict[str, Any]]:
         """Generates content using the configured Gemma model with fallback."""
         if not self.client:

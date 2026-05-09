@@ -6,7 +6,6 @@ import requests
 from typing import List, Dict, Optional, Set, Any
 from bs4 import BeautifulSoup, Tag
 import html
-import time
 from ..core.types import ScrapedProduct
 
 # BeerVolta category base URLs (without page parameter)

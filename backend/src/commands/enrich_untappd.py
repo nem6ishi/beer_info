@@ -9,7 +9,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Dict, Any, Set, cast, Union
+from typing import List, Optional, Dict, Any, Set
 
 from backend.src.core.db import get_supabase_client
 from backend.src.core.types import UntappdBeerDetails, UntappdSearchResult

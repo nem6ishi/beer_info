@@ -1,7 +1,6 @@
 import asyncio
 import os
 import re
-import time
 import requests
 from bs4 import BeautifulSoup, Tag
 from urllib.parse import urljoin

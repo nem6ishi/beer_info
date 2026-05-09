@@ -1,9 +1,8 @@
 import asyncio
 import argparse
 import sys
-import os
 import logging
-from typing import Optional, List, Any, Set
+from typing import Optional, Set
 
 from .core.logging import setup_logging
 

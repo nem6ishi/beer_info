@@ -1,9 +1,8 @@
 import asyncio
 import logging
-from typing import List, Optional, Dict, Any, cast
+from typing import List, Optional, Dict, Any
 import httpx
 from datetime import datetime
-import os
 
 from ..core.db import get_supabase_client
 from ..core.types import StockCheckResult

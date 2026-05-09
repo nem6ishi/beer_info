@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """各スクレイパーのサンプル実行スクリプト"""
 import asyncio
-import json
 import sys
 from pathlib import Path
 

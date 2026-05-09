@@ -77,9 +77,6 @@ def record_enrichment_failure(
     except Exception as e:
         logger.error(f"  ⚠️  Error recording failure: {e}")
 
-# Maintain backward compatibility
-def record_search_failure(*args, **kwargs):
-    return record_enrichment_failure(*args, **kwargs)
 
 
 def resolve_search_failure(supabase, product_url: str):

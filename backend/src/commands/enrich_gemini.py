@@ -2,13 +2,11 @@
 Gemini-only enrichment command.
 Extracts brewery and beer names using Gemini API.
 """
-import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List, Set, cast
+from typing import Dict, Any, Optional, List, cast
 
 from ..core.db import get_supabase_client
-from ..core.config import settings
 from ..core.types import GeminiExtraction
 from ..services.gemini.extractor import GeminiExtractor
 from ..services.store.brewery_manager import BreweryManager

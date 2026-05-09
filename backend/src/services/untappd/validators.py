@@ -4,12 +4,11 @@ Split from searcher.py for better modularity.
 """
 import re
 import logging
-from typing import Dict, List, Optional
-from bs4 import BeautifulSoup, Tag
+from typing import Dict, List
+from bs4 import Tag
 from .text_utils import (
     normalize_for_comparison, normalize_ordinals, strip_for_core_comparison,
-    clean_brewery_name, has_variant_mismatch, expand_abbreviations,
-    COLLAB_SPLIT_PATTERN,
+    clean_brewery_name, has_variant_mismatch, COLLAB_SPLIT_PATTERN,
 )
 
 logger = logging.getLogger(__name__)

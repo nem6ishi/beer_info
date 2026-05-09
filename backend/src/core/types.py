@@ -1,4 +1,4 @@
-from typing import TypedDict, Optional, List, Any
+from typing import TypedDict, Optional
 
 class ScrapedProduct(TypedDict):
     """Data structure returned by scrapers."""

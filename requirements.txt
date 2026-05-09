@@ -1,8 +1,0 @@
-beautifulsoup4
-lxml
-httpx
-supabase
-requests
-google-genai
-python-dotenv
-python-dateutil

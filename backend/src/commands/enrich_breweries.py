@@ -6,7 +6,7 @@ Optimized to reduce N+1 queries by caching existing records.
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Dict, Any, Set, cast
+from typing import List, Optional, Dict, Any, Set
 from dateutil import parser as dateutil_parser
 
 from ..core.db import get_supabase_client

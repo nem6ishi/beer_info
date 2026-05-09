@@ -9,8 +9,17 @@ interface PaginationProps {
 
 export default function Pagination({ currentPage, totalPages, totalItems, onPageChange }: PaginationProps) {
     const handlePageClick = (page: number) => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
         onPageChange(page);
+        
+        setTimeout(() => {
+            const resultsElement = document.getElementById('results-top');
+            if (resultsElement) {
+                const y = resultsElement.getBoundingClientRect().top + window.scrollY - 120;
+                window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+            } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }, 50);
     };
 
     return (

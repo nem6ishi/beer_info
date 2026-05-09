@@ -2,9 +2,8 @@ import asyncio
 import os
 import httpx
 from bs4 import BeautifulSoup, Tag
-from typing import List, Dict, Optional, Set, Any
+from typing import List, Optional, Set
 import re
-from datetime import datetime
 from ..core.types import ScrapedProduct
 
 # Threshold for consecutive sold-out items before stopping

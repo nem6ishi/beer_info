@@ -6,7 +6,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional, Set, Any, Union, cast
+from typing import List, Dict, Optional, Set, Any, Union
 
 from ..core.db import get_supabase_client
 from ..core.types import ScrapedProduct
