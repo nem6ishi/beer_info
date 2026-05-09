@@ -282,7 +282,7 @@ export default function Home({ initialData, availableStyles, availableBreweries 
                     onToggleFilter={() => setIsFilterOpen(!isFilterOpen)}
                     onReset={resetFilters}
                     onFilterChange={handleFilterChange}
-                    onViewModeChange={(mode) => mode === 'grouped' && router.push('/grouped')}
+                    onViewModeChange={(mode) => mode === 'grouped' && router.push({ pathname: '/grouped', query: router.query })}
                     onRefresh={fetchBeers}
                 />
 

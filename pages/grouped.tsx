@@ -262,7 +262,7 @@ export default function GroupedBeers({ initialData, availableStyles, availableBr
                     onReset={resetFilters}
                     onFilterChange={handleFilterChange}
                     viewMode="grouped"
-                    onViewModeChange={(mode) => mode === 'individual' && router.push('/')}
+                    onViewModeChange={(mode) => mode === 'individual' && router.push({ pathname: '/', query: router.query })}
                     onRefresh={fetchGroups}
                 />
 
