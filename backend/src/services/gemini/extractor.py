@@ -41,8 +41,8 @@ class GeminiExtractor:
         # Model Configuration: Gemma 4 31B (15 RPM, 1,500 RPD)
         self.model_id = "gemma-4-31b-it"
         self.fallback_model_id = "gemma-4-26b-a4b-it"
-        self.model_interval = 3.0
-        self.global_daily_limit = 14400
+        self.model_interval = 4.5  # 15 RPMの制限に余裕を持たせる (約 13.3 RPM)
+        self.global_daily_limit = 1450  # 1,500 RPDの制限に余裕を持たせる
 
     def _load_shop_rules(self) -> Dict[str, Any]:
         """Loads shop-specific rules from JSON file."""
