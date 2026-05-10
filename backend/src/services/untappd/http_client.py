@@ -10,6 +10,7 @@ from typing import Optional, Dict, Callable, List
 import requests
 from bs4 import BeautifulSoup, Tag
 from ...core.types import UntappdBeerDetails, UntappdBreweryDetails
+from .text_utils import normalize_for_comparison
 
 logger = logging.getLogger(__name__)
 
@@ -269,12 +270,37 @@ def search_brewery(query: str) -> Optional[str]:
         resp: requests.Response = requests.get(url, headers=_HEADERS, timeout=10)
         if resp.status_code == 200:
             soup: BeautifulSoup = BeautifulSoup(resp.text, 'lxml')
-            for res in soup.select('.beer-item')[:1]:
+            
+            candidates = []
+            for res in soup.select('.beer-item')[:5]:
                 name_tag: Optional[Tag] = res.select_one('.name a')
                 if name_tag:
                     href: Optional[str] = name_tag.get('href')
                     if href and "/b/" not in href:
-                        return f"https://untappd.com{href}"
+                        name_text = name_tag.get_text(strip=True)
+                        candidates.append((name_text, f"https://untappd.com{href}"))
+            
+            if not candidates:
+                return None
+                
+            query_norm = normalize_for_comparison(query)
+            
+            # 1. Exact match
+            for name, link in candidates:
+                if normalize_for_comparison(name) == query_norm:
+                    logger.info(f"  [Brewery Search] Exact match found: {name}")
+                    return link
+                    
+            # 2. Partial match
+            for name, link in candidates:
+                if query_norm in normalize_for_comparison(name):
+                    logger.info(f"  [Brewery Search] Partial match found: {name}")
+                    return link
+                    
+            # 3. Fallback to first
+            logger.info(f"  [Brewery Search] No exact match, falling back to first: {candidates[0][0]}")
+            return candidates[0][1]
+
     except Exception as e:
         logger.error(f"Brewery search error for '{query}': {e}")
 
