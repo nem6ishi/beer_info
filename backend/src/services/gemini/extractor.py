@@ -172,16 +172,31 @@ class GeminiExtractor:
 3. "【ROOTS ROCK/ヨロッコ】" -> {{"brewery_name_jp": "ヨロッコ", "brewery_name_en": "Yorocco Beer", "beer_name_en": "ROOTS ROCK", "beer_name_core": "ROOTS ROCK", "search_hint": "ROOTS ROCK Yorocco", "product_type": "beer"}}'''}
         """
 
+    def _clean_product_title(self, title: str, shop: Optional[str]) -> str:
+        """Removes common shop-specific noise from the title before sending to Gemini."""
+        import re
+        if not title:
+            return ""
+        
+        # ちょうせいやは【ビール名/ブルワリー名】の形式のためスキップ
+        if shop != "ちょうせいや":
+            # 【】で囲まれた特定の注意事項（予定、ご注文、本以上、入荷、クール便、限定、予約、空輸など）を削除
+            pattern = r'【[^】]*(?:予定|ご注文|本以上|入荷|クール便|限定|予約|空輸|おひとり様|必須|同時購入|推し)[^】]*】'
+            title = re.sub(pattern, '', title)
+        
+        return title.strip()
+
     async def extract_info(self, product_name: str, known_brewery: Optional[str] = None, shop: Optional[str] = None) -> GeminiExtraction:
         """Main entry point for extracting beer information."""
         if not self.client or self.daily_request_count >= self.global_daily_limit:
             return self._empty_result()
 
-        logger.info(f"[Gemini] Extracting: {product_name} (Known: {known_brewery}, Shop: {shop})")
+        clean_name = self._clean_product_title(product_name, shop)
+        logger.info(f"[Gemini] Extracting: {clean_name} (Original: {product_name}, Known: {known_brewery}, Shop: {shop})")
 
         hint: str = f"\nNote: The brewery exists and is likely: \"{known_brewery}\"" if known_brewery else ""
         guidance, examples = self._get_shop_guidance(shop)
-        prompt: str = self._build_prompt(product_name, hint, guidance, examples)
+        prompt: str = self._build_prompt(clean_name, hint, guidance, examples)
 
         logger.debug(f"[Gemini] Full Prompt:\n{'-'*40}\n{prompt}\n{'-'*40}")
 
