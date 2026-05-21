@@ -186,6 +186,14 @@ def _save_gemini_data(supabase: Any, url: str, info: GeminiExtraction) -> None:
 
     logger.info(f"  💾 Saved to gemini_data (Type: {payload.get('product_type')})")
 
+    # 古い失敗レコードがある場合は自動的に resolved = True に更新してバックオフを解除
+    try:
+        res = supabase.table('untappd_search_failures').update({'resolved': True}).eq('product_url', url).eq('resolved', False).execute()
+        if res.data:
+            logger.info(f"  🔄 Resolved {len(res.data)} previous Untappd search failures for this product.")
+    except Exception as e:
+        logger.warning(f"  ⚠️ Failed to resolve previous search failures: {e}")
+
 def _print_final_report(stats: Dict[str, int]) -> None:
     """Prints a summary of the enrichment run."""
     logger.info(f"\n{'='*70}\n📈 Final Statistics\n{'='*70}")

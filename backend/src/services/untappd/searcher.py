@@ -12,7 +12,8 @@ from typing import Optional, List, Dict, Any
 
 from .text_utils import (
     normalize_for_comparison, strip_for_core_comparison,
-    has_variant_mismatch, COLLAB_SPLIT_PATTERN
+    has_variant_mismatch, COLLAB_SPLIT_PATTERN,
+    clean_brewery_name
 )
 from .validators import validate_beer_match, score_beer_match, set_brewery_aliases
 from .http_client import (
@@ -53,9 +54,71 @@ def get_untappd_url(
     beer_name_core: Optional[str] = None,
 ) -> UntappdSearchResult:
     """
-    Searches for an Untappd beer page with a multi-stage strategy:
-    1. If brewery_url is provided or found, search WITHIN that brewery's beer list.
-    2. Fallback to DuckDuckGo search if brewery-specific search fails.
+    Searches for an Untappd beer page with a multi-stage strategy.
+    Implements a two-pass search for year-labeled beers:
+    1. Try with the year (e.g., "The Gateway 2026")
+    2. If no results, fallback to searching without the year ("The Gateway").
+    """
+    # 1. まず元のクエリ（西暦あり）で検索
+    result = _get_untappd_url_single(
+        brewery_name=brewery_name,
+        beer_name=beer_name,
+        beer_name_jp=beer_name_jp,
+        brewery_url=brewery_url,
+        search_hint=search_hint,
+        beer_name_core=beer_name_core
+    )
+    
+    if result.get('success'):
+        return result
+        
+    # 2. 失敗した場合、西暦（20XX）が含まれているかチェックしてフォールバック
+    has_year = False
+    for text in [beer_name_core, beer_name, search_hint]:
+        if text and re.search(r'\b20\d{2}\b', text):
+            has_year = True
+            break
+            
+    if has_year and result.get('failure_reason') == 'no_results':
+        logger.info("🔄 [Year-fallback] 'With-year' search failed. Retrying WITHOUT year...")
+        
+        def remove_year(t: Optional[str]) -> Optional[str]:
+            if not t:
+                return t
+            cleaned = re.sub(r'\b20\d{2}\b', '', t).strip()
+            return ' '.join(cleaned.split()) if cleaned else None
+
+        no_year_beer_name = remove_year(beer_name) or ""
+        no_year_beer_name_core = remove_year(beer_name_core)
+        no_year_search_hint = remove_year(search_hint)
+        
+        logger.info(f"🔄 [Year-fallback] Alternative names: Beer='{no_year_beer_name}', Core='{no_year_beer_name_core}', Hint='{no_year_search_hint}'")
+        
+        retry_result = _get_untappd_url_single(
+            brewery_name=brewery_name,
+            beer_name=no_year_beer_name,
+            beer_name_jp=beer_name_jp,
+            brewery_url=brewery_url,
+            search_hint=no_year_search_hint,
+            beer_name_core=no_year_beer_name_core
+        )
+        if retry_result.get('success'):
+            logger.info("✅ [Year-fallback] Found match without year!")
+            return retry_result
+            
+    return result
+
+
+def _get_untappd_url_single(
+    brewery_name: str,
+    beer_name: str,
+    beer_name_jp: Optional[str] = None,
+    brewery_url: Optional[str] = None,
+    search_hint: Optional[str] = None,
+    beer_name_core: Optional[str] = None,
+) -> UntappdSearchResult:
+    """
+    Core search logic for a single pass.
     """
     if not brewery_name and not beer_name and not beer_name_jp:
         return {
@@ -117,7 +180,7 @@ def get_untappd_url(
                 primary_breweries = re.split(COLLAB_SPLIT_PATTERN, exp_brewery)
                 brewery_match = False
                 for p_brew in primary_breweries:
-                    b_norm: str = normalize_for_comparison(p_brew)
+                    b_norm: str = normalize_for_comparison(clean_brewery_name(p_brew))
                     if b_norm and b_norm in t_norm:
                         brewery_match = True
                         break

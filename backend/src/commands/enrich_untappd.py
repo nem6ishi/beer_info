@@ -246,7 +246,7 @@ async def process_beer_missing(
         logger.info(f"  ⏭️ Item is a {product_type}. Skipping Untappd.")
         return None
 
-    if not brewery or not beer_name:
+    if (not brewery or not beer_name) and beer.get('shop') == "ちょうせいや":
         match: Optional[re.Match] = re.search(r'【(.*?)/(.*?)】', beer.get('name', ''))
         if match:
             beer_name, brewery = match.group(1), match.group(2)
