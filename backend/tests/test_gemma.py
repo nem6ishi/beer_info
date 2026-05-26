@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import pytest
+
+@pytest.mark.asyncio
 async def test_gemma():
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:

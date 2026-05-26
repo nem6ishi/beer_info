@@ -185,6 +185,17 @@ def clean_beer_name(name: str) -> str:
     name = re.sub(r'Vol\.?\s*\d+', '', name, flags=re.IGNORECASE)
     name = re.sub(r'Batch\s*\d+', '', name, flags=re.IGNORECASE)
 
+    # Remove serve/container info in parentheses (e.g. (NITRO), (GAS), (CAN), (BOTTLE))
+    name = re.sub(
+        r'\s*\([^)]*(?:nitro|gas|can|bottle|keg)[^)]*\)',
+        '', name, flags=re.IGNORECASE
+    )
+    # 日本語の括弧も考慮
+    name = re.sub(
+        r'\s*[（(][^）)]*(?:nitro|gas|can|bottle|keg|缶|瓶|生樽|窒素)[^）)]*[）)]',
+        '', name, flags=re.IGNORECASE
+    )
+
     # Remove Japanese parentheses content that looks like version info or anniversary
     name = re.sub(r'（[^）]*版[^）]*）', '', name)
     
