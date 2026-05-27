@@ -51,6 +51,20 @@ export async function GET(request: Request) {
                 if (breweries.length > 0) q = q.in('brewery_name', breweries)
             }
 
+            if (shop) {
+                const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+                if (shops.length > 0) {
+                    const orFilters = shops.map(s => `items.cs.[{"shop":"${s}"}]`).join(',')
+                    q = q.or(orFilters)
+                }
+            }
+
+            if (stock_filter === 'in_stock') {
+                q = q.contains('items', [{ stock_status: 'In Stock' }])
+            } else if (stock_filter === 'sold_out') {
+                q = q.not('items', 'cs', '[{"stock_status":"In Stock"}]')
+            }
+
             if (product_type) {
                 q = q.eq('product_type', product_type)
             }
@@ -82,19 +96,46 @@ export async function GET(request: Request) {
             return q
         }
 
-        const { data, count, error } = await buildQuery().range(offset, offset + limitNum - 1)
-        if (error) throw error
+        const fetchShopCounts = async () => {
+            const styles = style_filter ? style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean) : null;
+            const breweries = brewery_filter ? brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean) : null;
+
+            return supabase.rpc('get_filtered_shop_counts', {
+                search_query: search || null,
+                p_min_abv: min_abv ? parseFloat(min_abv) : null,
+                p_max_abv: max_abv ? parseFloat(max_abv) : null,
+                p_min_ibu: min_ibu ? parseFloat(min_ibu) : null,
+                p_max_ibu: max_ibu ? parseFloat(max_ibu) : null,
+                p_min_rating: min_rating ? parseFloat(min_rating) : null,
+                p_stock_filter: stock_filter || null,
+                p_style_filter: styles && styles.length > 0 ? styles : null,
+                p_brewery_filter: breweries && breweries.length > 0 ? breweries : null,
+                p_product_type: product_type || null
+            });
+        }
+
+        const [dataRes, countRes] = await Promise.all([
+            buildQuery().range(offset, offset + limitNum - 1),
+            fetchShopCounts()
+        ])
+
+        if (dataRes.error) throw dataRes.error
 
         const shopCounts: Record<string, number> = {};
+        if (countRes.data) {
+            countRes.data.forEach((item: any) => {
+                shopCounts[item.shop] = Number(item.shop_count);
+            });
+        }
 
         const response = NextResponse.json({
-            groups: data || [],
+            groups: dataRes.data || [],
             shopCounts,
             pagination: {
                 page: pageNum,
                 limit: limitNum,
-                total: count || 0,
-                totalPages: Math.ceil((count || 0) / limitNum)
+                total: dataRes.count || 0,
+                totalPages: Math.ceil((dataRes.count || 0) / limitNum)
             }
         })
         
