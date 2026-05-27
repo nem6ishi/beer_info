@@ -97,6 +97,10 @@ CREATE INDEX IF NOT EXISTS idx_scraped_name ON scraped_beers USING gin(to_tsvect
 -- Indices for untappd_data
 CREATE INDEX IF NOT EXISTS idx_untappd_data_abv_num ON untappd_data(abv_num);
 CREATE INDEX IF NOT EXISTS idx_untappd_data_rating_num ON untappd_data(rating_num);
+CREATE INDEX IF NOT EXISTS idx_untappd_data_brewery_url ON untappd_data(untappd_brewery_url);
+
+-- Foreign-key index for scraped_beers JOINs
+CREATE INDEX IF NOT EXISTS idx_scraped_beers_untappd_url ON scraped_beers(untappd_url);
 
 -- Indices for untappd_search_failures
 CREATE INDEX IF NOT EXISTS idx_untappd_failures_product_url ON untappd_search_failures(product_url);
@@ -183,7 +187,7 @@ SELECT
     MAX(price_value) as max_price,
     MAX(first_seen) as newest_seen,
     COUNT(*) as total_items,
-    json_agg(json_build_object(
+    jsonb_agg(jsonb_build_object(
         'shop', shop,
         'price', price,
         'price_value', price_value,
