@@ -47,11 +47,34 @@ export default async function GroupedPage({
     const { data: groups, count, error: dataError } = await q.range(offset, offset + limitNum - 1);
     if (dataError) console.error('Data error:', dataError);
 
-    // Optimized aggregation via RPC
-    const { data: filterData, error: rpcError } = await supabase.rpc('get_available_filters').single();
-    if (rpcError) console.error('RPC Error:', rpcError);
-    
-    const typedFilterData = filterData as any;
+    // Fetch shop counts and available filters via RPC
+    const [countRes, filterRes] = await Promise.all([
+        supabase.rpc('get_filtered_shop_counts', {
+            search_query: search || null,
+            p_min_abv: searchParams.min_abv ? parseFloat(searchParams.min_abv as string) : null,
+            p_max_abv: searchParams.max_abv ? parseFloat(searchParams.max_abv as string) : null,
+            p_min_ibu: searchParams.min_ibu ? parseFloat(searchParams.min_ibu as string) : null,
+            p_max_ibu: searchParams.max_ibu ? parseFloat(searchParams.max_ibu as string) : null,
+            p_min_rating: searchParams.min_rating ? parseFloat(searchParams.min_rating as string) : null,
+            p_stock_filter: (searchParams.stock_filter as string) || null,
+            p_style_filter: searchParams.style_filter ? (searchParams.style_filter as string).split(',').filter(Boolean) : null,
+            p_brewery_filter: searchParams.brewery_filter ? (searchParams.brewery_filter as string).split(',').filter(Boolean) : null,
+            p_product_type: (searchParams.product_type as string) || null
+        }),
+        supabase.rpc('get_available_filters').single()
+    ]);
+
+    if (countRes.error) console.error('Count RPC Error:', countRes.error);
+    if (filterRes.error) console.error('Filters RPC Error:', filterRes.error);
+
+    const shopCounts: Record<string, number> = {};
+    if (countRes.data) {
+        countRes.data.forEach((item: any) => {
+            shopCounts[item.shop] = Number(item.shop_count);
+        });
+    }
+
+    const typedFilterData = filterRes.data as any;
     const styles = typedFilterData?.styles || [];
     const breweries = typedFilterData?.breweries?.map((b: any) => ({
         name: b.name_en || b.name_jp || 'Unknown',
@@ -60,7 +83,7 @@ export default async function GroupedPage({
 
     const initialData = {
         groups: groups || [],
-        shopCounts: {},
+        shopCounts: shopCounts,
         pagination: {
             page: pageNum,
             limit: limitNum,
