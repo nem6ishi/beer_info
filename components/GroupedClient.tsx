@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import GroupedBeerTable from './GroupedBeerTable'
@@ -28,6 +28,7 @@ export default function GroupedClient({ initialData, availableStyles, availableB
     const [error, setError] = useState<string | null>(null)
     const [totalPages, setTotalPages] = useState(initialData.pagination.totalPages)
     const [totalItems, setTotalItems] = useState(initialData.pagination.total)
+    const [isPending, startTransition] = useTransition()
 
     const searchParamStr = searchParams.get('search') || '';
     const [searchInput, setSearchInput] = useState(searchParamStr)
@@ -109,7 +110,9 @@ export default function GroupedClient({ initialData, availableStyles, availableB
 
         const searchStr = params.toString();
         const queryStr = searchStr ? `?${searchStr}` : '';
-        router.push(`${targetPath}${queryStr}`, { scroll: false });
+        startTransition(() => {
+            router.push(`${targetPath}${queryStr}`, { scroll: false });
+        });
     }
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,7 +130,11 @@ export default function GroupedClient({ initialData, availableStyles, availableB
         }, 500);
     }
     const handleMultiSelectChange = (key: string, value: string[]) => updateURL({ [key]: value.join(','), page: '1' })
-    const resetFilters = () => router.push(pathname, { scroll: false })
+    const resetFilters = () => {
+        startTransition(() => {
+            router.push(pathname, { scroll: false });
+        });
+    }
     const handlePageChange = (newPage: number) => updateURL({ page: newPage.toString() })
 
     return (
@@ -182,7 +189,7 @@ export default function GroupedClient({ initialData, availableStyles, availableB
                 <div id="results-top" style={{ scrollMarginTop: '120px' }}></div>
                 <GroupedBeerTable
                     groups={groups}
-                    loading={loading}
+                    loading={loading || isPending}
                     error={error}
                     isDebug={searchParams.get('debug') === '1'}
                 />
