@@ -107,7 +107,7 @@ GRANT SELECT ON beer_groups_view TO anon, authenticated;
 CREATE OR REPLACE FUNCTION refresh_beer_info_view()
 RETURNS void AS $$
 BEGIN
-  -- Recompute the materialized view data
-  REFRESH MATERIALIZED VIEW beer_info_view;
+  -- Recompute the materialized view data without locking the table (zero-downtime)
+  REFRESH MATERIALIZED VIEW CONCURRENTLY beer_info_view;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

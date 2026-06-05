@@ -264,11 +264,11 @@ $$ LANGUAGE plpgsql SET search_path = '';
 GRANT SELECT ON beer_info_view TO anon, authenticated;
 GRANT SELECT ON beer_groups_view TO anon, authenticated;
 
--- Function to refresh materialized view
+-- Function to refresh materialized view (zero-downtime)
 CREATE OR REPLACE FUNCTION refresh_beer_info_view()
 RETURNS void AS $$
 BEGIN
-  REFRESH MATERIALIZED VIEW beer_info_view;
+  REFRESH MATERIALIZED VIEW CONCURRENTLY beer_info_view;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

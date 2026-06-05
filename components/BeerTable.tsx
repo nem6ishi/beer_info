@@ -18,10 +18,46 @@ export default function BeerTable({ beers, loading, error, isDebug }: BeerTableP
     if (error) return <div className="status-message error">Error: {error}</div>
 
     // Don't block render on loading. Show table with opacity if reloading.
-    // If initial load and no data, show a simple loading message in a container to prevent CLS if possible, 
-    // but here we prioritize simplicity.
     if (loading && beers.length === 0) {
-        return <div className="status-message">Loading...</div>
+        return (
+            <div className="table-container">
+                <table className="beer-table">
+                    <thead>
+                        <tr>
+                            <th className="col-img">Image</th>
+                            <th className="col-name">Info</th>
+                            <th className="col-beer-style">Style / Specs</th>
+                            <th className="col-rating">Rating</th>
+                            <th className="col-shop">Availability</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {[...Array(5)].map((_, i) => (
+                            <tr key={`skeleton-${i}`}>
+                                <td className="col-img">
+                                    <div className="skeleton skeleton-img"></div>
+                                </td>
+                                <td className="col-name">
+                                    <div className="skeleton skeleton-text short"></div>
+                                    <div className="skeleton skeleton-text"></div>
+                                    <div className="skeleton skeleton-text medium"></div>
+                                </td>
+                                <td className="col-beer-style">
+                                    <div className="skeleton skeleton-badge"></div>
+                                    <div className="skeleton skeleton-text short" style={{marginTop: '8px'}}></div>
+                                </td>
+                                <td className="col-rating">
+                                    <div className="skeleton skeleton-img" style={{width: '60px', height: '60px', borderRadius: '8px', margin: '0 auto'}}></div>
+                                </td>
+                                <td className="col-shop">
+                                    <div className="skeleton skeleton-btn"></div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
     }
 
     const hasUntappdBeerData = (beer: Beer): boolean =>
