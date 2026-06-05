@@ -36,16 +36,17 @@ def record_enrichment_failure(
             .select('id, search_attempts') \
             .eq('product_url', product_url) \
             .eq('resolved', False) \
-            .maybe_single() \
+            .limit(1) \
             .execute()
         
         now = datetime.now(timezone.utc).isoformat()
         
-        if existing and existing.data:
+        if existing and existing.data and len(existing.data) > 0:
+            existing_record = existing.data[0]
             # Update existing failure record
             supabase.table('untappd_search_failures') \
                 .update({
-                    'search_attempts': existing.data['search_attempts'] + 1,
+                    'search_attempts': existing_record['search_attempts'] + 1,
                     'last_failed_at': now,
                     'failure_reason': failure_reason,
                     'last_error_message': error_message,
@@ -53,9 +54,9 @@ def record_enrichment_failure(
                     'beer_name': beer_name,
                     'beer_name_jp': beer_name_jp
                 }) \
-                .eq('id', existing.data['id']) \
+                .eq('id', existing_record['id']) \
                 .execute()
-            logger.info(f"  📝 Updated failure record (attempt {existing.data['search_attempts'] + 1}): {failure_reason}")
+            logger.info(f"  📝 Updated failure record (attempt {existing_record['search_attempts'] + 1}): {failure_reason}")
         else:
             # Insert new failure record
             supabase.table('untappd_search_failures') \

@@ -76,10 +76,11 @@ async def _resolve_untappd_url(
     beer_name: str,
     brewery_url_hint: Optional[str],
     extractor: Optional[GeminiExtractor],
+    gemini_cache: Dict[str, str],
 ) -> Optional[str]:
     """
     Core URL resolution logic:
-    1. Check persistence in gemini_data
+    1. Check persistence in gemini_cache (pre-loaded)
     2. Search Untappd with all fallback strategies
     3. Two-pass retry via Gemini if no_results
     Returns the resolved URL, or None if not found.
@@ -88,17 +89,12 @@ async def _resolve_untappd_url(
     untappd_url: Optional[str] = beer.get('untappd_url')
     url: Optional[str] = beer.get('url')
 
-    # 1. Check persistence in gemini_data
+    # 1. Check persistence in gemini_cache
     if not untappd_url and url:
-        try:
-            res: Any = supabase.table('gemini_data').select('untappd_url').eq('url', url).execute()
-            if res.data and res.data[0].get('untappd_url'):
-                p_url: str = res.data[0]['untappd_url']
-                if '/search?' not in p_url:
-                    logger.info(f"  ✅ [Persistence] Found link in gemini_data: {p_url}")
-                    return p_url
-        except Exception as e:
-            logger.warning(f"  ⚠️ Error checking persistence: {e}")
+        p_url = gemini_cache.get(url)
+        if p_url and '/search?' not in p_url:
+            logger.info(f"  ✅ [Persistence] Found link in gemini_cache: {p_url}")
+            return p_url
 
     if untappd_url and '/search?' not in untappd_url:
         return untappd_url
@@ -161,15 +157,20 @@ async def _resolve_untappd_url(
     return search_result.get('url')
 
 
-async def _scrape_and_save_details(untappd_url: str, beer: Dict[str, Any], brewery: str, beer_name: str) -> Dict[str, Any]:
+async def _scrape_and_save_details(
+    untappd_url: str, 
+    beer: Dict[str, Any], 
+    brewery: str, 
+    beer_name: str,
+    untappd_cache: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
     """Scrapes beer details and returns untappd_payload. Returns {} if nothing to save."""
     supabase: Any = get_supabase_client()
     url: str = beer.get('url', '')
 
-    # Check if details already exist
-    existing: Any = supabase.table('untappd_data').select('untappd_url, fetched_at').eq('untappd_url', untappd_url).execute()
-    if existing.data:
-        logger.info(f"  💾 Data already exists in untappd_data. Linking only.")
+    # Check if details already exist in local cache
+    if untappd_url in untappd_cache:
+        logger.info(f"  💾 Data already exists in untappd_cache. Linking only.")
         return {}
 
     if "untappd.com/b/" not in untappd_url:
@@ -182,6 +183,12 @@ async def _scrape_and_save_details(untappd_url: str, beer: Dict[str, Any], brewe
         payload: Dict[str, Any] = map_details_to_payload(details)
         payload['untappd_url'] = untappd_url
         logger.info(f"  ✅ Details scraped: {details.get('untappd_style', 'N/A')}")
+        
+        # Add to local cache for subsequent items in this batch
+        untappd_cache[untappd_url] = {
+            'untappd_url': untappd_url,
+            'untappd_brewery_url': details.get('untappd_brewery_url')
+        }
         return payload
     else:
         logger.warning(f"  ⚠️  Could not scrape details")
@@ -197,42 +204,42 @@ async def _scrape_and_save_details(untappd_url: str, beer: Dict[str, Any], brewe
         return {'untappd_url': untappd_url, 'fetched_at': datetime.now(timezone.utc).isoformat()}
 
 
-async def commit_updates(beer: Dict[str, Any], untappd_payload: Dict[str, Any], gemini_updates: Dict[str, Any], scraped_updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Commits all updates to the database."""
-    supabase: Any = get_supabase_client()
-    url: Optional[str] = beer.get('url')
-
-    if untappd_payload:
+def commit_updates_batch(
+    supabase: Any,
+    untappd_payloads: List[Dict[str, Any]],
+    gemini_updates: List[Dict[str, Any]],
+    scraped_updates: List[Dict[str, Any]],
+) -> None:
+    """Commits all accumulated updates to the database in batch."""
+    if untappd_payloads:
         try:
-            supabase.table('untappd_data').upsert(untappd_payload).execute()
-            logger.info(f"  💾 Saved to untappd_data")
+            supabase.table('untappd_data').upsert(untappd_payloads).execute()
+            logger.info(f"  💾 Saved {len(untappd_payloads)} items to untappd_data (Batch)")
         except Exception as e:
-            logger.error(f"  ❌ Error saving to untappd_data: {e}")
+            logger.error(f"  ❌ Error saving to untappd_data (Batch): {e}")
 
-    if gemini_updates and url:
+    if gemini_updates:
         try:
-            supabase.table('gemini_data').update(gemini_updates).eq('url', url).execute()
-            logger.info(f"  💾 Persisted URL to gemini_data")
+            supabase.table('gemini_data').upsert(gemini_updates).execute()
+            logger.info(f"  💾 Saved {len(gemini_updates)} items to gemini_data (Batch)")
         except Exception as e:
-            logger.error(f"  ⚠️ Error updating gemini_data: {e}")
+            logger.error(f"  ⚠️ Error updating gemini_data (Batch): {e}")
 
-    if scraped_updates and url:
+    if scraped_updates:
         try:
-            supabase.table('scraped_beers').update(scraped_updates).eq('url', url).execute()
-            logger.info(f"  🔗 Linked scraping_beers")
+            supabase.table('scraped_beers').upsert(scraped_updates).execute()
+            logger.info(f"  💾 Linked {len(scraped_updates)} items in scraped_beers (Batch)")
         except Exception as e:
-            logger.error(f"  ❌ Error updating scraped_beers: {e}")
+            logger.error(f"  ❌ Error updating scraped_beers (Batch): {e}")
 
-    return untappd_payload or scraped_updates
-
-
-# ── Main processing functions ─────────────────────────────────────────────────
 
 async def process_beer_missing(
     beer: Dict[str, Any], 
     brewery_manager: Optional[BreweryManager] = None, 
     extractor: Optional[GeminiExtractor] = None, 
-    offline: bool = False
+    offline: bool = False,
+    gemini_cache: Optional[Dict[str, str]] = None,
+    untappd_cache: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Process a beer in 'missing' mode.
@@ -275,13 +282,13 @@ async def process_beer_missing(
                 logger.info(f"  ⏭️  [Offline] Not found in DB. Skipping.")
                 return None
         else:
-            untappd_url = await _resolve_untappd_url(beer, brewery, beer_name, brewery_url_hint, extractor)
+            untappd_url = await _resolve_untappd_url(beer, brewery, beer_name, brewery_url_hint, extractor, gemini_cache or {})
 
         if not untappd_url:
             return None
 
-        scraped_updates: Dict[str, Any] = {'untappd_url': untappd_url}
-        gemini_updates: Dict[str, Any] = {'untappd_url': untappd_url}
+        scraped_updates: Dict[str, Any] = {'url': url, 'untappd_url': untappd_url}
+        gemini_updates: Dict[str, Any] = {'url': url, 'untappd_url': untappd_url}
 
         logger.info(f"  ✅ Found URL: {untappd_url}")
         if url:
@@ -289,18 +296,30 @@ async def process_beer_missing(
 
         untappd_payload: Dict[str, Any] = {}
         if not offline:
-            untappd_payload = await _scrape_and_save_details(untappd_url, beer, brewery, beer_name)
+            untappd_payload = await _scrape_and_save_details(untappd_url, beer, brewery, beer_name, untappd_cache or {})
             if untappd_payload:
                 untappd_payload['untappd_url'] = untappd_url
 
-        return await commit_updates(beer, untappd_payload, gemini_updates, scraped_updates)
+        brewery_url_to_return = untappd_payload.get('untappd_brewery_url')
+        if not brewery_url_to_return and untappd_cache and untappd_url in untappd_cache:
+            brewery_url_to_return = untappd_cache[untappd_url].get('untappd_brewery_url')
+
+        return {
+            'untappd_payload': untappd_payload,
+            'gemini_payload': gemini_updates,
+            'scraped_payload': scraped_updates,
+            'untappd_brewery_url': brewery_url_to_return
+        }
 
     except Exception as e:
         logger.error(f"  ❌ Untappd search error: {e}")
         return None
 
 
-async def process_beer_refresh(beer: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+async def process_beer_refresh(
+    beer: Dict[str, Any],
+    untappd_cache: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Optional[Dict[str, Any]]:
     """Process a beer in 'refresh' mode: re-scrape details for existing URLs."""
     untappd_url: Optional[str] = beer.get('untappd_url')
     if not untappd_url or "untappd.com/b/" not in untappd_url:
@@ -317,11 +336,22 @@ async def process_beer_refresh(beer: Dict[str, Any]) -> Optional[Dict[str, Any]]
             untappd_payload = map_details_to_payload(details)
             untappd_payload['untappd_url'] = untappd_url
             logger.info(f"  ✅ Details updated: Rating {details.get('untappd_rating', 'N/A')}")
+            
+            if untappd_cache:
+                untappd_cache[untappd_url] = {
+                    'untappd_url': untappd_url,
+                    'untappd_brewery_url': details.get('untappd_brewery_url')
+                }
         else:
             logger.warning(f"  ⚠️  Could not scrape details")
             untappd_payload = {'untappd_url': untappd_url, 'fetched_at': datetime.now(timezone.utc).isoformat()}
         
-        return await commit_updates(beer, untappd_payload, {}, {})
+        return {
+            'untappd_payload': untappd_payload,
+            'gemini_payload': {},
+            'scraped_payload': {},
+            'untappd_brewery_url': untappd_payload.get('untappd_brewery_url')
+        }
     except Exception as e:
         logger.error(f"  ❌ Refresh error: {e}")
         return None
@@ -444,6 +474,40 @@ async def enrich_untappd(
             logger.info("\n✨ No more beers to process!")
             break
 
+        # ── Prefetch Caches for the current batch to avoid DB N+1 ───────────────
+        urls_to_process = [b.get('url') for b in beers_to_process if b.get('url')]
+        
+        gemini_cache: Dict[str, str] = {}
+        if urls_to_process:
+            try:
+                gemini_res = supabase.table('gemini_data').select('url, untappd_url').in_('url', urls_to_process).execute()
+                gemini_cache = {item['url']: item.get('untappd_url') for item in (gemini_res.data or []) if item.get('untappd_url')}
+            except Exception as e:
+                logger.warning(f"  ⚠️ Failed to prefetch gemini_data cache: {e}")
+
+        known_untappd_urls = []
+        for b in beers_to_process:
+            u_url = b.get('untappd_url')
+            if u_url and '/search?' not in u_url:
+                known_untappd_urls.append(u_url)
+            else:
+                g_url = gemini_cache.get(b.get('url'))
+                if g_url and '/search?' not in g_url:
+                    known_untappd_urls.append(g_url)
+
+        untappd_cache: Dict[str, Dict[str, Any]] = {}
+        if known_untappd_urls:
+            try:
+                untappd_res = supabase.table('untappd_data').select('untappd_url, untappd_brewery_url').in_('untappd_url', known_untappd_urls).execute()
+                untappd_cache = {item['untappd_url']: item for item in (untappd_res.data or [])}
+            except Exception as e:
+                logger.warning(f"  ⚠️ Failed to prefetch untappd_data cache: {e}")
+
+        # Accumulating payloads
+        batch_untappd = []
+        batch_gemini = []
+        batch_scraped = []
+
         for i, beer in enumerate(beers_to_process, 1):
             product_url_loop: Optional[str] = beer.get('url')
             if not product_url_loop:
@@ -457,17 +521,28 @@ async def enrich_untappd(
 
             result: Optional[Dict[str, Any]] = None
             if mode == 'missing':
-                result = await process_beer_missing(beer, brewery_manager=brewery_manager, extractor=extractor)
+                result = await process_beer_missing(beer, brewery_manager=brewery_manager, extractor=extractor, gemini_cache=gemini_cache, untappd_cache=untappd_cache)
             elif mode == 'refresh':
-                result = await process_beer_refresh(beer)
+                result = await process_beer_refresh(beer, untappd_cache=untappd_cache)
 
             if result:
                 total_success += 1
-                b_url: Optional[str] = result.get('untappd_brewery_url')
+                b_url = result.get('untappd_brewery_url')
                 if b_url:
                     collected_brewery_urls.add(b_url)
+                
+                if result.get('untappd_payload'):
+                    batch_untappd.append(result['untappd_payload'])
+                if result.get('gemini_payload') and result['gemini_payload'].get('url'):
+                    batch_gemini.append(result['gemini_payload'])
+                if result.get('scraped_payload') and result['scraped_payload'].get('url'):
+                    batch_scraped.append(result['scraped_payload'])
 
             await asyncio.sleep(1)
+
+        # Commit batch
+        if batch_untappd or batch_gemini or batch_scraped:
+            commit_updates_batch(supabase, batch_untappd, batch_gemini, batch_scraped)
 
         total_processed += len(beers_to_process)
         if total_processed >= limit:

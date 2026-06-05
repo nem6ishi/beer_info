@@ -4,7 +4,7 @@ Extracts brewery and beer names using Gemini API.
 """
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List, cast
+from typing import Dict, Any, Optional, List, cast, Tuple
 
 from ..core.db import get_supabase_client
 from ..core.types import GeminiExtraction
@@ -47,6 +47,7 @@ async def enrich_gemini(
         return
 
     stats: Dict[str, int] = {"processed": 0, "enriched": 0, "errors": 0}
+    pending_payloads: List[Dict[str, Any]] = []
     
     while stats["processed"] < limit:
         remaining: int = limit - stats["processed"]
@@ -65,11 +66,21 @@ async def enrich_gemini(
             logger.info(f"[Item {stats['processed']}/{limit}] Processing: {beer.get('name', 'Unknown')[:60]}")
             logger.info(f"{'='*70}")
             
-            success: Optional[bool] = await _process_item(supabase, extractor, brewery_manager, beer, offline, force_reprocess)
-            if success:
+            status, payload = await _process_item(supabase, extractor, brewery_manager, beer, offline, force_reprocess)
+            if status == 'enriched' and payload:
                 stats["enriched"] += 1
-            elif success is None:
+                pending_payloads.append(payload)
+            elif status == 'already_exists':
+                stats["enriched"] += 1
+            elif status == 'error':
                 stats["errors"] += 1
+
+        if pending_payloads:
+            _save_gemini_data_batch(supabase, pending_payloads)
+            pending_payloads.clear()
+
+    if pending_payloads:
+        _save_gemini_data_batch(supabase, pending_payloads)
 
     _print_final_report(stats)
 
@@ -112,39 +123,51 @@ async def _process_item(
     beer: Dict[str, Any], 
     offline: bool, 
     force: bool
-) -> Optional[bool]:
-    """Processes a single beer item: Extract -> Save."""
+) -> Tuple[str, Optional[Dict[str, Any]]]:
+    """Processes a single beer item: Extract and prepare payload."""
     has_names: bool = bool(beer.get('brewery_name_en') and beer.get('beer_name_en'))
     has_hint: bool = bool(beer.get('search_hint'))
     need_gemini: bool = force or not has_names or not has_hint
     
     url: str = beer.get('url', '')
-    if not url: return False
+    if not url: return 'skipped', None
     
     try:
         if need_gemini:
             if offline:
                 logger.info("  ⏭️ Gemini enrichment needed but skipped in offline mode.")
-                return False
+                return 'skipped', None
             
             # Extract
             enriched_info: Optional[GeminiExtraction] = await _extract_gemini(extractor, brewery_manager, beer)
             if not enriched_info:
                 record_enrichment_failure(supabase, url, 'gemini_no_info', "Gemini returned no valid info.")
-                return False
+                return 'error', None
             
-            # Save
-            _save_gemini_data(supabase, url, enriched_info)
+            # Prepare payload
+            payload: Dict[str, Any] = {
+                'url': url,
+                'brewery_name_en': enriched_info.get('brewery_name_en'),
+                'brewery_name_jp': enriched_info.get('brewery_name_jp'),
+                'beer_name_en': enriched_info.get('beer_name_en'),
+                'beer_name_jp': enriched_info.get('beer_name_jp'),
+                'beer_name_core': enriched_info.get('beer_name_core'),
+                'search_hint': enriched_info.get('search_hint'),
+                'product_type': enriched_info.get('product_type', 'beer'),
+                'is_set': enriched_info.get('is_set', False),
+                'payload': enriched_info.get('raw_response'),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            return 'enriched', payload
             
         else:
             logger.info(f"  ⏩ Gemini data already exists. Skipping extraction. (Brewery: {beer.get('brewery_name_en')})")
-            
-        return True
+            return 'already_exists', None
 
     except Exception as e:
         logger.error(f"  ❌ Error processing item: {e}")
         record_enrichment_failure(supabase, url, 'gemini_error', str(e))
-        return None
+        return 'error', None
 
 async def _extract_gemini(extractor: GeminiExtractor, brewery_manager: BreweryManager, beer: Dict[str, Any]) -> Optional[GeminiExtraction]:
     """Helper to get hints and call Gemini."""
@@ -158,39 +181,39 @@ async def _extract_gemini(extractor: GeminiExtractor, brewery_manager: BreweryMa
     logger.info("  🤖 Calling Gemini API...")
     return await extractor.extract_info(beer_name, known_brewery=known_brewery, shop=beer.get('shop'))
 
-def _save_gemini_data(supabase: Any, url: str, info: GeminiExtraction) -> None:
-    """Helper to save enriched data to Supabase."""
-    payload: Dict[str, Any] = {
-        'url': url,
-        'brewery_name_en': info.get('brewery_name_en'),
-        'brewery_name_jp': info.get('brewery_name_jp'),
-        'beer_name_en': info.get('beer_name_en'),
-        'beer_name_jp': info.get('beer_name_jp'),
-        'beer_name_core': info.get('beer_name_core'),
-        'search_hint': info.get('search_hint'),
-        'product_type': info.get('product_type', 'beer'),
-        'is_set': info.get('is_set', False),
-        'payload': info.get('raw_response'),
-        'updated_at': datetime.now(timezone.utc).isoformat()
-    }
+def _save_gemini_data_batch(supabase: Any, payloads: List[Dict[str, Any]]) -> None:
+    """Helper to save a batch of enriched data to Supabase."""
+    if not payloads:
+        return
+    
     try:
-        supabase.table('gemini_data').upsert(payload).execute()
+        supabase.table('gemini_data').upsert(payloads).execute()
+        logger.info(f"  💾 Saved {len(payloads)} items to gemini_data")
     except Exception as e:
         if 'beer_name_core' in str(e) or 'search_hint' in str(e) or 'column' in str(e).lower():
-            logger.warning(f"  ⚠️ New columns not in DB yet, saving without search hints (run migration 005)")
-            payload.pop('beer_name_core', None)
-            payload.pop('search_hint', None)
-            supabase.table('gemini_data').upsert(payload).execute()
+            logger.warning(f"  ⚠️ New columns not in DB yet, trying to save without search hints")
+            cleaned_payloads = []
+            for p in payloads:
+                cp = p.copy()
+                cp.pop('beer_name_core', None)
+                cp.pop('search_hint', None)
+                cleaned_payloads.append(cp)
+            try:
+                supabase.table('gemini_data').upsert(cleaned_payloads).execute()
+                logger.info(f"  💾 Saved {len(cleaned_payloads)} items to gemini_data (fallback)")
+            except Exception as inner_e:
+                logger.error(f"  ❌ Error in gemini_data fallback upsert: {inner_e}")
+                raise
         else:
+            logger.error(f"  ❌ Error in gemini_data upsert: {e}")
             raise
 
-    logger.info(f"  💾 Saved to gemini_data (Type: {payload.get('product_type')})")
-
-    # 古い失敗レコードがある場合は自動的に resolved = True に更新してバックオフを解除
+    # Resolve previous failures in batch
+    urls = [p['url'] for p in payloads]
     try:
-        res = supabase.table('untappd_search_failures').update({'resolved': True}).eq('product_url', url).eq('resolved', False).execute()
+        res = supabase.table('untappd_search_failures').update({'resolved': True}).in_('product_url', urls).eq('resolved', False).execute()
         if res.data:
-            logger.info(f"  🔄 Resolved {len(res.data)} previous Untappd search failures for this product.")
+            logger.info(f"  🔄 Resolved {len(res.data)} previous Untappd search failures for this batch.")
     except Exception as e:
         logger.warning(f"  ⚠️ Failed to resolve previous search failures: {e}")
 
