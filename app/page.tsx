@@ -4,78 +4,29 @@ import { Suspense } from 'react'
 
 export const revalidate = 60
 
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: { [key: string]: string | string[] | undefined }
-}) {
-    const page = (searchParams.page as string) || '1'
-    const limit = (searchParams.limit as string) || '20'
-    const search = (searchParams.search as string) || ''
-    const sort = (searchParams.sort as string) || 'newest'
-    const shop = (searchParams.shop as string) || ''
-    
-    const pageNum = parseInt(page, 10)
-    const limitNum = parseInt(limit, 10)
-    const offset = (pageNum - 1) * limitNum
+export default async function Page() {
+    const pageNum = 1
+    const limitNum = 20
+    const offset = 0
 
     let q = supabase.from('beer_info_view').select('*', { count: 'estimated' });
-
-    if (search) q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,brewery_name_en.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`);
-    if (searchParams.min_abv) q = q.gte('untappd_abv', searchParams.min_abv as string);
-    if (searchParams.max_abv) q = q.lte('untappd_abv', searchParams.max_abv as string);
-    if (searchParams.min_ibu) q = q.gte('untappd_ibu', searchParams.min_ibu as string);
-    if (searchParams.max_ibu) q = q.lte('untappd_ibu', searchParams.max_ibu as string);
-    if (searchParams.min_rating) q = q.gte('untappd_rating', searchParams.min_rating as string);
-    
-    if (shop) {
-        const shopList = shop.split(',').filter(Boolean);
-        if (shopList.length > 0) q = q.in('shop', shopList);
-    }
-    if (searchParams.style_filter) {
-        const styles = (searchParams.style_filter as string).split(',').filter(Boolean);
-        if (styles.length > 0) q = q.in('untappd_style', styles);
-    }
-    if (searchParams.brewery_filter) {
-        const breweries = (searchParams.brewery_filter as string).split(',').filter(Boolean);
-        if (breweries.length > 0) q = q.in('untappd_brewery_name', breweries);
-    }
-    
-    if (searchParams.stock_filter === 'in_stock') q = q.eq('stock_status', 'In Stock');
-    else if (searchParams.stock_filter === 'sold_out') q = q.eq('stock_status', 'Sold Out');
-
-    if (searchParams.untappd_status === 'missing') {
-        q = q.or('untappd_url.is.null,untappd_url.ilike.%/search?%');
-        q = q.or('product_type.is.null,product_type.eq.beer');
-    } else if (searchParams.untappd_status === 'linked') {
-        q = q.not('untappd_url', 'is', null).not('untappd_url', 'ilike', '%/search?%');
-    }
-
-    if (searchParams.product_type) q = q.eq('product_type', searchParams.product_type as string);
-
-    switch (sort) {
-        case 'newest': q = q.order('first_seen', { ascending: false }); break;
-        case 'price_asc': q = q.order('price_value', { ascending: true }); break;
-        case 'price_desc': q = q.order('price_value', { ascending: false }); break;
-        case 'rating_desc': q = q.order('untappd_rating', { ascending: false }); break;
-        default: q = q.order('first_seen', { ascending: false });
-    }
+    q = q.order('first_seen', { ascending: false });
 
     // Fetch beers, shop counts, and available filters in parallel
     const [ { data: beers, count, error: dataError }, countRes, filterRes ] = await Promise.all([
         q.range(offset, offset + limitNum - 1),
         supabase.rpc('get_filtered_shop_counts', {
-            search_query: search || null,
-            p_min_abv: searchParams.min_abv ? parseFloat(searchParams.min_abv as string) : null,
-            p_max_abv: searchParams.max_abv ? parseFloat(searchParams.max_abv as string) : null,
-            p_min_ibu: searchParams.min_ibu ? parseFloat(searchParams.min_ibu as string) : null,
-            p_max_ibu: searchParams.max_ibu ? parseFloat(searchParams.max_ibu as string) : null,
-            p_min_rating: searchParams.min_rating ? parseFloat(searchParams.min_rating as string) : null,
-            p_stock_filter: (searchParams.stock_filter as string) || null,
-            p_style_filter: searchParams.style_filter ? (searchParams.style_filter as string).split(',').filter(Boolean) : null,
-            p_brewery_filter: searchParams.brewery_filter ? (searchParams.brewery_filter as string).split(',').filter(Boolean) : null,
-            p_product_type: (searchParams.product_type as string) || null,
-            p_untappd_status: (searchParams.untappd_status as string) || null
+            search_query: null,
+            p_min_abv: null,
+            p_max_abv: null,
+            p_min_ibu: null,
+            p_max_ibu: null,
+            p_min_rating: null,
+            p_stock_filter: null,
+            p_style_filter: null,
+            p_brewery_filter: null,
+            p_product_type: null,
+            p_untappd_status: null
         }),
         supabase.rpc('get_available_filters').single()
     ]);
@@ -87,14 +38,14 @@ export default async function Page({
 
     const shopCounts: Record<string, number> = {};
     if (countRes.data) {
-        countRes.data.forEach((item: any) => {
+        countRes.data.forEach((item: { shop: string; shop_count: string | number }) => {
             shopCounts[item.shop] = Number(item.shop_count);
         });
     }
 
-    const typedFilterData = filterRes.data as any;
+    const typedFilterData = filterRes.data as { styles?: string[]; breweries?: { name_en?: string; name_jp?: string }[] } | null;
     const styles = typedFilterData?.styles || [];
-    const breweries = typedFilterData?.breweries?.map((b: any) => ({
+    const breweries = typedFilterData?.breweries?.map((b) => ({
         name: b.name_en || b.name_jp || 'Unknown',
         flag: ''
     })) || [];

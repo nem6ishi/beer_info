@@ -47,24 +47,36 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
 
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
     const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+    const abortControllerRef = useRef<AbortController | null>(null)
     const page = parseInt(searchParams.get('page') || '1', 10)
     const sort = searchParams.get('sort') || 'newest'
     const limit = searchParams.get('limit') || '20'
 
     const fetchBeers = useCallback(async () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         setLoading(true);
         try {
             const params = new URLSearchParams(searchParams.toString());
-            const res = await fetch(`/api/beers?${params.toString()}`);
+            const res = await fetch(`/api/beers?${params.toString()}`, { signal: controller.signal });
             const data: BeersApiResponse = await res.json();
             setBeers(data.beers || []);
             setShopCounts(data.shopCounts || {});
             setTotalPages(data.pagination.totalPages);
             setTotalItems(data.pagination.total);
-        } catch (err) {
-            setError('Refresh failed');
+            setError(null);
+        } catch (err: any) {
+            if (err.name !== 'AbortError') {
+                setError('Refresh failed');
+            }
         } finally {
-            setLoading(false);
+            if (abortControllerRef.current === controller) {
+                setLoading(false);
+            }
         }
     }, [searchParams]);
 

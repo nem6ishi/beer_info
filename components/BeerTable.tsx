@@ -4,8 +4,7 @@ import Image from 'next/image'
 import type { Beer } from '../types/beer'
 import BeerTableRow from './BeerTableRow';
 
-import { formatPrice, formatSimpleDate } from './utils/formatters';
-
+import ShopCell from './ShopCell';
 interface BeerTableProps {
     beers: Beer[];
     loading: boolean;
@@ -78,21 +77,13 @@ export default function BeerTable({ beers, loading, error, isDebug }: BeerTableP
                 <tbody>
                     {beers.map((beer, index) => {
                         const shopContent = (
-                            <div className="shop-list-flat">
-                                <a href={beer.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
-                                    <div className="shop-info-primary">
-                                        <span className="price-text">{formatPrice(beer.price)}</span>
-                                        <span className="shop-name-text">{beer.shop}</span>
-                                        {beer.stock_status && (
-                                            <span className={`stock-dot ${beer.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={beer.stock_status}></span>
-                                        )}
-                                    </div>
-                                    <div className="shop-info-secondary">
-                                        <span className="check-date">{formatSimpleDate(beer.last_seen)}</span>
-                                        <span className="external-link-arrow">↗</span>
-                                    </div>
-                                </a>
-                            </div>
+                            <ShopCell 
+                                url={beer.url}
+                                price={beer.price}
+                                shop={beer.shop}
+                                stockStatus={beer.stock_status}
+                                lastSeen={beer.last_seen}
+                            />
                         );
 
                         return (
