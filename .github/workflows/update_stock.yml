@@ -1,0 +1,42 @@
+name: Update Stock Status
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'backend/src/commands/update_stock.py'
+      - '.github/workflows/update_stock.yml'
+  schedule:
+    # Runs every 6 hours (4 times a day)
+    - cron: '0 */6 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  update-stock:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      
+      - name: Install dependencies
+        run: uv sync
+      
+      - name: Run stock updater
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          uv run python -m backend.src.cli update-stock --limit 150
+      
+      - name: Report status
+        if: always()
+        run: |
+          echo "Stock update job completed at $(date)"

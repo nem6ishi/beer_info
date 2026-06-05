@@ -11,8 +11,8 @@ from ..services.stock_checker import check_stock_for_url
 # Configure logging
 logger: logging.Logger = logging.getLogger(__name__)
 
-BATCH_SIZE: int = 20
-CONCURRENCY: int = 10
+BATCH_SIZE: int = 10
+CONCURRENCY: int = 2
 
 async def process_beer(client: httpx.AsyncClient, beer: Dict[str, Any], supabase: Any) -> bool:
     """
@@ -75,8 +75,8 @@ async def update_stock_status(limit: Optional[int] = None, shop_filter: Optional
         query: Any = supabase.table('beer_info_view').select('name, url, shop, stock_status')\
             .order('untappd_rating', desc=True, nullsfirst=False)
     else:
-        # Default fetch from scraped_beers
-        query = supabase.table('scraped_beers').select('name, url, shop, stock_status')
+        # Default fetch from scraped_beers, ordered by oldest first
+        query = supabase.table('scraped_beers').select('name, url, shop, stock_status').order('last_seen', desc=False, nullsfirst=True)
     
     if shop_filter:
         query = query.eq('shop', shop_filter)
@@ -96,6 +96,7 @@ async def update_stock_status(limit: Optional[int] = None, shop_filter: Optional
         
         async def bounded_process(beer: Dict[str, Any]) -> bool:
             async with sem:
+                await asyncio.sleep(1.0)
                 return await process_beer(client, beer, supabase)
         
         # Batch processing to avoid massive queue
