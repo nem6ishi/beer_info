@@ -38,11 +38,11 @@ class GeminiExtractor:
         self.last_request_time = 0
         self.daily_request_count = 0
         
-        # Model Configuration: Gemini 2.5 Flash Lite (15 RPM, 20 RPD Free tier)
-        self.model_id = "gemini-2.5-flash-lite"
-        self.fallback_model_id = "gemini-2.5-flash"
+        # Model Configuration: Gemma 4 31B (15 RPM, 1,500 RPD)
+        self.model_id = "gemma-4-31b-it"
+        self.fallback_model_id = "gemma-4-26b-a4b-it"
         self.model_interval = 4.5  # 15 RPMの制限に余裕を持たせる (約 13.3 RPM)
-        self.global_daily_limit = 1450  # API自体のクォータエラーでフォールバックするため大きめの制限を設定
+        self.global_daily_limit = 1450  # 1,500 RPDの制限に余裕を持たせる
 
 
     def _load_shop_rules(self) -> Dict[str, Any]:
