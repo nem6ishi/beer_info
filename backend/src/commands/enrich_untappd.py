@@ -134,23 +134,30 @@ class UntappdEnricher:
             batch_gemini = []
             batch_scraped = []
 
-            for i, beer in enumerate(beers_to_process, 1):
-                product_url_loop: Optional[str] = beer.get('url')
-                if not product_url_loop:
-                    continue
-                self.processed_this_run.add(product_url_loop)
+            sem = asyncio.Semaphore(3)
+            
+            async def _process_with_sem(i: int, beer: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+                async with sem:
+                    product_url_loop: Optional[str] = beer.get('url')
+                    if not product_url_loop:
+                        return None
+                    self.processed_this_run.add(product_url_loop)
 
-                name_display: str = beer.get('name', beer.get('beer_name', 'Unknown'))
-                logger.info(f"\n{'='*70}")
-                logger.info(f"[Batch {i}/{len(beers_to_process)} | Total {self.total_processed + i}] Processing: {name_display[:60]}")
-                logger.info(f"{'='*70}")
+                    name_display: str = beer.get('name', beer.get('beer_name', 'Unknown'))
+                    logger.info(f"[Batch {i}/{len(beers_to_process)} | Total {self.total_processed + i}] Processing: {name_display[:60]}")
 
-                result: Optional[Dict[str, Any]] = None
-                if self.mode == 'missing':
-                    result = await self._process_beer_missing(beer)
-                elif self.mode == 'refresh':
-                    result = await self._process_beer_refresh(beer)
+                    result: Optional[Dict[str, Any]] = None
+                    if self.mode == 'missing':
+                        result = await self._process_beer_missing(beer)
+                    elif self.mode == 'refresh':
+                        result = await self._process_beer_refresh(beer)
+                    
+                    return result
 
+            tasks = [_process_with_sem(i, beer) for i, beer in enumerate(beers_to_process, 1)]
+            results = await asyncio.gather(*tasks)
+
+            for result in results:
                 if result:
                     self.total_success += 1
                     b_url = result.get('untappd_brewery_url')
@@ -163,8 +170,6 @@ class UntappdEnricher:
                         batch_gemini.append(result['gemini_payload'])
                     if result.get('scraped_payload') and result['scraped_payload'].get('url'):
                         batch_scraped.append(result['scraped_payload'])
-
-                await asyncio.sleep(1)
 
             # Commit batch
             if batch_untappd or batch_gemini or batch_scraped:
@@ -362,7 +367,7 @@ class UntappdEnricher:
 
         try:
             await asyncio.sleep(2)
-            details: UntappdBeerDetails = scrape_beer_details(untappd_url)
+            details: UntappdBeerDetails = await scrape_beer_details(untappd_url)
             untappd_payload: Dict[str, Any]
             if details:
                 untappd_payload = map_details_to_payload(details)
@@ -429,7 +434,7 @@ class UntappdEnricher:
         beer_name_core: Optional[str] = beer.get('beer_name_core')
 
         logger.info(f"  🔍 Searching Untappd for: {brewery} - {beer_name}")
-        search_result: UntappdSearchResult = get_untappd_url(
+        search_result: UntappdSearchResult = await get_untappd_url(
             brewery, beer_name,
             beer_name_jp=beer_name_jp,
             brewery_url=brewery_url_hint,
@@ -449,7 +454,7 @@ class UntappdEnricher:
                 )
                 for alt_query in alt_queries:
                     logger.info(f"  🔍 [Two-pass] Trying: '{alt_query}'")
-                    retry_result: UntappdSearchResult = get_untappd_url(
+                    retry_result: UntappdSearchResult = await get_untappd_url(
                         brewery_name=brewery,
                         beer_name=beer_name,
                         search_hint=alt_query,
@@ -500,7 +505,7 @@ class UntappdEnricher:
 
         await asyncio.sleep(2)  # Rate limiting
         logger.info(f"  🔄 Scraping beer details...")
-        details: UntappdBeerDetails = scrape_beer_details(untappd_url)
+        details: UntappdBeerDetails = await scrape_beer_details(untappd_url)
         if details:
             payload: Dict[str, Any] = map_details_to_payload(details)
             payload['untappd_url'] = untappd_url

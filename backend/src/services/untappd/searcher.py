@@ -2,6 +2,7 @@
 Untappd search orchestration.
 Coordinates text_utils, validators, and http_client to find beer URLs on Untappd.
 """
+import asyncio
 import json
 import logging
 import re
@@ -45,7 +46,7 @@ set_brewery_aliases(BREWERY_ALIASES)  # Inject into validators module
 
 # ── Main search function ──────────────────────────────────────────────────────
 
-def get_untappd_url(
+async def get_untappd_url(
     brewery_name: str,
     beer_name: str,
     beer_name_jp: Optional[str] = None,
@@ -60,7 +61,7 @@ def get_untappd_url(
     2. If no results, fallback to searching without the year ("The Gateway").
     """
     # 1. まず元のクエリ（西暦あり）で検索
-    result = _get_untappd_url_single(
+    result = await _get_untappd_url_single(
         brewery_name=brewery_name,
         beer_name=beer_name,
         beer_name_jp=beer_name_jp,
@@ -94,7 +95,7 @@ def get_untappd_url(
         
         logger.info(f"🔄 [Year-fallback] Alternative names: Beer='{no_year_beer_name}', Core='{no_year_beer_name_core}', Hint='{no_year_search_hint}'")
         
-        retry_result = _get_untappd_url_single(
+        retry_result = await _get_untappd_url_single(
             brewery_name=brewery_name,
             beer_name=no_year_beer_name,
             beer_name_jp=beer_name_jp,
@@ -109,7 +110,7 @@ def get_untappd_url(
     return result
 
 
-def _get_untappd_url_single(
+async def _get_untappd_url_single(
     brewery_name: str,
     beer_name: str,
     beer_name_jp: Optional[str] = None,
@@ -136,14 +137,14 @@ def _get_untappd_url_single(
 
     if not u_brewery_url and primary_brewery_search:
         logger.info(f"Brewery URL missing. Searching for brewery: '{primary_brewery_search}'")
-        u_brewery_url = search_brewery(primary_brewery_search)
+        u_brewery_url = await search_brewery(primary_brewery_search)
         if u_brewery_url:
             logger.info(f" Brewery found: {u_brewery_url}")
 
     # --- Stage 2: Search WITHIN Brewery ---
     if u_brewery_url:
         logger.info(f"Searching for '{target_beer_name}' within brewery: {u_brewery_url}")
-        found_url: Optional[str] = search_brewery_beer(
+        found_url: Optional[str] = await search_brewery_beer(
             u_brewery_url, 
             target_beer_name, 
             validate_beer_fn=validate_beer_match,
@@ -213,38 +214,41 @@ def _get_untappd_url_single(
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                with DDGS(timeout=10) as ddgs:
-                    results: Any = ddgs.text(query, max_results=5)
-                    
-                    if not results:
-                        results = []
+                def _do_ddg_search():
+                    with DDGS(timeout=10) as ddgs:
+                        res = ddgs.text(query, max_results=5)
+                        return list(res) if res else []
                         
-                    for res in results:
-                        href: str = res.get("href", "")
-                        title: str = res.get("title", "")
-                        
-                        if "untappd.com/b/" in href:
-                            if title_is_valid(title, brewery_name, target_beer_name):
-                                logger.info(f" Found via DuckDuckGo: {href}")
-                                return {
-                                    'url': href,
-                                    'success': True,
-                                    'failure_reason': None,
-                                    'error_message': None
-                                }
-                            else:
-                                logger.debug(f" DDG result failed validation: {title}")
+                results: Any = await asyncio.to_thread(_do_ddg_search)
                     
-                    # If we finish the loop without returning, it means we either got 0 results or none validated.
-                    # This is a normal failure, not a rate limit exception, so break and fallback.
-                    break
+                if not results:
+                    results = []
+                        
+                for res in results:
+                    href: str = res.get("href", "")
+                    title: str = res.get("title", "")
+                        
+                    if "untappd.com/b/" in href:
+                        if title_is_valid(title, brewery_name, target_beer_name):
+                            logger.info(f" Found via DuckDuckGo: {href}")
+                            return {
+                                'url': href,
+                                'success': True,
+                                'failure_reason': None,
+                                'error_message': None
+                            }
+                        else:
+                            logger.debug(f" DDG result failed validation: {title}")
+                    
+                # If we finish the loop without returning, it means we either got 0 results or none validated.
+                # This is a normal failure, not a rate limit exception, so break and fallback.
+                break
             except Exception as inner_e:
                 error_str = str(inner_e).lower()
                 if "rate limit" in error_str or "202" in error_str or "timeout" in error_str or "ratelimit" in error_str:
                     wait_time = 15 * (attempt + 1)
                     logger.warning(f"  [DDG] Rate limit or timeout hit. Sleeping for {wait_time}s... (Attempt {attempt+1}/{max_retries})")
-                    import time
-                    time.sleep(wait_time)
+                    await asyncio.sleep(wait_time)
                     if attempt == max_retries - 1:
                         raise inner_e
                 else:

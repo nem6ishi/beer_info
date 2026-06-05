@@ -89,7 +89,9 @@ class BaseScraper(ABC):
             await asyncio.sleep(random.uniform(*delay))
 
         try:
-            response: requests.Response = requests.get(url, headers=self.default_headers, timeout=timeout)
+            response: requests.Response = await asyncio.to_thread(
+                requests.get, url, headers=self.default_headers, timeout=timeout
+            )
             response.raise_for_status()
             if encoding:
                 response.encoding = encoding

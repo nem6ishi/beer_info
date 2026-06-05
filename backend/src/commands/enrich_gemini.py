@@ -68,13 +68,17 @@ class GeminiEnricher:
                 logger.info("\n✨ No more beers found matching criteria!")
                 break
                 
-            for beer in beers:
+            sem = asyncio.Semaphore(5)
+            
+            async def _process_with_sem(beer: Dict[str, Any]) -> Tuple[str, Optional[Dict[str, Any]]]:
+                async with sem:
+                    return await self._process_item(beer)
+                    
+            tasks = [_process_with_sem(beer) for beer in beers]
+            results = await asyncio.gather(*tasks)
+            
+            for beer, (status, payload) in zip(beers, results):
                 self.stats["processed"] += 1
-                logger.info(f"\n{'='*70}")
-                logger.info(f"[Item {self.stats['processed']}/{limit}] Processing: {beer.get('name', 'Unknown')[:60]}")
-                logger.info(f"{'='*70}")
-                
-                status, payload = await self._process_item(beer)
                 if status == 'enriched' and payload:
                     self.stats["enriched"] += 1
                     self.pending_payloads.append(payload)

@@ -67,7 +67,7 @@ class GeminiExtractor:
             await self._throttle(self.model_interval, self.model_id)
 
             logger.info(f"  [Gemini] Calling {self.model_id}...")
-            response: Any = self.client.models.generate_content(
+            response: Any = await self.client.aio.models.generate_content(
                 model=self.model_id,
                 contents=prompt
             )
@@ -79,7 +79,7 @@ class GeminiExtractor:
                     self.model_id = self.fallback_model_id
                     await self._throttle(self.model_interval, self.model_id)
                     logger.info(f"  [Gemini] Calling fallback {self.model_id}...")
-                    response = self.client.models.generate_content(
+                    response = await self.client.aio.models.generate_content(
                         model=self.model_id,
                         contents=prompt
                     )
