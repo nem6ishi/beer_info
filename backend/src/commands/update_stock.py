@@ -5,8 +5,7 @@ import httpx
 from datetime import datetime
 
 from ..core.db import get_supabase_client
-from ..core.types import StockCheckResult
-from ..services.stock_checker import check_stock_for_url
+from ..services.stock_checker import check_stock_for_url, StockCheckResult
 
 # Configure logging
 logger: logging.Logger = logging.getLogger(__name__)
