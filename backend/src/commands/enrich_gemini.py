@@ -93,6 +93,8 @@ class GeminiEnricher:
             self.pending_payloads.clear()
 
         self._print_final_report()
+        if not self.offline:
+            self._refresh_materialized_view()
 
     def _get_count(self) -> int:
         """Gets total count of items requiring enrichment."""
@@ -219,6 +221,14 @@ class GeminiEnricher:
                 logger.info(f"  🔄 Resolved {len(res.data)} previous Untappd search failures for this batch.")
         except Exception as e:
             logger.warning(f"  ⚠️ Failed to resolve previous search failures: {e}")
+
+    def _refresh_materialized_view(self) -> None:
+        logger.info("\n🔄 Refreshing Materialized View (beer_info_view)...")
+        try:
+            self.supabase.rpc('refresh_beer_info_view').execute()
+            logger.info("✅ View refreshed successfully!")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to refresh view: {e}")
 
     def _print_final_report(self) -> None:
         """Prints a summary of the enrichment run."""

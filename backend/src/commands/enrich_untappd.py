@@ -177,7 +177,19 @@ class UntappdEnricher:
         logger.info(f"\n{'='*70}")
         logger.info("✨ Untappd enrichment completed!")
         logger.info(f"{'='*70}")
+
+        if not self.offline:
+            self._refresh_materialized_view()
+
         return list(self.collected_brewery_urls)
+
+    def _refresh_materialized_view(self) -> None:
+        logger.info("\n🔄 Refreshing Materialized View (beer_info_view)...")
+        try:
+            self.supabase.rpc('refresh_beer_info_view').execute()
+            logger.info("✅ View refreshed successfully!")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to refresh view: {e}")
 
     def _preload_failure_history(self) -> None:
         """Pre-loads failure records for backoff filtering."""

@@ -114,10 +114,9 @@ CREATE INDEX IF NOT EXISTS idx_untappd_failures_last_failed ON untappd_search_fa
 DROP VIEW IF EXISTS beer_groups_view CASCADE;
 DROP VIEW IF EXISTS beer_info_view CASCADE;
 
--- Unified view for API
--- Using physical numeric columns for speed
-CREATE OR REPLACE VIEW beer_info_view
-WITH (security_invoker = on) AS
+-- Unified Materialized View for API
+-- Precomputes JOINs for extremely fast filtering
+CREATE MATERIALIZED VIEW beer_info_view AS
 SELECT
   s.url,
   s.name,
@@ -161,10 +160,24 @@ LEFT JOIN gemini_data g ON s.url = g.url
 LEFT JOIN untappd_data u ON s.untappd_url = u.untappd_url
 LEFT JOIN breweries b ON u.untappd_brewery_url = b.untappd_url;
 
+-- Add Indices to Materialized View for ultra-fast filtering
+CREATE UNIQUE INDEX idx_beer_info_view_url ON beer_info_view(url);
+CREATE INDEX idx_beer_info_view_first_seen ON beer_info_view(first_seen DESC);
+CREATE INDEX idx_beer_info_view_price_value ON beer_info_view(price_value);
+CREATE INDEX idx_beer_info_view_untappd_abv ON beer_info_view(untappd_abv);
+CREATE INDEX idx_beer_info_view_untappd_ibu ON beer_info_view(untappd_ibu);
+CREATE INDEX idx_beer_info_view_untappd_rating ON beer_info_view(untappd_rating DESC);
+CREATE INDEX idx_beer_info_view_shop ON beer_info_view(shop);
+CREATE INDEX idx_beer_info_view_untappd_style ON beer_info_view(untappd_style);
+CREATE INDEX idx_beer_info_view_untappd_brewery_name ON beer_info_view(untappd_brewery_name);
+CREATE INDEX idx_beer_info_view_stock_status ON beer_info_view(stock_status);
+CREATE INDEX idx_beer_info_view_product_type ON beer_info_view(product_type);
+CREATE INDEX idx_beer_info_view_untappd_url ON beer_info_view(untappd_url);
+
 
 -- 8. beer_groups_view: Unified view for grouped comparisons
 -- This view aggregates items by Untappd URL for faster comparisons
-CREATE OR REPLACE VIEW beer_groups_view
+CREATE VIEW beer_groups_view
 WITH (security_invoker = on) AS
 SELECT
     untappd_url,
@@ -246,4 +259,16 @@ BEGIN
   RETURN result;
 END;
 $$ LANGUAGE plpgsql SET search_path = '';
+
+-- Grant select on materialized view
+GRANT SELECT ON beer_info_view TO anon, authenticated;
+GRANT SELECT ON beer_groups_view TO anon, authenticated;
+
+-- Function to refresh materialized view
+CREATE OR REPLACE FUNCTION refresh_beer_info_view()
+RETURNS void AS $$
+BEGIN
+  REFRESH MATERIALIZED VIEW beer_info_view;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
