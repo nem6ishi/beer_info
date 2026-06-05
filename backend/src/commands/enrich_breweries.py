@@ -74,7 +74,7 @@ async def enrich_breweries(
             
         logger.info(f"  🔄 Enriching: {url}")
         await asyncio.sleep(2) # Rate limit
-        details: UntappdBreweryDetails = scrape_brewery_details(url)
+        details: UntappdBreweryDetails = await scrape_brewery_details(url)
         
         if not details:
             logger.warning(f"  ⚠️ Failed to scrape: {url}")
