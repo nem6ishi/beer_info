@@ -1,11 +1,6 @@
 name: Enrich Beer Data (Combined - Manual Only)
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/enrich.yml'
   workflow_dispatch:  # Manual trigger only
 
 jobs:
@@ -20,6 +15,8 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
       
       - name: Install dependencies
         run: uv sync
