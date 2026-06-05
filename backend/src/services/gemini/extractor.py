@@ -8,6 +8,7 @@ from google import genai
 from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential
 from ...core.types import GeminiExtraction
+from ...core.db import get_supabase_client
 
 load_dotenv()
 
@@ -64,6 +65,23 @@ class GeminiExtractor:
             return None
 
         try:
+            try:
+                supabase = get_supabase_client()
+                # Atomically increment the usage counter for today
+                res = supabase.rpc('increment_api_usage', {'p_service_name': 'gemini'}).execute()
+                current_usage = res.data
+                self.daily_request_count = current_usage
+                
+                if current_usage > self.global_daily_limit:
+                    logger.warning(f"  [Gemini] Global daily limit reached ({current_usage}/{self.global_daily_limit}). Skipping extraction.")
+                    return None
+            except Exception as db_e:
+                logger.error(f"  [Gemini] Failed to increment API usage in DB: {db_e}. Falling back to local limit.")
+                self.daily_request_count += 1
+                if self.daily_request_count > self.global_daily_limit:
+                    logger.warning(f"  [Gemini] Local daily limit reached ({self.daily_request_count}/{self.global_daily_limit}). Skipping extraction.")
+                    return None
+
             await self._throttle(self.model_interval, self.model_id)
 
             logger.info(f"  [Gemini] Calling {self.model_id}...")
@@ -89,7 +107,7 @@ class GeminiExtractor:
                 raise
         
         self.last_request_time = time.time()
-        self.daily_request_count += 1
+        # daily_request_count is now updated before the request
         
         if response.text:
             return self._parse_json_response(response.text, sanitize=True)
