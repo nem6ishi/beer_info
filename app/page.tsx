@@ -19,7 +19,7 @@ export default async function Page({
     const limitNum = parseInt(limit, 10)
     const offset = (pageNum - 1) * limitNum
 
-    let q = supabase.from('beer_info_view').select('*', { count: 'exact' });
+    let q = supabase.from('beer_info_view').select('*', { count: 'estimated' });
 
     if (search) q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,brewery_name_en.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`);
     if (searchParams.min_abv) q = q.gte('untappd_abv', searchParams.min_abv as string);
@@ -61,11 +61,9 @@ export default async function Page({
         default: q = q.order('first_seen', { ascending: false });
     }
 
-    const { data: beers, count, error: dataError } = await q.range(offset, offset + limitNum - 1);
-    if (dataError) console.error('Data error:', dataError);
-
-    // Fetch shop counts and available filters via RPC
-    const [countRes, filterRes] = await Promise.all([
+    // Fetch beers, shop counts, and available filters in parallel
+    const [ { data: beers, count, error: dataError }, countRes, filterRes ] = await Promise.all([
+        q.range(offset, offset + limitNum - 1),
         supabase.rpc('get_filtered_shop_counts', {
             search_query: search || null,
             p_min_abv: searchParams.min_abv ? parseFloat(searchParams.min_abv as string) : null,
@@ -81,6 +79,8 @@ export default async function Page({
         }),
         supabase.rpc('get_available_filters').single()
     ]);
+
+    if (dataError) console.error('Data error:', dataError);
 
     if (countRes.error) console.error('Count RPC Error:', countRes.error);
     if (filterRes.error) console.error('Filters RPC Error:', filterRes.error);

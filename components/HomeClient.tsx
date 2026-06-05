@@ -117,7 +117,7 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
         const val = e.target.value
         setSearchInput(val)
         if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
-        searchTimeoutRef.current = setTimeout(() => updateURL({ search: val, page: '1' }), 500)
+        searchTimeoutRef.current = setTimeout(() => updateURL({ search: val, page: '1' }), 300)
     }
 
     const handleFilterChange = (key: string, value: string) => {
@@ -125,7 +125,7 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
         if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
         filterTimeoutRef.current = setTimeout(() => {
             updateURL({ [key]: value, page: '1' });
-        }, 500);
+        }, 300);
     }
     
     const handleMultiSelectChange = (key: string, value: string[]) => updateURL({ [key]: value.join(','), page: '1' })

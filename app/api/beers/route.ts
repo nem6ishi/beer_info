@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         const buildQuery = () => {
             let q = supabase
                 .from('beer_info_view')
-                .select('*', { count: 'exact' })
+                .select('*', { count: 'estimated' })
 
             if (search) {
                 q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
