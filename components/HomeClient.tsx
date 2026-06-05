@@ -51,28 +51,6 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
     const sort = searchParams.get('sort') || 'newest'
     const limit = searchParams.get('limit') || '20'
 
-    useEffect(() => {
-        setBeers(initialData.beers);
-        setTotalPages(initialData.pagination.totalPages);
-        setTotalItems(initialData.pagination.total);
-        setShopCounts(initialData.shopCounts);
-        setSearchInput(searchParams.get('search') || '');
-        setTempFilters({
-            min_abv: searchParams.get('min_abv') || '',
-            max_abv: searchParams.get('max_abv') || '',
-            min_ibu: searchParams.get('min_ibu') || '',
-            max_ibu: searchParams.get('max_ibu') || '',
-            min_rating: searchParams.get('min_rating') || '',
-            stock_filter: searchParams.get('stock_filter') || 'in_stock',
-            untappd_status: searchParams.get('untappd_status') || '',
-            shop: searchParams.get('shop') || '',
-            brewery_filter: searchParams.get('brewery_filter') || '',
-            style_filter: searchParams.get('style_filter') || '',
-            set_mode: searchParams.get('set_mode') || '',
-            debug: searchParams.get('debug') || ''
-        });
-    }, [initialData, searchParams]);
-
     const fetchBeers = useCallback(async () => {
         setLoading(true);
         try {
@@ -89,6 +67,37 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
             setLoading(false);
         }
     }, [searchParams]);
+
+    useEffect(() => {
+        const hasFilters = Array.from(searchParams.keys()).length > 0;
+        
+        if (hasFilters) {
+            // URL has parameters, fetch client-side
+            fetchBeers();
+        } else {
+            // No parameters, use the instantly loaded static default data
+            setBeers(initialData.beers);
+            setTotalPages(initialData.pagination.totalPages);
+            setTotalItems(initialData.pagination.total);
+            setShopCounts(initialData.shopCounts);
+        }
+        
+        setSearchInput(searchParams.get('search') || '');
+        setTempFilters({
+            min_abv: searchParams.get('min_abv') || '',
+            max_abv: searchParams.get('max_abv') || '',
+            min_ibu: searchParams.get('min_ibu') || '',
+            max_ibu: searchParams.get('max_ibu') || '',
+            min_rating: searchParams.get('min_rating') || '',
+            stock_filter: searchParams.get('stock_filter') || 'in_stock',
+            untappd_status: searchParams.get('untappd_status') || '',
+            shop: searchParams.get('shop') || '',
+            brewery_filter: searchParams.get('brewery_filter') || '',
+            style_filter: searchParams.get('style_filter') || '',
+            set_mode: searchParams.get('set_mode') || '',
+            debug: searchParams.get('debug') || ''
+        });
+    }, [initialData, searchParams, fetchBeers]);
 
     const updateURL = (newParams: Record<string, string>, targetPath = pathname) => {
         const params = new URLSearchParams(searchParams.toString());
@@ -128,7 +137,10 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
         }, 300);
     }
     
-    const handleMultiSelectChange = (key: string, value: string[]) => updateURL({ [key]: value.join(','), page: '1' })
+    const handleMultiSelectChange = (key: string, value: string[]) => {
+        setTempFilters(prev => ({ ...prev, [key]: value.join(',') }));
+        updateURL({ [key]: value.join(','), page: '1' });
+    }
     const resetFilters = () => router.push(pathname, { scroll: false })
     const handlePageChange = (newPage: number) => updateURL({ page: newPage.toString() })
 
@@ -163,10 +175,10 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
 
             <main className="container" style={{ minHeight: '80vh' }}>
                 <BeerFilters
-                    shop={searchParams.get('shop') || ''}
+                    shop={tempFilters.shop}
                     shopCounts={shopCounts}
-                    brewery_filter={searchParams.get('brewery_filter') || ''}
-                    style_filter={searchParams.get('style_filter') || ''}
+                    brewery_filter={tempFilters.brewery_filter}
+                    style_filter={tempFilters.style_filter}
                     sort={sort}
                     limit={limit}
                     isFilterOpen={isFilterOpen}
