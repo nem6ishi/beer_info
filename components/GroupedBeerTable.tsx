@@ -48,23 +48,29 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug }: Gr
 
                         const shopContent = (
                             <div className="shop-list-flat">
-                                {sortedItems.map((item, idx) => (
-                                    <div key={idx} className="shop-item-flat">
-                                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="shop-btn-flat">
-                                            <div className="shop-info-primary">
-                                                <span className="price-text">{formatPrice(item.price)}</span>
-                                                <span className="shop-name-text">{item.shop}</span>
-                                                {item.stock_status && (
-                                                    <span className={`stock-dot ${item.stock_status.toLowerCase().includes('out') ? 'out' : 'in'}`} title={item.stock_status}></span>
-                                                )}
-                                            </div>
-                                            <div className="shop-info-secondary">
-                                                {item.last_seen && <span className="check-date">{formatSimpleDate(item.last_seen)}</span>}
-                                                <span className="external-link-arrow">↗</span>
-                                            </div>
-                                        </a>
-                                    </div>
-                                ))}
+                                {sortedItems.map((item, idx) => {
+                                    const isSoldOut = item.stock_status?.toLowerCase().includes('out');
+                                    const Container: any = isSoldOut ? 'div' : 'a';
+                                    const linkProps = isSoldOut ? {} : { href: item.url, target: "_blank", rel: "noopener noreferrer" };
+
+                                    return (
+                                        <div key={idx} className="shop-item-flat">
+                                            <Container {...linkProps} className={`shop-btn-flat ${isSoldOut ? 'disabled-link' : ''}`}>
+                                                <div className="shop-info-primary">
+                                                    <span className="price-text">{formatPrice(item.price)}</span>
+                                                    <span className="shop-name-text">{item.shop}</span>
+                                                    {item.stock_status && (
+                                                        <span className={`stock-dot ${isSoldOut ? 'out' : 'in'}`} title={item.stock_status}></span>
+                                                    )}
+                                                </div>
+                                                <div className="shop-info-secondary">
+                                                    {item.last_seen && <span className="check-date">{formatSimpleDate(item.last_seen)}</span>}
+                                                    {!isSoldOut && <span className="external-link-arrow">↗</span>}
+                                                </div>
+                                            </Container>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         );
 

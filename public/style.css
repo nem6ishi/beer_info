@@ -1301,6 +1301,24 @@ h1 {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
+.shop-btn-flat.disabled-link {
+    background: #fdfdfd;
+    border-style: dashed;
+    border-color: #ddd;
+    color: #aaa;
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.shop-btn-flat.disabled-link .price-text {
+    color: #aaa;
+    text-decoration: line-through;
+}
+
+.shop-btn-flat.disabled-link .shop-name-text {
+    color: #999;
+}
+
 .shop-info-primary {
     display: flex;
     align-items: center;
