@@ -2,6 +2,7 @@
 Gemini-only enrichment command.
 Extracts brewery and beer names using Gemini API.
 """
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, cast, Tuple
