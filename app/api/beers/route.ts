@@ -8,7 +8,7 @@ export async function GET(request: Request) {
         const search = searchParams.get('search') || ''
         const sort = searchParams.get('sort') || 'newest'
         const page = searchParams.get('page') || '1'
-        const limit = searchParams.get('limit') || '100'
+        const limit = searchParams.get('limit') || '20'
         const shop = searchParams.get('shop') || ''
         
         const min_abv = searchParams.get('min_abv')
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         const buildQuery = () => {
             let q = supabase
                 .from('beer_info_view')
-                .select('*', { count: 'estimated' })
+                .select('*', { count: 'exact' })
 
             if (search) {
                 q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
