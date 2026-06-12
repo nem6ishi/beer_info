@@ -6,7 +6,7 @@
 
 ## 1. プロジェクト概要
 
-「Craft Beer Watch Japan」は、日本の主要なクラフトビール専門ECサイトから在庫情報を自動収集（スクレイピング）し、AI（Google Gemini）による表記揺れ吸収やメタデータ抽出を行い、ビール評価プラットフォーム（Untappd）の情報と紐付けることで、ユーザーが横断的にクラフトビールの在庫状況やレーティング、詳細情報を確認・比較できるサービスです。
+「Craft Beer Watch Japan」は、日本の主要なクラフトビール専門ECサイトから在庫情報を自動収集（スクレイピング）し、AI（LLM）による表記揺れ吸収やメタデータ抽出を行い、ビール評価プラットフォーム（Untappd）の情報と紐付けることで、ユーザーが横断的にクラフトビールの在庫状況やレーティング、詳細情報を確認・比較できるサービスです。
 
 - **フロントエンド & API**: Next.js (Vercel にデプロイ)
 - **データベース**: Supabase (PostgreSQL)
@@ -26,19 +26,25 @@
   - Ichigo Ichie (一期一会)
 - **データ更新**: 既存データの価格変更や在庫状況（販売中 / 売り切れ）を反映し、新規商品を検知する。
 
-#### B. AIメタデータ抽出 (Gemini Enrichment)
-- 収集した生の商品名から、以下の項目をAI（Gemini API）を用いて抽出する。
+#### B. AIメタデータ抽出 (LLM Enrichment)
+- **生タイトルのクレンジング**: LLMに送信する前に、不要な注意事項（「【予定】」「【クール便】」「【空輸】」「【限定品】」など）を正規表現で自動クレンジングし、LLMのトークン節約と抽出精度の向上を図る。
+- **ショップ個別パース規則 (Shop-Specific Rules)**: 各ショップ（販売店）特有の商品名フォーマットの規則（例：ちょうせいやの「【ビール名/ブルワリー名】」、アロームの「[...]」英語表記など）を `shop_rules.json` で定義し、LLMのコンテキストに注入して解析させることで、誤認識を極限まで低減させる。
+- **メタデータ抽出項目**: クレンジングされた商品タイトルから、以下の項目をLLMを用いて抽出する。
   - ブルワリー名（英語 / 日本語）
   - ビール名（英語 / 日本語）
-  - 商品タイプ（ビール / セット商品 / その他）
-- 英語表記と日本語表記を抽出することで、Untappdでの検索ヒット率を高め、フロントエンドでの多言語検索をサポートする。
+  - ビールのコア名（バージョンや年度、スタイルサフィックスを除外した検索用文字列）
+  - Untappd検索用ヒントクエリ（英語）
+  - 商品タイプ（ビール / セット商品 / グラス / その他）およびセット商品判定（`is_set`）
 
 #### C. Untappd 連携 (Untappd Enrichment)
 - メタデータから Untappd 上の該当ビールを検索・紐付ける。
-- **検索の堅牢化 (Two-pass retry)**: 初回検索でヒットしない場合、Geminiを用いて代替の検索クエリ（表記揺れや余計な単語を削ったクエリ）を生成して再検索を行う。
-- **情報の取得**: 紐付けに成功したビールの詳細スペック（スタイル、ABV、IBU、Untappdレーティング、評価数、画像など）を取得する。
+- **紐付け検索戦略 (Multi-stage Search Strategy)**:
+  1. **ブルワリー別検索**: 抽出したブルワリー名の英名（またはエイリアス）からまずUntappd上のブルワリーページを特定し、そのブルワリー配下の商品からビール名を検索・照合する。
+  2. **Year-fallback (西暦フォールバック)**: 商品名に西暦（20XX）が含まれる場合、まずは西暦付きで検索し、ヒットしない場合は西暦を取り除いたコア名で再検索を行う。
+  3. **DuckDuckGo検索フォールバック**: 上記でヒットしない場合、`ddgs` (DuckDuckGo Search) を利用して「untappd [検索ヒント]」のクエリでWeb検索を行い、ヒットしたUntappdページをスクレイピングして検証する。
+- **表記揺れ吸収 (Brewery Aliases)**: `aliases.json` を使用し、英語名・日本語名・別名（略称など）をマッピングして、バリデーション段階でのマッチング判定で許容する。
 - **検索失敗の記録**: 検索が失敗した場合は `untappd_search_failures` にエラー理由と共に記録し、次回以降の無駄なAPI呼び出しをバックオフ（再試行猶予期間の適用）により防ぐ。
-- **データリフレッシュ**: 在庫があるビールについては、情報の陳腐化を防ぐため、5日以上経過したデータを最新情報に更新する。
+- **データリフレッシュ**: 在庫があるビールについては、情報の陳腐化を防ぐため、前回の取得から **5日以上** 経過したデータを最新情報に自動更新する。
 
 #### D. フロントエンド画面とAPI
 - **ビール一覧表示**: 収集したビールのカード型一覧。検索、フィルタ（ショップ、アルコール度数(ABV)、苦味(IBU)、評価、スタイル、ブルワリー）、ソート（最新順、価格順、評価順など）が可能。
@@ -66,6 +72,7 @@ graph TD
         Shops[(ECサイト 4店舗)]
         GeminiAPI[Google Gemini API]
         UntappdAPI[Untappd Web]
+        DDGSearch[DuckDuckGo Search]
     end
 
     subgraph Supabase [Supabase Database]
@@ -94,7 +101,7 @@ graph TD
     GeminiCmd -->|API使用量インクリメント| TUsage
     
     UntappdCmd -->|検索 & スクレイプ| UntappdAPI
-    UntappdCmd -->|Fluxクエリ生成依頼| GeminiAPI
+    UntappdCmd -->|Web検索フォールバック| DDGSearch
     UntappdCmd -->|データ保存| TU
     UntappdCmd -->|失敗ログ記録| TF
     
@@ -129,7 +136,12 @@ graph TD
 | `untappd_search_failures` | Untappd検索に失敗した履歴と再試行制御用 | `id` (PK, UUID) | `product_url`, `brewery_name`, `beer_name`, `failure_reason`, `search_attempts`, `last_error_message`, `resolved` |
 | `api_usage_tracking` | API (Gemini等) の日ごとの使用回数記録 | `(service_name, date)` (PK) | `request_count`, `updated_at` |
 
-#### B. 高速表示のためのビュー
+#### B. セキュリティポリシー (RLS Policies)
+- データベース全体の安全を確保するため、すべての主要テーブルで **行レベルセキュリティ (RLS)** を有効化している。
+- **一般ユーザー (anon ロール)**: 読み取り専用アクセス (`SELECT`) のみを許可。
+- **バッチ処理スクリプト (authenticated ロール)**: GitHub Actions で `SUPABASE_SERVICE_KEY` を用いて認証を行い、すべての書き込み・変更処理 (`ALL`) を許可。
+
+#### C. 高速表示のためのビュー
 
 1. **`beer_info_view` (マテリアライズドビュー)**
    - `scraped_beers` に `gemini_data`、`untappd_data`、`breweries` を LEFT JOIN で結合したフラットなビュー。
@@ -141,38 +153,30 @@ graph TD
 
 ---
 
-### 3.3. バックエンド処理フローとパイプライン
+### 3.3. バックエンド処理フローと自動化スケジュール
 
-GitHub Actionsにより、以下のタスクがスケジュール実行されます。
+GitHub Actionsにより、以下のタスクが自動スケジュール実行されます。
 
-1. **Scraping (`uv run cli.py scrape`)**
-   - 4つのショップスクレイパーを並行実行し、最新の商品情報を `scraped_beers` テーブルへ `UPSERT`（存在しなければ挿入、存在すれば最終確認日時 `last_seen` と在庫状況を更新）。
-
-2. **AI Enrichment (`uv run cli.py enrich gemini`)**
-   - `scraped_beers` のうち、まだ `gemini_data` が存在しない新規レコードを処理対象にする。
-   - Gemini API に商品名とショップのスクレイプ情報を渡し、英語・日本語のブルワリー名・ビール名および「セット商品か否か」を判別させて `gemini_data` に保存。
-
-3. **Untappd Enrichment (`uv run cli.py enrich untappd`)**
-   - `gemini_data` はあるが `scraped_beers.untappd_url` が空（未紐付け）のレコードを対象とする (`missing` モード)。
-   - 抽出した英語・日本語名を使って Untappd を検索し、ヒットした場合は詳細情報を `untappd_data` に保存し、`scraped_beers.untappd_url` に紐付ける。
-   - **Two-pass retry**: 検索で直接ヒットしなかった場合、再度 Gemini API を呼び出して不要語（容量表記やビールスタイル名など）を除去した最適化クエリを生成させ、再検索を行う。
-   - 既に紐付け済みのデータで5日以上経過し、かつ在庫があるものを対象に詳細スペックや最新のレーティングを再取得する (`refresh` モード)。
-
-4. **Brewery Enrichment (`uv run cli.py enrich breweries`)**
-   - `untappd_data` の `untappd_brewery_url` があり、まだ `breweries` テーブルにないブルワリーの詳細（ホームページ、ロケーション、醸造所タイプ、ロゴ）を取得・更新する。
+| タスク名 | 実行コマンド | 実行スケジュール (JST) | 処理内容 |
+|---|---|---|---|
+| **スクレイピング** | `uv run cli.py scrape --limit 100 --new` | 毎時間 (毎時 0分) | 新着ビールの検知と在庫状況・価格の更新。 |
+| **Gemini 解析** | `uv run cli.py enrich gemini --limit 50 --offline` | スクレイプ完了後 + 1日4回 (0:00, 6:00, 12:00, 18:00) | 未解析ビールの名前・ブランド抽出。 |
+| **Untappd 連携** | `uv run cli.py enrich untappd --limit 50 --mode missing` | Gemini完了後 + 1日2回 (0:30, 12:30) | 未紐付けビールの検索・スペックの取得。 |
+| **ブルワリー拡張** | `uv run cli.py enrich breweries --limit 50` | (適宜パイプライン内) | 新規ブルワリー情報の収集とマスタ登録。 |
 
 ---
 
-### 3.4. API レートリミット最適化（Gemini API 対策）
+### 3.4. API レートリミット最適化（AI API 対策）
 
-プロジェクトにおける最大の制約は、Google Gemini APIの無料枠制限（1日あたり20リクエスト/モデル）をいかにクリアするかです。これに対して以下の設計・設計パターンが適用されています。
+Gemini API の利用上限（または将来的な有料枠移行）を考慮し、無駄なリクエストの最小化と自動エラーハンドリングを適用しています。
 
+- **アトミックな使用量トラッキング (Atomic Usage Tracking)**
+  - API呼び出しの直前に Supabase のストアドファンクション `increment_api_usage` を呼び出し、その日の利用実績数をアトミックに加算する。
+  - 実績数が設定した安全上限（`global_daily_limit` = 1,450 RPD）を超過している場合は、自動的にAPIリクエストをスキップして無料枠超過を防ぐ。
 - **自動フォールバック戦略 (Model Switching)**
-  - プライマリモデルとして軽量で高速な `gemini-2.5-flash-lite` を使用。
-  - レートリミット（`429 RESOURCE_EXHAUSTED`）を検知すると、自動的にフォールバックモデルである `gemini-2.5-flash` に切り替えてリクエストをリトライする。これにより1日最大40リクエストまで処理可能。
+  - プライマリモデルとして `gemma-4-31b-it` を使用。
+  - レートリミットエラー（`429 RESOURCE_EXHAUSTED` 等）や一時的エラーが発生した場合、自動的にフォールバックモデルである `gemma-4-26b-a4b-it` に切り替えて即座に再試行する。
 - **流量制御 (Throttling)**
-  - APIへの急激なアクセスを防ぐため、リクエスト間に最低4秒（15 RPM相当）の間隔を空ける `request_interval` 制御を実装。
-- **検索失敗の記録とバックオフ (Failure Backoff)**
-  - 何度も検索に失敗する（Untappdに存在しないなど）ビールに対して、毎バッチで検索APIやスクレイピングが走るのを防ぐため、`untappd_search_failures` に記録し、一定期間（例: 24時間）は再検索をスキップする仕組みを導入。
-- **逐次処理 (Sequential Processing)**
-  - すでに判明しているブルワリー名の翻訳結果やエイリアスのキャッシュ情報を最大限活用し、新規ビールでも過去に同一ブルワリーの処理実績があれば翻訳のためのAPI呼び出しをスキップする。
+  - APIへの急激なアクセスを防ぐため、リクエスト間に最低 4.5 秒（約 13.3 RPM 相当）の間隔を空ける `request_interval` 制御を実装。
+- **検索失敗のバックオフ (Failure Backoff)**
+  - 何度も検索に失敗する（Untappdに存在しないなど）ビールに対して、毎バッチで検索APIやスクレイピングが走るのを防ぐため、`untappd_search_failures` に記録し、一定期間（例: 24時間）は再検索をスキップする。
