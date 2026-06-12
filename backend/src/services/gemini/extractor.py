@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential
 from ...core.types import GeminiExtraction
 from ...core.db import get_supabase_client
+from .cache_resolver import LocalCacheResolver
 
 load_dotenv()
 
@@ -34,6 +35,9 @@ class GeminiExtractor:
         
         # Load shop rules from external JSON
         self.shop_rules = self._load_shop_rules()
+        
+        # Initialize Cache Resolver
+        self.cache_resolver = LocalCacheResolver()
         
         # Rate Limiting Configuration
         self.last_request_time = 0
@@ -207,6 +211,16 @@ class GeminiExtractor:
 
     async def extract_info(self, product_name: str, known_brewery: Optional[str] = None, shop: Optional[str] = None) -> GeminiExtraction:
         """Main entry point for extracting beer information."""
+        # 1. Tier 1: Product Title Exact Match Cache
+        tier1_res = await self.cache_resolver.resolve_tier1_exact_match(product_name)
+        if tier1_res:
+            return tier1_res
+
+        # 2. Tier 2: Dictionary Match Cache
+        tier2_res = await self.cache_resolver.resolve_tier2_dictionary_match(product_name, shop)
+        if tier2_res:
+            return tier2_res
+
         if not self.client or self.daily_request_count >= self.global_daily_limit:
             return self._empty_result()
 
