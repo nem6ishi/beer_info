@@ -17,41 +17,16 @@ from backend.src.services.untappd.searcher import get_untappd_url, scrape_beer_d
 from backend.src.services.gemini.extractor import GeminiExtractor
 from backend.src.services.store.brewery_manager import BreweryManager
 from backend.src.commands.failure_tracker import record_enrichment_failure, resolve_search_failure
+from backend.src.core.utils import map_details_to_payload
+from backend.src.services.untappd.db_queries import (
+    fetch_beers,
+    prefetch_gemini_untappd_urls,
+    upsert_untappd_data,
+    update_gemini_data_untappd_urls,
+    update_scraped_beers_untappd_urls
+)
 
 logger: logging.Logger = logging.getLogger(__name__)
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def parse_numeric(val: Optional[str]) -> Optional[float]:
-    """Helper to parse numeric values from strings."""
-    if not val:
-        return None
-    try:
-        # Remove non-numeric characters except dots
-        clean = re.sub(r'[^0-9.]', '', str(val))
-        return float(clean) if clean else None
-    except Exception:
-        return None
-
-def map_details_to_payload(details: UntappdBeerDetails) -> Dict[str, Any]:
-    """Maps scraper keys to untappd_data table columns."""
-    return {
-        'beer_name': details.get('untappd_beer_name'),
-        'brewery_name': details.get('untappd_brewery_name'),
-        'style': details.get('untappd_style'),
-        'abv': details.get('untappd_abv'),
-        'abv_num': parse_numeric(details.get('untappd_abv')),
-        'ibu': details.get('untappd_ibu'),
-        'ibu_num': parse_numeric(details.get('untappd_ibu')),
-        'rating': details.get('untappd_rating'),
-        'rating_num': parse_numeric(details.get('untappd_rating')),
-        'rating_count': details.get('untappd_rating_count'),
-        'rating_count_num': parse_numeric(details.get('untappd_rating_count')),
-        'image_url': details.get('untappd_label'),
-        'untappd_brewery_url': details.get('untappd_brewery_url'),
-        'fetched_at': datetime.now(timezone.utc).isoformat()
-    }
 
 
 class UntappdEnricher:
@@ -217,49 +192,22 @@ class UntappdEnricher:
 
     def _fetch_beers(self, offset: int, db_fetch_limit: int) -> List[Dict[str, Any]]:
         """Fetches candidates based on current mode."""
-        if self.mode == 'missing':
-            query: Any = self.supabase.table('beer_info_view') \
-                .select('*') \
-                .or_('untappd_url.is.null,untappd_url.ilike.%/search?%') \
-                .eq('product_type', 'beer')
-            if self.shop_filter:
-                query = query.eq('shop', self.shop_filter)
-            if self.name_filter:
-                query = query.ilike('name', f'%{self.name_filter}%')
-            res: Any = query.order('first_seen', desc=True).limit(db_fetch_limit).offset(offset).execute()
-            beers = res.data or []
-            
-            if self.skip_urls_for_backoff:
-                beers = [b for b in beers if b.get('url') not in self.skip_urls_for_backoff]
-            return beers
-
-        elif self.mode == 'refresh':
-            logger.info(f"\n📂 Loading batch of REFRESH beers (offset={offset})...")
-            cutoff_date: str = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
-            query = self.supabase.table('beer_info_view') \
-                .select('url, name, untappd_url, stock_status, untappd_fetched_at') \
-                .not_.is_('untappd_url', 'null') \
-                .neq('stock_status', 'Sold Out') \
-                .or_(f'untappd_fetched_at.is.null,untappd_fetched_at.lt.{cutoff_date}')
-            if self.shop_filter:
-                query = query.eq('shop', self.shop_filter)
-            if self.name_filter:
-                query = query.ilike('name', f'%{self.name_filter}%')
-            res = query.order('untappd_fetched_at', desc=False, nullsfirst=True).limit(db_fetch_limit).offset(offset).execute()
-            return res.data or []
-        
-        return []
+        return fetch_beers(
+            self.supabase,
+            self.mode,
+            offset,
+            db_fetch_limit,
+            self.shop_filter,
+            self.name_filter,
+            self.skip_urls_for_backoff
+        )
 
     def _prefetch_caches(self, beers_to_process: List[Dict[str, Any]]) -> None:
         """Prefetch gemini and untappd data to prevent N+1 queries."""
         urls_to_process = [b.get('url') for b in beers_to_process if b.get('url')]
         
         if urls_to_process:
-            try:
-                gemini_res = self.supabase.table('gemini_data').select('url, untappd_url').in_('url', urls_to_process).execute()
-                self.gemini_cache.update({item['url']: item.get('untappd_url') for item in (gemini_res.data or []) if item.get('untappd_url')})
-            except Exception as e:
-                logger.warning(f"  ⚠️ Failed to prefetch gemini_data cache: {e}")
+            self.gemini_cache.update(prefetch_gemini_untappd_urls(self.supabase, urls_to_process))
 
         known_untappd_urls = []
         for b in beers_to_process:
@@ -530,32 +478,9 @@ class UntappdEnricher:
         scraped_updates: List[Dict[str, Any]],
     ) -> None:
         """Commits all accumulated updates to the database in batch."""
-        if untappd_payloads:
-            try:
-                self.supabase.table('untappd_data').upsert(untappd_payloads).execute()
-                logger.info(f"  💾 Saved {len(untappd_payloads)} items to untappd_data (Batch)")
-            except Exception as e:
-                logger.error(f"  ❌ Error saving to untappd_data (Batch): {e}")
-
-        if gemini_updates:
-            success_count = 0
-            for item in gemini_updates:
-                try:
-                    self.supabase.table('gemini_data').update({'untappd_url': item['untappd_url']}).eq('url', item['url']).execute()
-                    success_count += 1
-                except Exception as e:
-                    logger.error(f"  ⚠️ Error updating gemini_data for {item['url']}: {e}")
-            logger.info(f"  💾 Updated {success_count} items in gemini_data (Batch)")
-
-        if scraped_updates:
-            success_count = 0
-            for item in scraped_updates:
-                try:
-                    self.supabase.table('scraped_beers').update({'untappd_url': item['untappd_url']}).eq('url', item['url']).execute()
-                    success_count += 1
-                except Exception as e:
-                    logger.error(f"  ❌ Error updating scraped_beers for {item['url']}: {e}")
-            logger.info(f"  💾 Linked {success_count} items in scraped_beers (Batch)")
+        upsert_untappd_data(self.supabase, untappd_payloads)
+        update_gemini_data_untappd_urls(self.supabase, gemini_updates)
+        update_scraped_beers_untappd_urls(self.supabase, scraped_updates)
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
