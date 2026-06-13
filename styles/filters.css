@@ -1,0 +1,403 @@
+/* ========================================
+   Controls Bar
+   ======================================== */
+.controls-bar {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+    /* Allow wrapping on smaller screens */
+    background: #fff;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid #eee;
+}
+
+.filter-group-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.style-input-main {
+    padding: 8px 12px;
+    background: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #1a1a1a;
+    font-family: 'Outfit', sans-serif;
+    transition: all 0.2s ease;
+    width: 140px;
+    /* Fixed width for better layout */
+}
+
+.style-input-main:focus {
+    outline: none;
+    border-color: #1a1a1a;
+}
+
+.controls-divider {
+    width: 1px;
+    height: 24px;
+    background: #eee;
+    margin: 0 4px;
+    display: none;
+    /* Hide on small screens where wrapping happens */
+}
+
+@media (min-width: 900px) {
+    .controls-divider {
+        display: block;
+    }
+}
+
+.sort-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sort-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #666;
+}
+
+.select-wrapper {
+    position: relative;
+}
+
+.select-wrapper::after {
+    content: '▼';
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 9px;
+    color: #999;
+    pointer-events: none;
+}
+
+.sort-select {
+    padding: 8px 36px 8px 12px;
+    background: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #1a1a1a;
+    font-family: 'Outfit', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    appearance: none;
+    min-width: 180px;
+}
+
+.sort-select:hover {
+    border-color: #ccc;
+}
+
+.sort-select:focus {
+    outline: none;
+    border-color: #1a1a1a;
+}
+
+/* ========================================
+   View Toggle
+   ======================================== */
+.view-toggle-group {
+    display: flex;
+    background: #f5f5f5;
+    padding: 2px;
+    border-radius: 8px;
+    border: 1px solid #e5e5e5;
+}
+
+.view-toggle-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+    border: none;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    border-radius: 6px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.view-toggle-btn.active {
+    background: #ffffff;
+    color: #1a1a1a;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    font-weight: 600;
+}
+
+/* ========================================
+   Advanced Filter Toggle
+   ======================================== */
+.open-filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: #f9f9f9;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #1a1a1a;
+    cursor: pointer;
+    margin-left: auto;
+    /* Push to right on desktop */
+    transition: all 0.2s ease;
+}
+
+.open-filter-btn:hover {
+    background: #f0f0f0;
+    border-color: #d0d0d0;
+}
+
+.open-filter-btn.active {
+    background: #e3f2fd;
+    border-color: #bbdefb;
+    color: #1565c0;
+}
+
+.filter-badge-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #1a1a1a;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    padding: 0 4px;
+}
+
+.toggle-icon {
+    font-size: 8px;
+    margin-left: 4px;
+    color: #999;
+}
+
+/* ========================================
+   Reset Button
+   ======================================== */
+.reset-btn-small {
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #d32f2f;
+    background: #fff;
+    border: 1px solid #ffcdd2;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.reset-btn-small:hover {
+    background: #ffebee;
+}
+
+.refresh-btn {
+    color: #666;
+    border-color: #e0e0e0;
+    margin-left: 8px;
+    font-size: 18px;
+    padding: 4px 12px;
+    line-height: normal;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+}
+
+.refresh-btn:hover {
+    background: #f5f5f5;
+    color: #1a1a1a;
+    border-color: #d0d0d0;
+}
+
+/* ========================================
+   Collapsible Filter Area
+   ======================================== */
+.filter-collapsible {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-in-out, opacity 0.3s ease;
+    opacity: 0;
+    background: #fcfcfc;
+    border-radius: 0 0 12px 12px;
+    margin-top: -24px;
+    /* Pull up to connect with controls */
+    margin-bottom: 24px;
+    border: 1px solid #eee;
+    border-top: none;
+}
+
+.filter-collapsible.open {
+    max-height: 500px;
+    opacity: 1;
+    padding: 16px;
+}
+
+.filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.filter-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.filter-item label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.input-range-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.filter-input {
+    width: 100%;
+    padding: 8px;
+    font-size: 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    background: #fff;
+}
+
+.filter-select {
+    width: 100%;
+    padding: 8px;
+    font-size: 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    background: #fff;
+    appearance: none;
+    /* Custom arrow needed or accept default */
+}
+
+.select-wrapper.full-width {
+    width: 100%;
+}
+
+/* MultiSelect Dropdown Styles */
+.multi-select-container {
+    position: relative;
+    width: 200px;
+    /* Or specific based on layout */
+}
+
+.multi-select-trigger {
+    width: 100%;
+    padding: 8px 36px 8px 12px;
+    background: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #1a1a1a;
+    font-family: 'Outfit', sans-serif;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 40px;
+    /* Ensure consistency */
+}
+
+.multi-select-trigger .truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 8px;
+}
+
+.multi-select-trigger .arrow {
+    position: absolute;
+    right: 12px;
+    font-size: 9px;
+    color: #999;
+}
+
+.multi-select-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 250px;
+    /* Wider than trigger to show content */
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    margin-top: 4px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.multi-select-options {
+    max-height: 250px;
+    overflow-y: auto;
+    width: 100%;
+}
+
+.multi-select-option {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    gap: 8px;
+    font-size: 14px;
+    color: #333;
+    cursor: pointer;
+    border-bottom: 1px solid #f9f9f9;
+    transition: background 0.2s ease;
+}
+
+.multi-select-option:hover {
+    background: #f5f5f5;
+}
+
+.multi-select-option:last-child {
+    border-bottom: none;
+}
+
+.multi-select-option input[type="checkbox"] {
+    accent-color: #1a1a1a;
+    width: 16px;
+    height: 16px;
+}
+
+.multi-select-search {
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.multi-select-search input {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    font-size: 13px;
+    background: #f9f9f9;
+}
+
+.multi-select-search input:focus {
+    outline: none;
+    border-color: #ccc;
+}

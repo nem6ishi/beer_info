@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.services.untappd.searcher import clean_brewery_name, normalize_for_comparison
+from src.services.untappd.text_utils import clean_brewery_name, normalize_for_comparison
 
 # テストケース
 result_brewery = "Vinohradský pivovar"

@@ -1,0 +1,267 @@
+/* ========================================
+   Responsive Design
+   ======================================== */
+@media (max-width: 768px) {
+    h1 {
+        font-size: 1.125rem;
+    }
+
+    .header-content {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+
+    .search-bar {
+        max-width: 100%;
+    }
+
+    .controls-bar {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 12px;
+        gap: 12px;
+    }
+
+    .filter-group-main {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .style-input-main {
+        width: 100%;
+    }
+
+    .sort-container {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .sort-select {
+        width: 100%;
+    }
+
+    /* Convert Table to Cards */
+    .table-container {
+        background: transparent;
+        border: none;
+        overflow: visible;
+    }
+
+    .beer-table {
+        display: block;
+        min-width: 0;
+    }
+
+    .beer-table thead {
+        display: none;
+    }
+
+    .beer-table tbody {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .beer-table tbody tr {
+        display: grid;
+        grid-template-columns: 80px 1fr;
+        grid-template-rows: auto auto auto;
+        /* Info, Stats, Actions */
+        gap: 12px 16px;
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 12px;
+        padding: 16px;
+        position: relative;
+    }
+
+    .beer-table td {
+        border: none;
+        padding: 0;
+        display: block;
+    }
+
+    /* 1. Image Cell - Top Left (Spans 2 rows) */
+    .col-img {
+        grid-column: 1 / 2;
+        grid-row: 1 / 3;
+    }
+
+    .beer-image-wrapper {
+        width: 80px;
+        height: 80px;
+        border-radius: 8px;
+    }
+
+    /* 2. Info Cell - Top Right */
+    .col-name {
+        grid-column: 2 / 3;
+        grid-row: 1 / 2;
+        min-width: 0;
+        /* Prevent overflow */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .beer-name-group {
+        gap: 2px;
+    }
+
+    .beer-name {
+        font-size: 16px;
+        line-height: 1.3;
+        margin-bottom: 2px;
+    }
+
+    .brewery-name {
+        font-size: 11px;
+        color: #888;
+        margin-bottom: 2px;
+    }
+
+    /* 3. Style/Specs Cell - Below Info (Right side) */
+    .col-beer-style {
+        grid-column: 2 / 3;
+        grid-row: 2 / 3;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .style-specs-group {
+        display: flex;
+        flex-direction: column;
+        /* Force vertical stacking */
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    .beer-style-text {
+        font-size: 10px;
+        padding: 2px 6px;
+    }
+
+    .stats-row {
+        font-size: 11px;
+    }
+
+    /* 4. Rating Cell - Bottom Left */
+    .col-rating {
+        grid-column: 1 / 2;
+        grid-row: 3 / 4;
+        display: flex;
+        justify-content: center;
+        /* Center Horizontally */
+        align-items: flex-start;
+        margin-top: 4px;
+        width: 100%;
+        /* Ensure full width of cell for centering */
+    }
+
+    .rating-box {
+        min-width: auto;
+        padding: 4px;
+        background: transparent;
+        gap: 0;
+    }
+
+    .untappd-badge {
+        font-size: 13px;
+        padding: 3px 6px;
+    }
+
+    .rating-count,
+    .fetched-date {
+        font-size: 8px;
+        /* Smaller text for mobile rating details */
+    }
+
+    /* 5. Shop/Actions Cell - Bottom Right */
+    .col-shop {
+        grid-column: 2 / 3;
+        grid-row: 3 / 4;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        /* Center vertically if single item */
+    }
+
+    /* Adjust specific elements for mobile */
+    .shop-list-flat {
+        width: 100%;
+        gap: 6px;
+    }
+
+    .shop-item-flat {
+        width: 100%;
+    }
+
+    .shop-btn-flat {
+        padding: 8px 12px;
+        /* Larger touch target */
+        background: #f8f9fa;
+    }
+
+    .shop-info-primary {
+        justify-content: space-between;
+    }
+
+    .shop-name-text {
+        font-size: 13px;
+        /* Slightly larger for readability */
+    }
+
+    .price-text {
+        font-size: 14px;
+    }
+
+    /* Make MultiSelect Full Width */
+    .multi-select-container {
+        width: 100%;
+    }
+
+    .multi-select-dropdown {
+        width: 100%;
+    }
+
+    /* Advanced Filters Layout */
+    .filter-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .filter-item {
+        width: 100%;
+    }
+
+    .input-range-group {
+        width: 100%;
+    }
+
+    .input-range-group input {
+        width: 100%;
+    }
+
+    /* Toggle Buttons - Segmented Control on Mobile */
+    .view-toggle-group {
+        width: 100%;
+    }
+
+    .view-toggle-btn {
+        flex: 1;
+        text-align: center;
+        justify-content: center;
+    }
+
+    /* Prevent Mobile Zoom */
+    input[type="text"],
+    input[type="number"],
+    select,
+    textarea,
+    .multi-select-search input,
+    .search-bar input {
+        font-size: 16px !important;
+    }
+}

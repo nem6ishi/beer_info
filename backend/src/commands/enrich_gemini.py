@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, cast, Tuple
 
-from ..core.db import get_supabase_client
+from ..core.db import get_supabase_client, refresh_materialized_view
 from ..core.types import GeminiExtraction
 from ..services.gemini.extractor import GeminiExtractor
 from ..services.store.brewery_manager import BreweryManager
@@ -95,7 +95,7 @@ class GeminiEnricher:
 
         self._print_final_report()
         if not self.offline:
-            self._refresh_materialized_view()
+            refresh_materialized_view(self.supabase, logger)
 
     def _get_count(self) -> int:
         """Gets total count of items requiring enrichment."""
@@ -223,13 +223,7 @@ class GeminiEnricher:
         except Exception as e:
             logger.warning(f"  ⚠️ Failed to resolve previous search failures: {e}")
 
-    def _refresh_materialized_view(self) -> None:
-        logger.info("\n🔄 Refreshing Materialized View (beer_info_view)...")
-        try:
-            self.supabase.rpc('refresh_beer_info_view').execute()
-            logger.info("✅ View refreshed successfully!")
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to refresh view: {e}")
+
 
     def _print_final_report(self) -> None:
         """Prints a summary of the enrichment run."""

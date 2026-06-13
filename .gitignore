@@ -19,6 +19,8 @@ __pycache__
 .venv
 .venv_mac
 venv/
+.pytest_cache
+.ruff_cache
 
 # Local data (no longer needed in cloud)
 data/beers.json
@@ -36,3 +38,5 @@ npm-debug.log*
 # IDE
 .vscode
 .idea
+
+tsconfig.tsbuildinfo

@@ -1,12 +1,6 @@
 import os
 from typing import List, Dict, Optional
-from supabase import create_client, Client
-from dotenv import load_dotenv
-
-# Load environment variables
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
-load_dotenv(env_path)
-
+from src.core.db import get_supabase_client
 
 class BreweryManager:
     """
@@ -15,13 +9,7 @@ class BreweryManager:
     """
     
     def __init__(self):
-        supabase_url = os.getenv('SUPABASE_URL') or os.getenv('NEXT_PUBLIC_SUPABASE_URL')
-        supabase_key = os.getenv('SUPABASE_SERVICE_KEY')
-        
-        if not supabase_url or not supabase_key:
-            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
-        
-        self.supabase: Client = create_client(supabase_url, supabase_key)
+        self.supabase = get_supabase_client()
         self.breweries: List[Dict] = []
         self.brewery_index: Dict[str, Dict] = {}
         self.load_breweries()

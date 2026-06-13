@@ -11,7 +11,7 @@ import re
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any, Set
 
-from backend.src.core.db import get_supabase_client
+from backend.src.core.db import get_supabase_client, refresh_materialized_view
 from backend.src.core.types import UntappdBeerDetails, UntappdSearchResult
 from backend.src.services.untappd.searcher import get_untappd_url, scrape_beer_details
 from backend.src.services.gemini.extractor import GeminiExtractor
@@ -184,17 +184,10 @@ class UntappdEnricher:
         logger.info(f"{'='*70}")
 
         if not self.offline:
-            self._refresh_materialized_view()
+            refresh_materialized_view(self.supabase, logger)
 
         return list(self.collected_brewery_urls)
 
-    def _refresh_materialized_view(self) -> None:
-        logger.info("\n🔄 Refreshing Materialized View (beer_info_view)...")
-        try:
-            self.supabase.rpc('refresh_beer_info_view').execute()
-            logger.info("✅ View refreshed successfully!")
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to refresh view: {e}")
 
     def _preload_failure_history(self) -> None:
         """Pre-loads failure records for backoff filtering."""

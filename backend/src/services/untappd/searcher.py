@@ -275,6 +275,7 @@ async def _get_untappd_url_single(
 
 
 if __name__ == "__main__":
+    import asyncio
     logging.basicConfig(level=logging.INFO)
     test_url: str = "https://untappd.com/b/inkhorn-brewing-uguisu/6441649"
-    print(scrape_beer_details(test_url))
+    print(asyncio.run(scrape_beer_details(test_url)))

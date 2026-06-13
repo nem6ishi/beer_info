@@ -1,5 +1,8 @@
-import '../public/style.css'
-import '../public/pagination.css'
+import '../styles/globals.css'
+import '../styles/filters.css'
+import '../styles/table.css'
+import '../styles/responsive.css'
+import '../styles/pagination.css'
 import { Metadata, Viewport } from 'next'
 export const metadata: Metadata = {
   title: 'Craft Beer Alert Japan',

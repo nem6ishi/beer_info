@@ -274,9 +274,3 @@ if __name__ == "__main__":
     print(json.dumps(data[:5], indent=2, ensure_ascii=False))
     print(f"\nTotal: {len(data)} products")
 
-if __name__ == "__main__":
-    # For testing purposes
-    import json
-    data = asyncio.run(scrape_beervolta(limit=5))
-    print(json.dumps(data[:5], indent=2, ensure_ascii=False))
-    print(f"\nTotal: {len(data)} products")

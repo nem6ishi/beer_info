@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef, useTransition } from 'react'
+import React, { useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import BeerTable from './BeerTable'
 import Pagination from './Pagination'
 import BeerFilters from './BeerFilters'
-import type { Beer, FilterState, BreweryOption, StyleOption, BeersApiResponse } from '../types/beer'
+import { useBeerFilters } from '../hooks/useBeerFilters'
+import { useBeerData } from '../hooks/useBeerData'
+import type { Beer, BreweryOption, StyleOption, BeersApiResponse } from '../types/beer'
 
 interface HomeClientProps {
     initialData: BeersApiResponse;
@@ -15,157 +16,55 @@ interface HomeClientProps {
 }
 
 export default function HomeClient({ initialData, availableStyles, availableBreweries }: HomeClientProps) {
-    const router = useRouter()
-    const searchParams = useSearchParams()
-    const pathname = usePathname()
+    const {
+        searchInput,
+        isFilterOpen,
+        setIsFilterOpen,
+        tempFilters,
+        isPending,
+        updateURL,
+        handleSearchChange,
+        handleFilterChange,
+        handleMultiSelectChange,
+        resetFilters,
+        syncFiltersFromParams,
+        searchParams,
+    } = useBeerFilters();
 
-    const [beers, setBeers] = useState<Beer[]>(initialData.beers)
-    const [shopCounts, setShopCounts] = useState<Record<string, number>>(initialData.shopCounts)
-    const [loading, setLoading] = useState(false)
-    const [error, setError] = useState<string | null>(null)
-    const [totalPages, setTotalPages] = useState(initialData.pagination.totalPages)
-    const [totalItems, setTotalItems] = useState(initialData.pagination.total)
-    const [isPending, startTransition] = useTransition()
-    
-    const searchParamStr = searchParams.get('search') || '';
-    const [searchInput, setSearchInput] = useState(searchParamStr)
-    const [isFilterOpen, setIsFilterOpen] = useState(false)
-    
-    const [tempFilters, setTempFilters] = useState<FilterState>({
-        min_abv: searchParams.get('min_abv') || '', 
-        max_abv: searchParams.get('max_abv') || '', 
-        min_ibu: searchParams.get('min_ibu') || '', 
-        max_ibu: searchParams.get('max_ibu') || '', 
-        min_rating: searchParams.get('min_rating') || '',
-        stock_filter: searchParams.get('stock_filter') || 'in_stock', 
-        untappd_status: searchParams.get('untappd_status') || '', 
-        shop: searchParams.get('shop') || '',
-        brewery_filter: searchParams.get('brewery_filter') || '', 
-        style_filter: searchParams.get('style_filter') || '', 
-        set_mode: searchParams.get('set_mode') || '',
-        debug: searchParams.get('debug') || ''
-    })
+    const {
+        data: beers,
+        shopCounts,
+        loading,
+        error,
+        totalPages,
+        totalItems,
+        fetchData,
+        syncDataFromInitial
+    } = useBeerData<Beer[], BeersApiResponse>({
+        initialData,
+        endpoint: '/api/beers',
+        dataKey: 'beers'
+    });
 
-    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-    const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-    const abortControllerRef = useRef<AbortController | null>(null)
-    const page = parseInt(searchParams.get('page') || '1', 10)
-    const sort = searchParams.get('sort') || 'newest'
-    const limit = searchParams.get('limit') || '20'
-
-    const fetchBeers = useCallback(async () => {
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
-        setLoading(true);
-        try {
-            const params = new URLSearchParams(searchParams.toString());
-            const res = await fetch(`/api/beers?${params.toString()}`, { signal: controller.signal });
-            const data: BeersApiResponse = await res.json();
-            setBeers(data.beers || []);
-            setShopCounts(data.shopCounts || {});
-            setTotalPages(data.pagination.totalPages);
-            setTotalItems(data.pagination.total);
-            setError(null);
-        } catch (err: any) {
-            if (err.name !== 'AbortError') {
-                setError('Refresh failed');
-            }
-        } finally {
-            if (abortControllerRef.current === controller) {
-                setLoading(false);
-            }
-        }
-    }, [searchParams]);
+    const page = parseInt(searchParams.get('page') || '1', 10);
+    const sort = searchParams.get('sort') || 'newest';
+    const limit = searchParams.get('limit') || '20';
 
     useEffect(() => {
         const hasFilters = Array.from(searchParams.keys()).length > 0;
         
         if (hasFilters) {
             // URL has parameters, fetch client-side
-            fetchBeers();
+            fetchData();
         } else {
             // No parameters, use the instantly loaded static default data
-            setBeers(initialData.beers);
-            setTotalPages(initialData.pagination.totalPages);
-            setTotalItems(initialData.pagination.total);
-            setShopCounts(initialData.shopCounts);
+            syncDataFromInitial();
         }
         
-        setSearchInput(searchParams.get('search') || '');
-        setTempFilters({
-            min_abv: searchParams.get('min_abv') || '',
-            max_abv: searchParams.get('max_abv') || '',
-            min_ibu: searchParams.get('min_ibu') || '',
-            max_ibu: searchParams.get('max_ibu') || '',
-            min_rating: searchParams.get('min_rating') || '',
-            stock_filter: searchParams.get('stock_filter') || 'in_stock',
-            untappd_status: searchParams.get('untappd_status') || '',
-            shop: searchParams.get('shop') || '',
-            brewery_filter: searchParams.get('brewery_filter') || '',
-            style_filter: searchParams.get('style_filter') || '',
-            set_mode: searchParams.get('set_mode') || '',
-            debug: searchParams.get('debug') || ''
-        });
-    }, [initialData, searchParams, fetchBeers]);
+        syncFiltersFromParams();
+    }, [initialData, searchParams, fetchData, syncDataFromInitial, syncFiltersFromParams]);
 
-    const updateURL = (newParams: Record<string, string>, targetPath = pathname) => {
-        const params = new URLSearchParams(searchParams.toString());
-        
-        Object.entries(newParams).forEach(([key, value]) => {
-            if (value === '') {
-                params.delete(key);
-            } else {
-                params.set(key, value);
-            }
-        });
-
-        if (params.get('page') === '1') params.delete('page');
-        if (params.get('limit') === '20') params.delete('limit');
-        if (params.get('sort') === 'newest') params.delete('sort');
-        if (!params.get('search')) params.delete('search');
-        if (!params.get('shop')) params.delete('shop');
-        if (params.get('stock_filter') === 'in_stock') params.delete('stock_filter');
-
-        const searchStr = params.toString();
-        const queryStr = searchStr ? `?${searchStr}` : '';
-        startTransition(() => {
-            router.push(`${targetPath}${queryStr}`, { scroll: false });
-        });
-    }
-
-    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value
-        setSearchInput(val)
-        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
-        searchTimeoutRef.current = setTimeout(() => updateURL({ search: val, page: '1' }), 300)
-    }
-
-    const handleFilterChange = (key: string, value: string) => {
-        setTempFilters(prev => ({ ...prev, [key]: value }));
-        if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
-        filterTimeoutRef.current = setTimeout(() => {
-            updateURL({ [key]: value, page: '1' });
-        }, 300);
-    }
-    
-    const handleMultiSelectChange = (key: string, value: string[]) => {
-        setTempFilters(prev => ({ ...prev, [key]: value.join(',') }));
-        updateURL({ [key]: value.join(','), page: '1' });
-    }
-    const resetFilters = () => {
-        startTransition(() => {
-            router.push(pathname, { scroll: false });
-        });
-    }
-    const handlePageChange = (newPage: number) => updateURL({ page: newPage.toString() })
-
-    // Build mock router query object for BeerFilters compatibility
-    const queryObj: Record<string, string> = {};
-    searchParams.forEach((val, key) => { queryObj[key] = val; });
+    const handlePageChange = (newPage: number) => updateURL({ page: newPage.toString() });
 
     return (
         <>
@@ -212,7 +111,7 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
                     onReset={resetFilters}
                     onFilterChange={handleFilterChange}
                     onViewModeChange={(mode) => mode === 'grouped' && updateURL({}, '/grouped')}
-                    onRefresh={fetchBeers}
+                    onRefresh={fetchData}
                 />
 
                 <div id="results-top" style={{ scrollMarginTop: '120px' }}></div>

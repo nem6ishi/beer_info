@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef, useTransition } from 'react'
+import React, { useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import GroupedBeerTable from './GroupedBeerTable'
 import Pagination from './Pagination'
 import BeerFilters from './BeerFilters'
-import type { GroupedBeer, FilterState, BreweryOption, StyleOption, GroupedBeersApiResponse } from '../types/beer'
+import { useBeerFilters } from '../hooks/useBeerFilters'
+import { useBeerData } from '../hooks/useBeerData'
+import type { GroupedBeer, BreweryOption, StyleOption, GroupedBeersApiResponse } from '../types/beer'
 
 interface GroupedClientProps {
     initialData: GroupedBeersApiResponse;
@@ -15,127 +16,55 @@ interface GroupedClientProps {
 }
 
 export default function GroupedClient({ initialData, availableStyles, availableBreweries }: GroupedClientProps) {
-    const router = useRouter()
-    const searchParams = useSearchParams()
-    const pathname = usePathname()
+    const {
+        searchInput,
+        isFilterOpen,
+        setIsFilterOpen,
+        tempFilters,
+        isPending,
+        updateURL,
+        handleSearchChange,
+        handleFilterChange,
+        handleMultiSelectChange,
+        resetFilters,
+        syncFiltersFromParams,
+        searchParams,
+    } = useBeerFilters();
 
-    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-    const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+    const {
+        data: groups,
+        shopCounts,
+        loading,
+        error,
+        totalPages,
+        totalItems,
+        fetchData,
+        syncDataFromInitial
+    } = useBeerData<GroupedBeer[], GroupedBeersApiResponse>({
+        initialData,
+        endpoint: '/api/grouped-beers',
+        dataKey: 'groups'
+    });
 
-    const [groups, setGroups] = useState<GroupedBeer[]>(initialData.groups)
-    const [shopCounts, setShopCounts] = useState<Record<string, number>>(initialData.shopCounts)
-    const [loading, setLoading] = useState(false)
-    const [error, setError] = useState<string | null>(null)
-    const [totalPages, setTotalPages] = useState(initialData.pagination.totalPages)
-    const [totalItems, setTotalItems] = useState(initialData.pagination.total)
-    const [isPending, startTransition] = useTransition()
-
-    const searchParamStr = searchParams.get('search') || '';
-    const [searchInput, setSearchInput] = useState(searchParamStr)
-    const [isFilterOpen, setIsFilterOpen] = useState(false)
-    
-    const [tempFilters, setTempFilters] = useState<FilterState>({
-        min_abv: searchParams.get('min_abv') || '', 
-        max_abv: searchParams.get('max_abv') || '', 
-        min_ibu: searchParams.get('min_ibu') || '', 
-        max_ibu: searchParams.get('max_ibu') || '', 
-        min_rating: searchParams.get('min_rating') || '',
-        stock_filter: searchParams.get('stock_filter') || 'in_stock', 
-        untappd_status: searchParams.get('untappd_status') || '', 
-        shop: searchParams.get('shop') || '',
-        brewery_filter: searchParams.get('brewery_filter') || '', 
-        style_filter: searchParams.get('style_filter') || '', 
-        set_mode: searchParams.get('set_mode') || '',
-        debug: searchParams.get('debug') || ''
-    })
-
-    const page = parseInt(searchParams.get('page') || '1', 10)
-    const limit = searchParams.get('limit') || '20'
-    const sort = searchParams.get('sort') || 'newest'
+    const page = parseInt(searchParams.get('page') || '1', 10);
+    const limit = searchParams.get('limit') || '20';
+    const sort = searchParams.get('sort') || 'newest';
 
     useEffect(() => {
-        setGroups(initialData.groups);
-        setTotalPages(initialData.pagination.totalPages);
-        setTotalItems(initialData.pagination.total);
-        setShopCounts(initialData.shopCounts);
-        setSearchInput(searchParams.get('search') || '');
-        setTempFilters({
-            min_abv: searchParams.get('min_abv') || '',
-            max_abv: searchParams.get('max_abv') || '',
-            min_ibu: searchParams.get('min_ibu') || '',
-            max_ibu: searchParams.get('max_ibu') || '',
-            min_rating: searchParams.get('min_rating') || '',
-            stock_filter: searchParams.get('stock_filter') || 'in_stock',
-            untappd_status: searchParams.get('untappd_status') || '',
-            shop: searchParams.get('shop') || '',
-            brewery_filter: searchParams.get('brewery_filter') || '',
-            style_filter: searchParams.get('style_filter') || '',
-            set_mode: searchParams.get('set_mode') || '',
-            debug: searchParams.get('debug') || ''
-        });
-    }, [initialData, searchParams]);
-
-    const fetchGroups = useCallback(async () => {
-        setLoading(true);
-        try {
-            const params = new URLSearchParams(searchParams.toString());
-            const res = await fetch(`/api/grouped-beers?${params.toString()}`);
-            const data: GroupedBeersApiResponse = await res.json();
-            setGroups(data.groups || []);
-            setShopCounts(data.shopCounts || {});
-            setTotalPages(data.pagination.totalPages);
-            setTotalItems(data.pagination.total);
-        } catch (err) {
-            setError('Refresh failed');
-        } finally {
-            setLoading(false);
-        }
-    }, [searchParams]);
-
-    const updateURL = (newParams: Record<string, string>, targetPath = pathname) => {
-        const params = new URLSearchParams(searchParams.toString());
+        const hasFilters = Array.from(searchParams.keys()).length > 0;
         
-        Object.entries(newParams).forEach(([key, value]) => {
-            if (value === '') {
-                params.delete(key);
-            } else {
-                params.set(key, value);
-            }
-        });
+        if (hasFilters) {
+            // URL has parameters, fetch client-side
+            fetchData();
+        } else {
+            // No parameters, use the instantly loaded static default data
+            syncDataFromInitial();
+        }
+        
+        syncFiltersFromParams();
+    }, [initialData, searchParams, fetchData, syncDataFromInitial, syncFiltersFromParams]);
 
-        if (params.get('page') === '1') params.delete('page');
-        if (params.get('limit') === '20') params.delete('limit');
-        if (params.get('sort') === 'newest') params.delete('sort');
-        if (!params.get('search')) params.delete('search');
-
-        const searchStr = params.toString();
-        const queryStr = searchStr ? `?${searchStr}` : '';
-        startTransition(() => {
-            router.push(`${targetPath}${queryStr}`, { scroll: false });
-        });
-    }
-
-    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value
-        setSearchInput(val)
-        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
-        searchTimeoutRef.current = setTimeout(() => updateURL({ search: val, page: '1' }), 500)
-    }
-
-    const handleFilterChange = (key: string, value: string) => {
-        setTempFilters(prev => ({ ...prev, [key]: value }));
-        if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
-        filterTimeoutRef.current = setTimeout(() => {
-            updateURL({ [key]: value, page: '1' });
-        }, 500);
-    }
-    const handleMultiSelectChange = (key: string, value: string[]) => updateURL({ [key]: value.join(','), page: '1' })
-    const resetFilters = () => {
-        startTransition(() => {
-            router.push(pathname, { scroll: false });
-        });
-    }
-    const handlePageChange = (newPage: number) => updateURL({ page: newPage.toString() })
+    const handlePageChange = (newPage: number) => updateURL({ page: newPage.toString() });
 
     return (
         <>
@@ -183,7 +112,7 @@ export default function GroupedClient({ initialData, availableStyles, availableB
                     onFilterChange={handleFilterChange}
                     viewMode="grouped"
                     onViewModeChange={(mode) => mode === 'individual' && updateURL({}, '/')}
-                    onRefresh={fetchGroups}
+                    onRefresh={fetchData}
                 />
 
                 <div id="results-top" style={{ scrollMarginTop: '120px' }}></div>

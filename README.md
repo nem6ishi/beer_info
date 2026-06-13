@@ -109,17 +109,24 @@ uv run cli.py enrich breweries --limit 50
 ```
 /
 ├── .github/workflows/      # GitHub Actions
-├── backend/src/                    # Python Backend
-│   ├── commands/           # Command logic (Scrape, Enrich)
-│   ├── core/               # Config, DB, Logging
-│   ├── scrapers/           # Site scrapers
-│   └── services/           # Service modules (Gemini, Untappd)
-├── cli.py                  # CLI Entry Point
-├── lib/                    # Next.js utilities
-├── pages/                  # Next.js pages
+├── app/                    # Next.js App Router pages & API routes
+├── backend/                # Python Backend
+│   ├── src/
+│   │   ├── commands/       # Command logic (Scrape, Enrich)
+│   │   ├── core/           # Config, DB, Logging
+│   │   ├── scrapers/       # Site scrapers
+│   │   └── services/       # Service modules (Gemini, Untappd)
+│   ├── tests/              # Python tests
+│   └── scripts/            # Utility scripts
+├── components/             # React components
+├── database/               # Database schema & migrations
+├── docs/                   # Documentation
+├── hooks/                  # React custom hooks
+├── lib/                    # Shared Next.js utilities
 ├── public/                 # Static assets
-├── scripts/                # Utility scripts & backward compatibility shims
-└── sql/                    # SQL Database Files
+├── styles/                 # CSS stylesheets
+├── types/                  # TypeScript type definitions
+└── cli.py                  # CLI Entry Point
 ```
 
 ## 📊 API Endpoints
