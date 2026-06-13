@@ -1,5 +1,7 @@
 import React, { ChangeEvent } from 'react'
 import MultiSelectDropdown from './MultiSelectDropdown'
+import FilterSection from './filters/FilterSection'
+import RangeFilter from './filters/RangeFilter'
 import type { FilterState, SelectOption, BreweryOption, StyleOption } from '../types/beer'
 
 interface BeerFiltersProps {
@@ -52,8 +54,7 @@ export default function BeerFilters({
         <>
             <div className="controls-bar">
                 {/* View Toggle */}
-                <div className="filter-group-main">
-                    <label className="sort-label">View:</label>
+                <FilterSection label="View:">
                     <div className="view-toggle-group">
                         <button
                             className={`view-toggle-btn ${viewMode === 'individual' ? 'active' : ''}`}
@@ -68,10 +69,10 @@ export default function BeerFilters({
                             Grouped
                         </button>
                     </div>
-                </div>
+                </FilterSection>
 
-                <div className="filter-group-main">
-                    <label className="sort-label">Store:</label>
+                {/* Store Dropdown */}
+                <FilterSection label="Store:">
                     <MultiSelectDropdown
                         options={Object.entries(shopCounts)
                             .map(([name, count]): SelectOption => ({ value: name, label: `${name} (${count})`, count }))
@@ -81,12 +82,11 @@ export default function BeerFilters({
                         onChange={(vals) => onMultiSelectChange('shop', vals)}
                         placeholder="Select Stores"
                     />
-                </div>
+                </FilterSection>
 
                 {/* Breweries Dropdown (Multi-select) */}
-                <div className="filter-group-main">
+                <FilterSection label="Breweries:">
                     <button className="dropdown-toggle" style={{ display: 'none' }}>Breweries</button>
-                    <label className="sort-label">Breweries:</label>
                     <MultiSelectDropdown
                         options={availableBreweries.map(b => ({
                             label: b.name,
@@ -98,11 +98,10 @@ export default function BeerFilters({
                         placeholder="Select Breweries"
                         searchable={true}
                     />
-                </div>
+                </FilterSection>
 
                 {/* Style Dropdown (Multi-select) */}
-                <div className="filter-group-main">
-                    <label className="sort-label">Style:</label>
+                <FilterSection label="Style:">
                     <MultiSelectDropdown
                         options={availableStyles.map(s => ({
                             value: typeof s === 'string' ? s : s.style,
@@ -113,11 +112,10 @@ export default function BeerFilters({
                         placeholder="Select Styles"
                         searchable={true}
                     />
-                </div>
+                </FilterSection>
 
                 {/* Sort (Main Bar) */}
-                <div className="filter-group-main">
-                    <label htmlFor="sortSelect" className="sort-label">Sort:</label>
+                <FilterSection label="Sort:" htmlFor="sortSelect">
                     <div className="select-wrapper">
                         <select
                             id="sortSelect"
@@ -134,11 +132,10 @@ export default function BeerFilters({
                             <option value="name_asc">Name: A to Z</option>
                         </select>
                     </div>
-                </div>
+                </FilterSection>
 
                 {/* Limit Filter */}
-                <div className="filter-group-main">
-                    <label htmlFor="limitSelect" className="sort-label">Limit:</label>
+                <FilterSection label="Limit:" htmlFor="limitSelect">
                     <div className="select-wrapper">
                         <select
                             id="limitSelect"
@@ -153,7 +150,7 @@ export default function BeerFilters({
                             <option value="100">100</option>
                         </select>
                     </div>
-                </div>
+                </FilterSection>
 
                 <div className="controls-divider"></div>
 
@@ -195,65 +192,38 @@ export default function BeerFilters({
                     <div className="filter-grid">
 
                         {/* ABV Filter */}
-                        <div className="filter-item">
-                            <label>ABV (%)</label>
-                            <div className="input-range-group">
-                                <input
-                                    type="number"
-                                    className="filter-input"
-                                    placeholder="Min"
-                                    value={tempFilters.min_abv}
-                                    onChange={(e) => onFilterChange('min_abv', e.target.value)}
-                                />
-                                <span>-</span>
-                                <input
-                                    type="number"
-                                    className="filter-input"
-                                    placeholder="Max"
-                                    value={tempFilters.max_abv}
-                                    onChange={(e) => onFilterChange('max_abv', e.target.value)}
-                                />
-                            </div>
-                        </div>
+                        <FilterSection label="ABV (%)" className="filter-item">
+                            <RangeFilter
+                                minValue={tempFilters.min_abv}
+                                maxValue={tempFilters.max_abv}
+                                onMinChange={(val) => onFilterChange('min_abv', val)}
+                                onMaxChange={(val) => onFilterChange('max_abv', val)}
+                            />
+                        </FilterSection>
 
                         {/* IBU Filter */}
-                        <div className="filter-item">
-                            <label>IBU</label>
-                            <div className="input-range-group">
-                                <input
-                                    type="number"
-                                    className="filter-input"
-                                    placeholder="Min"
-                                    value={tempFilters.min_ibu}
-                                    onChange={(e) => onFilterChange('min_ibu', e.target.value)}
-                                />
-                                <span>-</span>
-                                <input
-                                    type="number"
-                                    className="filter-input"
-                                    placeholder="Max"
-                                    value={tempFilters.max_ibu}
-                                    onChange={(e) => onFilterChange('max_ibu', e.target.value)}
-                                />
-                            </div>
-                        </div>
+                        <FilterSection label="IBU" className="filter-item">
+                            <RangeFilter
+                                minValue={tempFilters.min_ibu}
+                                maxValue={tempFilters.max_ibu}
+                                onMinChange={(val) => onFilterChange('min_ibu', val)}
+                                onMaxChange={(val) => onFilterChange('max_ibu', val)}
+                            />
+                        </FilterSection>
 
                         {/* Rating Filter */}
-                        <div className="filter-item">
-                            <label>Rating (Min)</label>
-                            <input
-                                type="number"
+                        <FilterSection label="Rating (Min)" className="filter-item">
+                            <RangeFilter
+                                minValue={tempFilters.min_rating}
+                                onMinChange={(val) => onFilterChange('min_rating', val)}
+                                showMax={false}
                                 step="0.1"
-                                className="filter-input"
-                                placeholder="0-5"
-                                value={tempFilters.min_rating}
-                                onChange={(e) => onFilterChange('min_rating', e.target.value)}
+                                minPlaceholder="0-5"
                             />
-                        </div>
+                        </FilterSection>
 
                         {/* Stock Filter */}
-                        <div className="filter-item">
-                            <label>Stock</label>
+                        <FilterSection label="Stock" className="filter-item">
                             <div className="select-wrapper full-width">
                                 <select
                                     className="filter-select"
@@ -265,11 +235,10 @@ export default function BeerFilters({
                                     <option value="sold_out">Sold Out Only</option>
                                 </select>
                             </div>
-                        </div>
+                        </FilterSection>
 
                         {/* Product Type Filter */}
-                        <div className="filter-item">
-                            <label>Product Type</label>
+                        <FilterSection label="Product Type" className="filter-item">
                             <div className="select-wrapper full-width">
                                 <select
                                     className="filter-select"
@@ -283,11 +252,10 @@ export default function BeerFilters({
                                     <option value="other">Merch / Others</option>
                                 </select>
                             </div>
-                        </div>
+                        </FilterSection>
 
                         {/* Untappd Status Filter */}
-                        <div className="filter-item">
-                            <label>Untappd Status</label>
+                        <FilterSection label="Untappd Status" className="filter-item">
                             <div className="select-wrapper full-width">
                                 <select
                                     className="filter-select"
@@ -299,11 +267,10 @@ export default function BeerFilters({
                                     <option value="missing">Missing Untappd Link</option>
                                 </select>
                             </div>
-                        </div>
+                        </FilterSection>
 
                         {/* Debug Mode Filter */}
-                        <div className="filter-item">
-                            <label>Debug Mode</label>
+                        <FilterSection label="Debug Mode" className="filter-item">
                             <div className="checkbox-wrapper" style={{ display: 'flex', alignItems: 'center', height: '100%', gap: '8px', paddingLeft: '4px' }}>
                                 <input
                                     type="checkbox"
@@ -316,7 +283,7 @@ export default function BeerFilters({
                                     Show Original Names
                                 </label>
                             </div>
-                        </div>
+                        </FilterSection>
                     </div>
                 </div>
             </div>
