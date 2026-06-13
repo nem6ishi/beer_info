@@ -1,6 +1,6 @@
 import os
 from typing import List, Dict, Optional
-from src.core.db import get_supabase_client
+from backend.src.core.db import get_supabase_client
 
 class BreweryManager:
     """

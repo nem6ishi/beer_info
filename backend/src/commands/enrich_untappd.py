@@ -538,18 +538,24 @@ class UntappdEnricher:
                 logger.error(f"  ❌ Error saving to untappd_data (Batch): {e}")
 
         if gemini_updates:
-            try:
-                self.supabase.table('gemini_data').upsert(gemini_updates).execute()
-                logger.info(f"  💾 Saved {len(gemini_updates)} items to gemini_data (Batch)")
-            except Exception as e:
-                logger.error(f"  ⚠️ Error updating gemini_data (Batch): {e}")
+            success_count = 0
+            for item in gemini_updates:
+                try:
+                    self.supabase.table('gemini_data').update({'untappd_url': item['untappd_url']}).eq('url', item['url']).execute()
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"  ⚠️ Error updating gemini_data for {item['url']}: {e}")
+            logger.info(f"  💾 Updated {success_count} items in gemini_data (Batch)")
 
         if scraped_updates:
-            try:
-                self.supabase.table('scraped_beers').upsert(scraped_updates).execute()
-                logger.info(f"  💾 Linked {len(scraped_updates)} items in scraped_beers (Batch)")
-            except Exception as e:
-                logger.error(f"  ❌ Error updating scraped_beers (Batch): {e}")
+            success_count = 0
+            for item in scraped_updates:
+                try:
+                    self.supabase.table('scraped_beers').update({'untappd_url': item['untappd_url']}).eq('url', item['url']).execute()
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"  ❌ Error updating scraped_beers for {item['url']}: {e}")
+            logger.info(f"  💾 Linked {success_count} items in scraped_beers (Batch)")
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
