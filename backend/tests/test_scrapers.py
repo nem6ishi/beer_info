@@ -27,7 +27,7 @@ async def test_arome_scrape_basic(mock_get):
     mock_resp.content = html_content.encode('utf-8')
     mock_get.return_value = mock_resp
 
-    results = await arome.scrape(limit=1)
+    results = await arome.scrape_arome(limit=1)
     # Just asserting it doesn't crash and handles mock gracefully
     assert isinstance(results, list)
 
@@ -54,12 +54,12 @@ async def test_beervolta_scrape_basic(mock_get):
     mock_resp.content = html_content.encode('utf-8')
     mock_get.return_value = mock_resp
 
-    results = await beervolta.scrape(limit=1)
+    results = await beervolta.scrape_beervolta(limit=1)
     assert isinstance(results, list)
 
 # Ichigo_ichie scraper tests
 @pytest.mark.asyncio
-@patch('backend.src.scrapers.ichigo_ichie.requests.get')
+@patch('backend.src.scrapers.ichigo_ichie.httpx.AsyncClient.get')
 async def test_ichigo_ichie_scrape_basic(mock_get):
     html_content = """
     <html>
@@ -78,5 +78,5 @@ async def test_ichigo_ichie_scrape_basic(mock_get):
     mock_resp.content = html_content.encode('utf-8')
     mock_get.return_value = mock_resp
 
-    results = await ichigo_ichie.scrape(limit=1)
+    results = await ichigo_ichie.scrape_ichigo_ichie(limit=1)
     assert isinstance(results, list)
