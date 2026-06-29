@@ -10,7 +10,7 @@ from typing import List, Dict, Optional, Set, Any, Union
 
 from ..core.db import get_supabase_client
 from ..core.types import ScrapedProduct
-from ..scrapers import beervolta, chouseiya, ichigo_ichie, arome
+from ..scrapers import beervolta, chouseiya, ichigo_ichie, arome, maruho
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ async def scrape_to_supabase(
     logger.info(f"  Loaded {len(existing_data)} existing beers (Complete)")
     
     # Define scrapers
-    display_names: List[str] = ['BeerVolta', 'Chouseiya', 'Ichigo Ichie', 'Arôme']
+    display_names: List[str] = ['BeerVolta', 'Chouseiya', 'Ichigo Ichie', 'Arôme', 'Maruho']
 
     # Run scrapers in parallel
     logger.info("\n🔍 Running scrapers in parallel...")
@@ -83,6 +83,7 @@ async def scrape_to_supabase(
         chouseiya.scrape_chouseiya(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
         ichigo_ichie.scrape_ichigo_ichie(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
         arome.scrape_arome(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
+        maruho.scrape_maruho(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
         return_exceptions=True
     )
     

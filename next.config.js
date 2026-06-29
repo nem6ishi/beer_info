@@ -67,6 +67,16 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'placehold.co',
         pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn.shopify.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'maruho.shop',
+        pathname: '/**',
       }
     ],
   },

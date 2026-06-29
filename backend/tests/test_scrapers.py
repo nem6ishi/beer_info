@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from backend.src.scrapers import arome, beervolta, chouseiya, ichigo_ichie
+from backend.src.scrapers import arome, beervolta, chouseiya, ichigo_ichie, maruho
 from backend.src.core.types import ScrapedProduct
 
 # Arome scraper tests
@@ -80,3 +80,29 @@ async def test_ichigo_ichie_scrape_basic(mock_get):
 
     results = await ichigo_ichie.scrape_ichigo_ichie(limit=1)
     assert isinstance(results, list)
+
+# Maruho scraper tests
+@pytest.mark.asyncio
+@patch('backend.src.scrapers.maruho.httpx.AsyncClient.get')
+async def test_maruho_scrape_basic(mock_get):
+    json_content = {
+        "products": [
+            {
+                "title": "Test Maruho Beer",
+                "handle": "test-maruho-beer",
+                "variants": [{"price": "950", "available": True}],
+                "images": [{"src": "https://cdn.shopify.com/s/files/test.jpg"}]
+            }
+        ]
+    }
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = json_content
+    mock_get.return_value = mock_resp
+
+    results = await maruho.scrape_maruho(limit=1)
+    assert isinstance(results, list)
+    assert len(results) == 1
+    assert results[0]["name"] == "Test Maruho Beer"
+    assert results[0]["price"] == "950円"
+    assert results[0]["stock_status"] == "In Stock"
