@@ -11,7 +11,7 @@ from typing import List, Dict, Optional, Set, Any, Union
 
 from ..core.db import get_supabase_client
 from ..core.types import ScrapedProduct
-from ..scrapers import beervolta, chouseiya, ichigo_ichie, arome, maruho
+from ..scrapers import beervolta, chouseiya, ichigo_ichie, arome, maruho, antenna_america
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +204,10 @@ async def scrape_to_supabase(
         run_and_save_store(
             maruho.scrape_maruho(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
             'Maruho', supabase, existing_data, new_only, reset_first_seen, base_time, 4, timeout_sec
+        ),
+        run_and_save_store(
+            antenna_america.scrape_antenna_america(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
+            'Antenna America', supabase, existing_data, new_only, reset_first_seen, base_time, 5, timeout_sec
         ),
     ]
 

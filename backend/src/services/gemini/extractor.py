@@ -154,10 +154,17 @@ class GeminiExtractor:
         guidance: str = ""
         examples: str = ""
 
-        if shop and self.shop_rules and shop in self.shop_rules:
-            target: Dict[str, Any] = self.shop_rules[shop]
-            guidance = target.get("rule", "")
-            examples = target.get("examples", "")
+        if shop and self.shop_rules:
+            target: Optional[Dict[str, Any]] = self.shop_rules.get(shop)
+            if not target:
+                shop_lower = shop.lower()
+                for k, v in self.shop_rules.items():
+                    if k.lower() == shop_lower:
+                        target = v
+                        break
+            if target:
+                guidance = target.get("rule", "")
+                examples = target.get("examples", "")
 
         return guidance, examples
 
