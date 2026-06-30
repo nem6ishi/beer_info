@@ -108,6 +108,7 @@ export default function BeerTable({ beers, loading, error, isDebug }: BeerTableP
                                 untappdUrl={beer.untappd_url}
                                 shopContent={shopContent}
                                 isDebug={isDebug}
+                                firstSeen={beer.first_seen}
                                 priority={index < 5}
                             />
                         );

@@ -8,6 +8,7 @@ export interface Beer {
   shop: string;
   stock_status: string | null;
   last_seen: string | null;
+  first_seen?: string | null;
 
   // Gemini-extracted fields
   product_type: 'beer' | 'set' | 'glass' | 'other' | null;
@@ -78,6 +79,7 @@ export interface FilterState {
   style_filter: string;
   set_mode: string;
   product_type?: string;
+  days?: string;
   debug?: string;
 }
 

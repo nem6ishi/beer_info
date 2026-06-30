@@ -24,6 +24,7 @@ export function useBeerFilters() {
         brewery_filter: searchParams.get('brewery_filter') || '', 
         style_filter: searchParams.get('style_filter') || '', 
         set_mode: searchParams.get('set_mode') || '',
+        days: searchParams.get('days') || '',
         debug: searchParams.get('debug') || ''
     });
 
@@ -95,6 +96,7 @@ export function useBeerFilters() {
             brewery_filter: searchParams.get('brewery_filter') || '',
             style_filter: searchParams.get('style_filter') || '',
             set_mode: searchParams.get('set_mode') || '',
+            days: searchParams.get('days') || '',
             debug: searchParams.get('debug') || ''
         });
     }, [searchParams]);

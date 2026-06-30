@@ -15,13 +15,14 @@ export interface GetGroupedBeersOptions {
     stock_filter: string | null;
     product_type: string | null;
     brewery_filter: string | null;
+    days?: string | null;
 }
 
 export async function getGroupedBeers(options: GetGroupedBeersOptions) {
     const {
         search, sort, page, limit, shop,
         min_abv, max_abv, min_ibu, max_ibu, min_rating,
-        style_filter, stock_filter, product_type, brewery_filter
+        style_filter, stock_filter, product_type, brewery_filter, days
     } = options;
 
     const offset = (page - 1) * limit;
@@ -30,6 +31,15 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
         let q = supabase
             .from('beer_groups_view')
             .select('*', { count: 'exact' });
+
+        if (days) {
+            const daysNum = parseInt(days, 10);
+            if (!isNaN(daysNum) && daysNum > 0) {
+                const thresholdDate = new Date();
+                thresholdDate.setDate(thresholdDate.getDate() - daysNum);
+                q = q.gte('newest_seen', thresholdDate.toISOString());
+            }
+        }
 
         if (search) {
             q = q.or(`beer_name.ilike.%${search}%,brewery_name.ilike.%${search}%`);

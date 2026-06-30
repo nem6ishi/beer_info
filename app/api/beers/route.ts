@@ -21,6 +21,7 @@ export async function GET(request: Request) {
         const product_type = searchParams.get('product_type')
         const untappd_status = searchParams.get('untappd_status')
         const brewery_filter = searchParams.get('brewery_filter')
+        const days = searchParams.get('days')
 
         const pageNum = parseInt(page, 10)
         const limitNum = parseInt(limit, 10)
@@ -31,6 +32,15 @@ export async function GET(request: Request) {
             let q = supabase
                 .from('beer_info_view')
                 .select('*', { count: 'exact' })
+
+            if (days) {
+                const daysNum = parseInt(days, 10)
+                if (!isNaN(daysNum) && daysNum > 0) {
+                    const thresholdDate = new Date()
+                    thresholdDate.setDate(thresholdDate.getDate() - daysNum)
+                    q = q.gte('first_seen', thresholdDate.toISOString())
+                }
+            }
 
             if (search) {
                 q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)

@@ -96,6 +96,7 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug }: Gr
                                 untappdUrl={group.untappd_url}
                                 shopContent={shopContent}
                                 isDebug={isDebug}
+                                firstSeen={group.newest_seen}
                                 priority={index < 5}
                             />
                         );

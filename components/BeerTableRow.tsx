@@ -35,6 +35,7 @@ export interface BeerTableRowProps {
 
     // Debug
     isDebug?: boolean;
+    firstSeen?: string | null;
 
     // Performance
     priority?: boolean;
@@ -60,6 +61,7 @@ export default function BeerTableRow({
     untappdUrl,
     shopContent,
     isDebug,
+    firstSeen,
     priority = false
 }: BeerTableRowProps) {
     return (
@@ -81,6 +83,7 @@ export default function BeerTableRow({
                     type={breweryType}
                     fallbackName={fallbackName}
                     isDebug={isDebug}
+                    firstSeen={firstSeen}
                 />
             </td>
             <td className="col-beer-style">

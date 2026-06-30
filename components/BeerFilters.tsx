@@ -71,6 +71,39 @@ export default function BeerFilters({
                     </div>
                 </FilterSection>
 
+                {/* New Arrivals Toggle */}
+                <FilterSection label="New:">
+                    <div className="view-toggle-group">
+                        <button
+                            className={`view-toggle-btn ${!tempFilters.days ? 'active' : ''}`}
+                            onClick={() => onFilterChange('days', '')}
+                        >
+                            All
+                        </button>
+                        <button
+                            className={`view-toggle-btn ${tempFilters.days === '1' ? 'active' : ''}`}
+                            onClick={() => onFilterChange('days', '1')}
+                            title="Added within 24 hours"
+                        >
+                            24h
+                        </button>
+                        <button
+                            className={`view-toggle-btn ${tempFilters.days === '3' ? 'active' : ''}`}
+                            onClick={() => onFilterChange('days', '3')}
+                            title="Added within 3 days"
+                        >
+                            3d
+                        </button>
+                        <button
+                            className={`view-toggle-btn ${tempFilters.days === '7' ? 'active' : ''}`}
+                            onClick={() => onFilterChange('days', '7')}
+                            title="Added within 7 days"
+                        >
+                            7d
+                        </button>
+                    </div>
+                </FilterSection>
+
                 {/* Store Dropdown */}
                 <FilterSection label="Store:">
                     <MultiSelectDropdown
