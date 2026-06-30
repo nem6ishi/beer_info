@@ -90,7 +90,7 @@ async def run_and_save_store(
 
         # Assign increasing timestamp separated by store index and item index
         item_time: datetime = base_time + timedelta(seconds=store_index, microseconds=idx)
-        item_time_iso: str = item_time.isoformat()
+        item_time_iso: str = new_item.get('first_seen') or item_time.isoformat()
 
         beer_data: Dict[str, Any] = {
             'url': url,

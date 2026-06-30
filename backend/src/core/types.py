@@ -1,6 +1,6 @@
 from typing import TypedDict, Optional
 
-class ScrapedProduct(TypedDict):
+class ScrapedProduct(TypedDict, total=False):
     """Data structure returned by scrapers."""
     name: str
     price: str
@@ -8,6 +8,7 @@ class ScrapedProduct(TypedDict):
     image: Optional[str]
     stock_status: str
     shop: str
+    first_seen: str
 
 class BeerRecord(TypedDict, total=False):
     """Database record for the 'scraped_beers' table."""

@@ -1,7 +1,9 @@
 import asyncio
 import os
 import httpx
+from datetime import datetime, timezone
 from typing import List, Optional, Set, Any, Dict
+from dateutil import parser as date_parser
 from ..core.types import ScrapedProduct
 
 # Threshold for consecutive sold-out / existing items before stopping
@@ -109,6 +111,16 @@ async def scrape_maruho(
                         "stock_status": stock_status,
                         "shop": SHOP_NAME
                     }
+
+                    raw_date = prod.get('published_at') or prod.get('created_at')
+                    if raw_date:
+                        try:
+                            dt = date_parser.parse(raw_date)
+                            dt_utc = dt.astimezone(timezone.utc)
+                            p_item["first_seen"] = dt_utc.isoformat()
+                        except Exception:
+                            pass
+
                     all_products.append(p_item)
 
                 if early_stop:
