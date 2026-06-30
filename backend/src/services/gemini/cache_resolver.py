@@ -8,12 +8,18 @@ logger = logging.getLogger(__name__)
 
 class LocalCacheResolver:
     def __init__(self) -> None:
-        self.supabase = get_supabase_client()
         self.brewery_dict: Dict[str, Dict[str, Any]] = {}
-        self._load_brewery_dictionary()
+        try:
+            self.supabase = get_supabase_client()
+            self._load_brewery_dictionary()
+        except Exception as e:
+            logger.warning(f"Could not initialize Supabase client for cache resolver: {e}")
+            self.supabase = None
 
     def _load_brewery_dictionary(self) -> None:
         """データベースからブルワリー辞書をメモリにロードする"""
+        if not self.supabase:
+            return
         try:
             res = self.supabase.table("breweries").select("id, name_en, name_jp, aliases, untappd_url").execute()
             if res.data:
