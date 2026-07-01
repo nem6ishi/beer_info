@@ -181,8 +181,27 @@ async def check_stock_shopify(client: httpx.AsyncClient, url: str) -> StockCheck
         data = response.json()
         prod = data.get("product", {})
         variants = prod.get("variants", [])
-        in_stock = any(v.get("available", False) for v in variants)
-        result["stock_status"] = "In Stock" if in_stock else "Sold Out"
+        
+        # If any variant explicitly has 'available' key, use it
+        has_avail_key = any("available" in v for v in variants)
+        if has_avail_key:
+            in_stock = any(v.get("available", False) for v in variants)
+            result["stock_status"] = "In Stock" if in_stock else "Sold Out"
+        else:
+            # Fallback to HTML DOM check if json doesn't expose availability
+            content, status = await fetch_url(client, url)
+            if status == 404:
+                result["stock_status"] = "Dead Link"
+                return result
+            if content and status == 200:
+                soup = BeautifulSoup(content, 'lxml')
+                text = soup.get_text()
+                if "SOLD OUT" in text.upper() or "売り切れ" in text or "完売" in text:
+                    result["stock_status"] = "Sold Out"
+                elif soup.select_one("button[name='add']") or soup.select_one("input[name='add']"):
+                    result["stock_status"] = "In Stock"
+                else:
+                    result["stock_status"] = "Sold Out"
         if variants:
             raw_p = str(variants[0].get("price", ""))
             if raw_p:
