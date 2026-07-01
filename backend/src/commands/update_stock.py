@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 import httpx
 from datetime import datetime
 
-from ..core.db import get_supabase_client
+from ..core.db import get_supabase_client, refresh_materialized_view
 from ..services.stock_checker import check_stock_for_url, StockCheckResult
 
 # Configure logging
@@ -114,6 +114,8 @@ async def update_stock_status(limit: Optional[int] = None, shop_filter: Optional
             await asyncio.sleep(0.5)
 
     logger.info(f"Stock Update Complete. Total Checked: {len(beers)}, Updated: {updated_count}")
+    if updated_count > 0:
+        refresh_materialized_view(supabase, logger)
 
 if __name__ == "__main__":
     # Test run
