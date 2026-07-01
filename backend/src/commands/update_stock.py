@@ -10,8 +10,8 @@ from ..services.stock_checker import check_stock_for_url, StockCheckResult
 # Configure logging
 logger: logging.Logger = logging.getLogger(__name__)
 
-BATCH_SIZE: int = 10
-CONCURRENCY: int = 2
+BATCH_SIZE: int = 50
+CONCURRENCY: int = 10
 
 async def process_beer(client: httpx.AsyncClient, beer: Dict[str, Any], supabase: Any) -> bool:
     """
@@ -60,9 +60,10 @@ async def process_beer(client: httpx.AsyncClient, beer: Dict[str, Any], supabase
         logger.error(f"Error processing {url}: {e}")
         return False
 
-async def update_stock_status(limit: Optional[int] = None, shop_filter: Optional[str] = None, sort_rating: bool = False) -> None:
+async def update_stock_status(limit: Optional[int] = None, shop_filter: Optional[str] = None, sort_rating: bool = False, in_stock_only: bool = True) -> None:
     """
     Checks and updates stock status for existing items.
+    By default, prioritizes currently In Stock items to clean up sold-out records faster.
     """
     logger.info("Starting Stock Status Update...")
     supabase: Any = get_supabase_client()
@@ -70,39 +71,34 @@ async def update_stock_status(limit: Optional[int] = None, shop_filter: Optional
     # 1. Fetch beers
     if sort_rating:
         logger.info("Fetching beers sorted by Untappd Rating (DESC)...")
-        # Query view for rating sort
         query: Any = supabase.table('beer_info_view').select('name, url, shop, stock_status')\
             .order('untappd_rating', desc=True, nullsfirst=False)
     else:
-        # Default fetch from scraped_beers, ordered by oldest first
+        # Default fetch from scraped_beers, ordered by oldest last_seen
         query = supabase.table('scraped_beers').select('name, url, shop, stock_status').order('last_seen', desc=False, nullsfirst=True)
     
+    if in_stock_only:
+        query = query.neq('stock_status', 'Sold Out')
+        
     if shop_filter:
         query = query.eq('shop', shop_filter)
     
-    # Add high limit to avoid Supabase's default 1000 row truncation
-    res: Any = query.limit(10000).execute()
+    res: Any = query.limit(limit or 5000).execute()
     beers: List[Dict[str, Any]] = res.data or []
-    
-    if limit:
-        beers = beers[:limit]
         
     logger.info(f"Checking stock for {len(beers)} items...")
     
     async with httpx.AsyncClient(timeout=15.0) as client:
-        # Semaphore for concurrency
         sem: asyncio.Semaphore = asyncio.Semaphore(CONCURRENCY)
         
         async def bounded_process(beer: Dict[str, Any]) -> bool:
             async with sem:
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.2)
                 return await process_beer(client, beer, supabase)
         
-        # Batch processing to avoid massive queue
         updated_count: int = 0
         total_processed: int = 0
         
-        # Split into chunks
         chunks: List[List[Dict[str, Any]]] = [beers[i:i + BATCH_SIZE] for i in range(0, len(beers), BATCH_SIZE)]
         
         for chunk in chunks:
@@ -111,7 +107,7 @@ async def update_stock_status(limit: Optional[int] = None, shop_filter: Optional
             updated_count += sum(1 for r in results if r)
             total_processed += len(results)
             logger.info(f"Processed {total_processed}/{len(beers)}. Updated: {updated_count}")
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
 
     logger.info(f"Stock Update Complete. Total Checked: {len(beers)}, Updated: {updated_count}")
     if updated_count > 0:
