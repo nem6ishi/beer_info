@@ -41,14 +41,37 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug }: Gr
                                 .map(it => it.shop)
                         );
 
+                        const latestSoldOutUrlPerShop = new Map<string, string>();
+                        rawSorted.forEach(it => {
+                            const isSoldOut = it.stock_status?.toLowerCase().includes('out');
+                            if (isSoldOut && !shopsWithInStock.has(it.shop)) {
+                                const currentLatestUrl = latestSoldOutUrlPerShop.get(it.shop);
+                                if (!currentLatestUrl) {
+                                    latestSoldOutUrlPerShop.set(it.shop, it.url);
+                                } else {
+                                    const exItem = rawSorted.find(r => r.url === currentLatestUrl);
+                                    const dtNew = new Date(it.last_seen || 0).getTime();
+                                    const dtOld = new Date(exItem?.last_seen || 0).getTime();
+                                    if (dtNew > dtOld) {
+                                        latestSoldOutUrlPerShop.set(it.shop, it.url);
+                                    }
+                                }
+                            }
+                        });
+
                         const seenUrls = new Set<string>();
                         const sortedItems = rawSorted.filter(item => {
                             if (!item.url || seenUrls.has(item.url)) return false;
                             seenUrls.add(item.url);
 
                             const isSoldOut = item.stock_status?.toLowerCase().includes('out');
-                            if (isSoldOut && shopsWithInStock.has(item.shop)) {
-                                return false;
+                            if (isSoldOut) {
+                                if (shopsWithInStock.has(item.shop)) {
+                                    return false;
+                                }
+                                if (latestSoldOutUrlPerShop.get(item.shop) !== item.url) {
+                                    return false;
+                                }
                             }
                             return true;
                         });
