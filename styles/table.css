@@ -438,22 +438,27 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.shop-btn-flat.disabled-link {
-    background: #fdfdfd;
-    border-style: dashed;
-    border-color: #ddd;
-    color: #aaa;
-    pointer-events: none;
-    opacity: 0.6;
+.shop-btn-flat.sold-out-shop {
+    background: #fafafa;
+    border-style: solid;
+    border-color: #eee;
+    color: #666;
+    opacity: 0.85;
 }
 
-.shop-btn-flat.disabled-link .price-text {
-    color: #aaa;
-    text-decoration: line-through;
+.shop-btn-flat.sold-out-shop:hover {
+    background: #ffffff;
+    border-color: #999;
+    color: #1a1a1a;
+    opacity: 1;
 }
 
-.shop-btn-flat.disabled-link .shop-name-text {
-    color: #999;
+.shop-btn-flat.sold-out-shop .price-text {
+    color: #888;
+}
+
+.shop-btn-flat.sold-out-shop .shop-name-text {
+    color: #888;
 }
 
 .shop-info-primary {
