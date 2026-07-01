@@ -52,76 +52,81 @@ async def fetch_url(client: httpx.AsyncClient, url: str) -> Tuple[Optional[str],
 
 def check_stock_arome(soup: BeautifulSoup) -> str:
     """Checks stock status for Arome (ECCube)."""
-    # Logic from scraper: check for specific text zone or button
     text_zone: Optional[Tag] = soup.select_one("div.text-zone")
     if text_zone and "在庫切れ" in text_zone.get_text():
         return "Sold Out"
     
-    # Check images
     if soup.select_one('img[alt="売り切れ"]') or soup.select_one('img[src*="soldout"]'):
         return "Sold Out"
         
-    # Check for Cart Button
     cart_btn: Optional[Tag] = soup.select_one("input[name='cart']") or soup.select_one("a.cart_btn")
+    if not cart_btn and "売り切れ" in soup.get_text():
+        return "Sold Out"
     return "In Stock"
 
 def check_stock_beervolta(soup: BeautifulSoup) -> str:
     """Checks stock status for BeerVolta."""
-    # Logic: Look for "SOLD OUT" or "売切"
     text: str = soup.get_text()
-    if "SOLD OUT" in text or "売切" in text:
+    if "SOLD OUT" in text or "売切" in text or "完売" in text:
         return "Sold Out"
     
-    # Check for specific soldout overlay/class
-    if soup.select_one(".soldout"):
+    if soup.select_one(".soldout") or soup.select_one("img[src*='soldout']"):
         return "Sold Out"
         
+    cart_btn = soup.select_one("input[name='submit']") or soup.select_one("button.cart")
+    if not cart_btn and ("SOLD OUT" in text.upper() or "売り切れ" in text):
+        return "Sold Out"
     return "In Stock"
 
 def check_stock_chouseiya(soup: BeautifulSoup) -> str:
     """Checks stock status for Chouseiya (MakeShop)."""
-    # Logic: Look for "売り切れ" or "SOLD OUT"
     text: str = soup.get_text()
-    if "売り切れ" in text or "SOLD OUT" in text:
+    if "売り切れ" in text or "SOLD OUT" in text or "品切れ" in text or "完売" in text:
+        return "Sold Out"
+    
+    # MakeShop specific checks
+    if soup.select_one("img[src*='soldout']") or soup.select_one(".soldout"):
+        return "Sold Out"
+        
+    cart_btn = soup.select_one("a[href*='cart']") or soup.select_one("input[value*='カート']")
+    if not cart_btn:
         return "Sold Out"
         
     return "In Stock"
 
 def check_stock_ichigo_ichie(soup: BeautifulSoup) -> str:
     """Checks stock status for Ichigo Ichie (MakeShop)."""
-    # 1. Check for explicit Sold Out button
     if soup.select_one("button.btn-soldout") or soup.select_one(".btn-soldout"):
         return "Sold Out"
         
-    # 2. Check for Add to Cart button -> In Stock
     if soup.select_one("button.btn-addcart") or soup.select_one("button.cart_in_async"):
         return "In Stock"
+        
+    text: str = soup.get_text()
+    if "SOLD OUT" in text.upper() or "売り切れ" in text or "完売" in text:
+        return "Sold Out"
         
     return "In Stock"
 
 def extract_price_arome(soup: BeautifulSoup) -> Optional[str]:
-    """Extracts price for Arome."""
     price_el: Optional[Tag] = soup.select_one(".price") or soup.select_one("#price")
     if price_el:
         return price_el.get_text(strip=True)
     return None
 
 def extract_price_beervolta(soup: BeautifulSoup) -> Optional[str]:
-    """Extracts price for BeerVolta."""
     price_el: Optional[Tag] = soup.select_one(".price") or soup.select_one(".product_price")
     if price_el:
         return price_el.get_text(strip=True)
     return None
 
 def extract_price_chouseiya(soup: BeautifulSoup) -> Optional[str]:
-    """Extracts price for Chouseiya."""
     price_el: Optional[Tag] = soup.select_one(".price") or soup.select_one("#price")
     if price_el:
         return price_el.get_text(strip=True)
     return None
 
 def extract_price_ichigo_ichie(soup: BeautifulSoup) -> Optional[str]:
-    """Extracts price for Ichigo Ichie."""
     price_el: Optional[Tag] = soup.select_one(".product_price") or soup.select_one(".price")
     if price_el:
         return price_el.get_text(strip=True)
@@ -129,6 +134,36 @@ def extract_price_ichigo_ichie(soup: BeautifulSoup) -> Optional[str]:
     if price_area:
         return price_area.get_text(strip=True)
     return None
+
+async def check_stock_shopify(client: httpx.AsyncClient, url: str) -> StockCheckResult:
+    """Checks stock and price for Shopify-based sites (Antenna America, Maruho Saketen) via .json endpoint."""
+    result: StockCheckResult = {"stock_status": "Unknown", "price": None}
+    json_url = f"{url.rstrip('/')}.json"
+    try:
+        response = await client.get(json_url, headers=HEADERS, timeout=15.0)
+        if response.status_code == 404:
+            result["stock_status"] = "Sold Out"
+            return result
+        if response.status_code != 200:
+            result["stock_status"] = "Error"
+            return result
+        data = response.json()
+        prod = data.get("product", {})
+        variants = prod.get("variants", [])
+        in_stock = any(v.get("available", False) for v in variants)
+        result["stock_status"] = "In Stock" if in_stock else "Sold Out"
+        if variants:
+            raw_p = str(variants[0].get("price", ""))
+            if raw_p:
+                cleaned = raw_p.split(".")[0].replace(",", "").strip()
+                if cleaned.isdigit():
+                    result["price"] = f"{int(cleaned):,}円"
+                else:
+                    result["price"] = f"{raw_p}円"
+    except Exception as e:
+        print(f"Error checking Shopify JSON for {url}: {e}")
+        result["stock_status"] = "Error"
+    return result
 
 async def check_stock_for_url(client: httpx.AsyncClient, url: str, shop: str) -> StockCheckResult:
     """
@@ -139,7 +174,17 @@ async def check_stock_for_url(client: httpx.AsyncClient, url: str, shop: str) ->
     if not url: 
         return result
     
+    # Shopify based shops directly use fast .json check
+    if shop in ("Antenna America", "マルホ酒店"):
+        return await check_stock_shopify(client, url)
+    
     content, status = await fetch_url(client, url)
+    
+    # If the product page was removed (404 Not Found), treat it as Sold Out
+    if status == 404:
+        result["stock_status"] = "Sold Out"
+        return result
+        
     if not content or status != 200:
         result["stock_status"] = "Error"
         return result
@@ -160,7 +205,7 @@ async def check_stock_for_url(client: httpx.AsyncClient, url: str, shop: str) ->
         result["price"] = extract_price_ichigo_ichie(soup)
     else:
         # Default fallback
-        if "SOLD OUT" in soup.get_text().upper() or "売り切れ" in soup.get_text():
+        if "SOLD OUT" in soup.get_text().upper() or "売り切れ" in soup.get_text() or "完売" in soup.get_text():
             result["stock_status"] = "Sold Out"
         else:
             result["stock_status"] = "In Stock"
