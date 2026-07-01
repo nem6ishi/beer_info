@@ -33,8 +33,26 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug }: Gr
                 </thead>
                 <tbody>
                     {groups.map((group, index) => {
-                        const sortedItems = [...(group.items || [])].sort((a, b) => (a.price_value || Infinity) - (b.price_value || Infinity));
-                        const cheapestItem = sortedItems[0];
+                        const rawSorted = [...(group.items || [])].sort((a, b) => (a.price_value || Infinity) - (b.price_value || Infinity));
+                        
+                        const shopsWithInStock = new Set(
+                            rawSorted
+                                .filter(it => !it.stock_status?.toLowerCase().includes('out'))
+                                .map(it => it.shop)
+                        );
+
+                        const seenUrls = new Set<string>();
+                        const sortedItems = rawSorted.filter(item => {
+                            if (!item.url || seenUrls.has(item.url)) return false;
+                            seenUrls.add(item.url);
+
+                            const isSoldOut = item.stock_status?.toLowerCase().includes('out');
+                            if (isSoldOut && shopsWithInStock.has(item.shop)) {
+                                return false;
+                            }
+                            return true;
+                        });
+                        const cheapestItem = sortedItems[0] || rawSorted[0];
 
                         // Image selection logic:
                         // 1. Untappd image if available and NOT default
