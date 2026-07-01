@@ -143,7 +143,7 @@ async def check_stock_shopify(client: httpx.AsyncClient, url: str) -> StockCheck
     try:
         response = await client.get(json_url, headers=HEADERS, timeout=15.0)
         if response.status_code == 404:
-            result["stock_status"] = "Sold Out"
+            result["stock_status"] = "Dead Link"
             return result
         if response.status_code != 200:
             result["stock_status"] = "Error"
@@ -181,9 +181,9 @@ async def check_stock_for_url(client: httpx.AsyncClient, url: str, shop: str) ->
     
     content, status = await fetch_url(client, url)
     
-    # If the product page was removed (404 Not Found), treat it as Sold Out
+    # If the product page was removed (404 Not Found), treat it as Dead Link
     if status == 404:
-        result["stock_status"] = "Sold Out"
+        result["stock_status"] = "Dead Link"
         return result
         
     if not content or status != 200:
