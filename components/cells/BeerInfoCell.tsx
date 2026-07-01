@@ -48,7 +48,7 @@ function isRecent(dateStr?: string | null): boolean {
     const dt = new Date(dateStr);
     const now = new Date();
     const diffHours = (now.getTime() - dt.getTime()) / (1000 * 60 * 60);
-    return diffHours >= 0 && diffHours <= 72;
+    return diffHours >= 0 && diffHours <= 24;
 }
 
 interface BeerInfoCellProps {
@@ -67,6 +67,23 @@ export default function BeerInfoCell({ brewery, beer, logo, location, type, fall
 
     // Use beer name if available, otherwise use fallback (original product name)
     const displayName = beer || fallbackName || 'Beer name not available';
+    const recent = isRecent(firstSeen);
+
+    const badgeStyle: React.CSSProperties = {
+        display: 'inline-block',
+        background: 'linear-gradient(135deg, #ff416c, #ff4b2b)',
+        color: 'white',
+        fontSize: '0.65rem',
+        fontWeight: 'bold',
+        padding: '1px 6px',
+        borderRadius: '10px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        boxShadow: '0 2px 4px rgba(255, 75, 43, 0.3)',
+        marginLeft: '6px',
+        verticalAlign: 'middle',
+        whiteSpace: 'nowrap'
+    };
 
     return (
         <div className="beer-name-group">
@@ -92,20 +109,32 @@ export default function BeerInfoCell({ brewery, beer, logo, location, type, fall
                     </div>
                 </div>
             )}
-            <div className="beer-name" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <span>{displayName}</span>
-                {isRecent(firstSeen) && (
-                    <span style={{
-                        background: 'linear-gradient(135deg, #ff416c, #ff4b2b)',
-                        color: 'white',
-                        fontSize: '0.65rem',
-                        fontWeight: 'bold',
-                        padding: '2px 6px',
-                        borderRadius: '12px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                        boxShadow: '0 2px 4px rgba(255, 75, 43, 0.3)'
-                    }}>NEW</span>
+            <div className="beer-name" style={{ lineHeight: '1.4' }}>
+                {recent ? (
+                    (() => {
+                        const words = displayName.trim().split(' ');
+                        if (words.length <= 1) {
+                            return (
+                                <span style={{ whiteSpace: 'nowrap' }}>
+                                    {displayName}
+                                    <span style={badgeStyle}>NEW</span>
+                                </span>
+                            );
+                        }
+                        const lastWord = words.pop();
+                        const firstPart = words.join(' ') + ' ';
+                        return (
+                            <>
+                                {firstPart}
+                                <span style={{ whiteSpace: 'nowrap' }}>
+                                    {lastWord}
+                                    <span style={badgeStyle}>NEW</span>
+                                </span>
+                            </>
+                        );
+                    })()
+                ) : (
+                    displayName
                 )}
             </div>
             {isDebug && beer && fallbackName && beer !== fallbackName && (
