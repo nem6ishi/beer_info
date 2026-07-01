@@ -31,7 +31,7 @@ export async function GET(request: Request) {
         const buildQuery = () => {
             let q = supabase
                 .from('beer_info_view')
-                .select('*', { count: 'exact' })
+                .select('*', { count: 'estimated' })
 
             if (days) {
                 const daysNum = parseInt(days, 10)
@@ -136,7 +136,7 @@ export async function GET(request: Request) {
 
         const shopCounts: Record<string, number> = {};
         if (countRes.data) {
-            countRes.data.forEach((item: any) => {
+            countRes.data.forEach((item: { shop: string; shop_count: number | string }) => {
                 shopCounts[item.shop] = Number(item.shop_count);
             });
         }

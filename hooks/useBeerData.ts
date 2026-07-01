@@ -1,5 +1,6 @@
-import { useState, useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
+import useSWR from 'swr';
 
 export interface PaginationData {
     totalPages: number;
@@ -12,57 +13,49 @@ interface UseBeerDataOptions<TData, TResponse> {
     dataKey: keyof TResponse;
 }
 
+const fetcher = async (url: string) => {
+    const res = await fetch(url);
+    if (!res.ok) {
+        throw new Error('Refresh failed');
+    }
+    return res.json();
+};
+
 export function useBeerData<TData, TResponse extends { pagination: PaginationData, shopCounts: Record<string, number> }>({
     initialData,
     endpoint,
     dataKey
 }: UseBeerDataOptions<TData, TResponse>) {
     const searchParams = useSearchParams();
+    const paramsStr = searchParams.toString();
+    const swrKey = `${endpoint}${paramsStr ? `?${paramsStr}` : ''}`;
 
-    const [data, setData] = useState<TData>(initialData[dataKey] as unknown as TData);
-    const [shopCounts, setShopCounts] = useState<Record<string, number>>(initialData.shopCounts);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [totalPages, setTotalPages] = useState(initialData.pagination.totalPages);
-    const [totalItems, setTotalItems] = useState(initialData.pagination.total);
+    const { data: responseData, error: swrError, isValidating, mutate } = useSWR<TResponse>(
+        swrKey,
+        fetcher,
+        {
+            fallbackData: !paramsStr ? initialData : undefined,
+            revalidateOnFocus: false,
+            keepPreviousData: true
+        }
+    );
 
-    const abortControllerRef = useRef<AbortController | null>(null);
+    const currentData = responseData || initialData;
+
+    const data = (currentData[dataKey] as unknown as TData);
+    const shopCounts = currentData.shopCounts || {};
+    const totalPages = currentData.pagination?.totalPages || 1;
+    const totalItems = currentData.pagination?.total || 0;
+    const loading = isValidating && !responseData;
+    const error = swrError ? (swrError.message || 'Refresh failed') : null;
 
     const fetchData = useCallback(async () => {
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
-        setLoading(true);
-        try {
-            const params = new URLSearchParams(searchParams.toString());
-            const res = await fetch(`${endpoint}?${params.toString()}`, { signal: controller.signal });
-            const responseData: TResponse = await res.json();
-            
-            setData(responseData[dataKey] as unknown as TData);
-            setShopCounts(responseData.shopCounts || {});
-            setTotalPages(responseData.pagination.totalPages);
-            setTotalItems(responseData.pagination.total);
-            setError(null);
-        } catch (err: any) {
-            if (err.name !== 'AbortError') {
-                setError('Refresh failed');
-            }
-        } finally {
-            if (abortControllerRef.current === controller) {
-                setLoading(false);
-            }
-        }
-    }, [searchParams, endpoint, dataKey]);
+        await mutate();
+    }, [mutate]);
 
     const syncDataFromInitial = useCallback(() => {
-        setData(initialData[dataKey] as unknown as TData);
-        setTotalPages(initialData.pagination.totalPages);
-        setTotalItems(initialData.pagination.total);
-        setShopCounts(initialData.shopCounts);
-    }, [initialData, dataKey]);
+        mutate(initialData, false);
+    }, [mutate, initialData]);
 
     return {
         data,
@@ -75,3 +68,4 @@ export function useBeerData<TData, TResponse extends { pagination: PaginationDat
         syncDataFromInitial
     };
 }
+

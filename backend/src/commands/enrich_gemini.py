@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, cast, Tuple
 
-from ..core.db import get_supabase_client, refresh_materialized_view
+from ..core.db import get_supabase_client, refresh_materialized_view, sync_execute
 from ..core.types import GeminiExtraction
 from ..services.gemini.extractor import GeminiExtractor
 from ..services.store.brewery_manager import BreweryManager
@@ -101,14 +101,14 @@ class GeminiEnricher:
         """Gets total count of items requiring enrichment."""
         query: Any = self.supabase.table('beer_info_view').select('url', count='exact', head=True)
         query = self._apply_filters(query)
-        res: Any = query.execute()
+        res: Any = sync_execute(query)
         return cast(int, res.count)
 
     def _fetch_candidates(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         """Fetches a batch of candidate beers."""
         query: Any = self.supabase.table('beer_info_view').select('*')
         query = self._apply_filters(query)
-        response: Any = query.order('first_seen', desc=True).limit(limit).offset(offset).execute()
+        response: Any = sync_execute(query.order('first_seen', desc=True).limit(limit).offset(offset))
         return cast(List[Dict[str, Any]], response.data or [])
 
     def _apply_filters(self, query: Any) -> Any:
@@ -193,7 +193,7 @@ class GeminiEnricher:
             return
         
         try:
-            self.supabase.table('gemini_data').upsert(payloads).execute()
+            sync_execute(self.supabase.table('gemini_data').upsert(payloads))
             logger.info(f"  💾 Saved {len(payloads)} items to gemini_data")
         except Exception as e:
             if 'beer_name_core' in str(e) or 'search_hint' in str(e) or 'column' in str(e).lower():
@@ -205,7 +205,7 @@ class GeminiEnricher:
                     cp.pop('search_hint', None)
                     cleaned_payloads.append(cp)
                 try:
-                    self.supabase.table('gemini_data').upsert(cleaned_payloads).execute()
+                    sync_execute(self.supabase.table('gemini_data').upsert(cleaned_payloads))
                     logger.info(f"  💾 Saved {len(cleaned_payloads)} items to gemini_data (fallback)")
                 except Exception as inner_e:
                     logger.error(f"  ❌ Error in gemini_data fallback upsert: {inner_e}")
@@ -217,7 +217,7 @@ class GeminiEnricher:
         # Resolve previous failures in batch
         urls = [p['url'] for p in payloads]
         try:
-            res = self.supabase.table('untappd_search_failures').update({'resolved': True}).in_('product_url', urls).eq('resolved', False).execute()
+            res = sync_execute(self.supabase.table('untappd_search_failures').update({'resolved': True}).in_('product_url', urls).eq('resolved', False))
             if res.data:
                 logger.info(f"  🔄 Resolved {len(res.data)} previous Untappd search failures for this batch.")
         except Exception as e:

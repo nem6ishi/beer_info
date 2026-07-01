@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Set, Any, Union
 
-from ..core.db import get_supabase_client
+from ..core.db import get_supabase_client, async_execute
 from ..core.types import ScrapedProduct
 from ..scrapers import beervolta, chouseiya, ichigo_ichie, arome, maruho, antenna_america
 
@@ -127,7 +127,7 @@ async def run_and_save_store(
         for i in range(0, len(beers_to_upsert), batch_size):
             batch: List[Dict[str, Any]] = beers_to_upsert[i:i + batch_size]
             try:
-                supabase.table('scraped_beers').upsert(batch, on_conflict='url').execute()
+                await async_execute(supabase.table('scraped_beers').upsert(batch, on_conflict='url'))
                 logger.info(f"  💾 {display_name}: Upserted batch {i // batch_size + 1} ({len(batch)} items)")
             except Exception as e:
                 logger.error(f"  ❌ {display_name}: Error upserting batch: {e}")
@@ -163,7 +163,7 @@ async def scrape_to_supabase(
     
     while True:
         # Fetch in chunks
-        response: Any = supabase.table('scraped_beers').select('url, first_seen, stock_status, untappd_url').range(start, start + chunk_size - 1).execute()
+        response: Any = await async_execute(supabase.table('scraped_beers').select('url, first_seen, stock_status, untappd_url').range(start, start + chunk_size - 1))
         
         if not response.data:
             break
