@@ -117,11 +117,9 @@ def extract_product_data(item: Tag, is_area: bool = False) -> Optional[ScrapedPr
                     price = m.group(1).replace(',', '') + "円"
 
         stock_status: str = "In Stock"
-        text_zone: Optional[Tag] = area.select_one("div.text-zone")
-        if text_zone:
-             zone_text: str = text_zone.get_text(strip=True)
-             if "在庫切れ" in zone_text:
-                 stock_status = "Sold Out"
+        area_text: str = area.get_text()
+        if "品切" in area_text or "只今品切れ中" in area_text or "申し訳ございません" in area_text or "在庫切れ" in area_text or "売り切れ" in area_text:
+            stock_status = "Sold Out"
             
         if stock_status == "In Stock":
             sold_out_img: Optional[Tag] = area.select_one('img[alt="売り切れ"]') or area.select_one('img[src*="soldout"]')

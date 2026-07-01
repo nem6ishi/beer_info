@@ -52,16 +52,17 @@ async def fetch_url(client: httpx.AsyncClient, url: str) -> Tuple[Optional[str],
 
 def check_stock_arome(soup: BeautifulSoup) -> str:
     """Checks stock status for Arome (ECCube)."""
+    text: str = soup.get_text()
+    if "品切" in text or "只今品切れ中" in text or "申し訳ございません" in text or "売り切れ" in text or "在庫切れ" in text:
+        return "Sold Out"
+        
     text_zone: Optional[Tag] = soup.select_one("div.text-zone")
-    if text_zone and "在庫切れ" in text_zone.get_text():
+    if text_zone and ("在庫切れ" in text_zone.get_text() or "品切" in text_zone.get_text()):
         return "Sold Out"
     
     if soup.select_one('img[alt="売り切れ"]') or soup.select_one('img[src*="soldout"]'):
         return "Sold Out"
         
-    cart_btn: Optional[Tag] = soup.select_one("input[name='cart']") or soup.select_one("a.cart_btn")
-    if not cart_btn and "売り切れ" in soup.get_text():
-        return "Sold Out"
     return "In Stock"
 
 def check_stock_beervolta(soup: BeautifulSoup) -> str:
