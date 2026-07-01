@@ -110,30 +110,60 @@ def check_stock_ichigo_ichie(soup: BeautifulSoup) -> str:
     return "In Stock"
 
 def extract_price_arome(soup: BeautifulSoup) -> Optional[str]:
-    price_el: Optional[Tag] = soup.select_one(".price") or soup.select_one("#price")
-    if price_el:
-        return price_el.get_text(strip=True)
+    price_02 = soup.select_one("#price02_default")
+    if price_02:
+        val = price_02.get_text(strip=True).replace(",", "")
+        if val and val.isdigit() and int(val) > 0:
+            return f"{val}円"
+            
+    sale_el = soup.select_one(".sale_price")
+    if sale_el:
+        text = sale_el.get_text()
+        m_tax = re.search(r'税込[^0-9]*([0-9,]+)', text)
+        if m_tax:
+            val = m_tax.group(1).replace(',', '')
+            if val != '0':
+                return f"{val}円"
+                
+    for p in soup.select(".price") + soup.select("#price"):
+        text = p.get_text(strip=True)
+        if text and text != "0円" and "0円" not in text:
+            m = re.search(r'([1-9][0-9,]+)', text)
+            if m:
+                return f"{m.group(1).replace(',', '')}円"
     return None
 
 def extract_price_beervolta(soup: BeautifulSoup) -> Optional[str]:
     price_el: Optional[Tag] = soup.select_one(".price") or soup.select_one(".product_price")
     if price_el:
-        return price_el.get_text(strip=True)
+        text = price_el.get_text(strip=True)
+        m = re.search(r'([1-9][0-9,]+)', text)
+        if m:
+            return f"{m.group(1).replace(',', '')}円"
+        return text
     return None
 
 def extract_price_chouseiya(soup: BeautifulSoup) -> Optional[str]:
     price_el: Optional[Tag] = soup.select_one(".price") or soup.select_one("#price")
     if price_el:
-        return price_el.get_text(strip=True)
+        text = price_el.get_text(strip=True)
+        m = re.search(r'([1-9][0-9,]+)', text)
+        if m:
+            return f"{m.group(1).replace(',', '')}円"
+        return text
     return None
 
 def extract_price_ichigo_ichie(soup: BeautifulSoup) -> Optional[str]:
-    price_el: Optional[Tag] = soup.select_one(".product_price") or soup.select_one(".price")
+    price_el: Optional[Tag] = soup.select_one(".product_price") or soup.select_one(".price") or soup.select_one(".product_data_price")
     if price_el:
-        return price_el.get_text(strip=True)
-    price_area: Optional[Tag] = soup.select_one(".product_data_price")
-    if price_area:
-        return price_area.get_text(strip=True)
+        text = price_el.get_text(strip=True)
+        m_tax = re.search(r'税込[^0-9]*([0-9,]+)', text)
+        if m_tax:
+            return f"{m_tax.group(1).replace(',', '')}円"
+        nums = re.findall(r'([1-9][0-9,]{2,})', text)
+        if nums:
+            return f"{nums[-1].replace(',', '')}円"
+        return text
     return None
 
 async def check_stock_shopify(client: httpx.AsyncClient, url: str) -> StockCheckResult:
