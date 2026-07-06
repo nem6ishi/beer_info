@@ -151,6 +151,15 @@ async def _get_untappd_url_single(
             validate_beer=target_beer_name,
             score_beer_fn=score_beer_match,
         )
+        if not found_url and beer_name_jp and beer_name_jp != target_beer_name:
+            logger.info(f"🔄 [JP-fallback] Searching for Japanese name '{beer_name_jp}' within brewery: {u_brewery_url}")
+            found_url = await search_brewery_beer(
+                u_brewery_url,
+                beer_name_jp,
+                validate_beer_fn=validate_beer_match,
+                validate_beer=beer_name_jp,
+                score_beer_fn=score_beer_match,
+            )
         if found_url:
             logger.info(f" Beer found via brewery search: {found_url}")
             return {
