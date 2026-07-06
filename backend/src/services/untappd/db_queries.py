@@ -63,9 +63,14 @@ def prefetch_gemini_untappd_urls(supabase: Any, urls: List[str]) -> Dict[str, st
 def upsert_untappd_data(supabase: Any, untappd_payloads: List[Dict[str, Any]]) -> None:
     """Upsert to untappd_data table."""
     if untappd_payloads:
+        deduped = {}
+        for p in untappd_payloads:
+            if p.get('untappd_url'):
+                deduped[p['untappd_url']] = p
+        payloads_to_save = list(deduped.values()) if deduped else untappd_payloads
         try:
-            supabase.table('untappd_data').upsert(untappd_payloads).execute()
-            logger.info(f"  💾 Saved {len(untappd_payloads)} items to untappd_data (Batch)")
+            supabase.table('untappd_data').upsert(payloads_to_save).execute()
+            logger.info(f"  💾 Saved {len(payloads_to_save)} items to untappd_data (Batch)")
         except Exception as e:
             logger.error(f"  ❌ Error saving to untappd_data (Batch): {e}")
 
