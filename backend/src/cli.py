@@ -40,6 +40,7 @@ def main() -> None:
     enrich_untappd_parser.add_argument("--mode", choices=['missing', 'refresh'], default='missing', help="Enrichment mode")
     enrich_untappd_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
     enrich_untappd_parser.add_argument("--name_filter", type=str, help="Filter enrichment by partial name match", default=None)
+    enrich_untappd_parser.add_argument("--force", action="store_true", help="Force re-process / ignore backoff")
 
     # Enrich Breweries only
     enrich_breweries_parser = subparsers.add_parser("enrich-breweries", help="Run Brewery enrichment only")
@@ -102,7 +103,7 @@ def main() -> None:
         
     elif args.command == "enrich-untappd":
         from .commands.enrich_untappd import enrich_untappd
-        asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode, shop_filter=args.shop, name_filter=args.name_filter))
+        asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode, shop_filter=args.shop, name_filter=args.name_filter, force=args.force))
     
     elif args.command == "enrich-breweries":
         from .commands.enrich_breweries import enrich_breweries

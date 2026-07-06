@@ -37,12 +37,14 @@ class UntappdEnricher:
         mode: str = 'missing',
         shop_filter: Optional[str] = None,
         name_filter: Optional[str] = None,
-        offline: bool = False
+        offline: bool = False,
+        force: bool = False
     ):
         self.mode = mode
         self.shop_filter = shop_filter
         self.name_filter = name_filter
         self.offline = offline
+        self.force = force
         self.supabase: Any = get_supabase_client()
         
         self.brewery_manager: Optional[BreweryManager] = None
@@ -166,6 +168,9 @@ class UntappdEnricher:
 
     def _preload_failure_history(self) -> None:
         """Pre-loads failure records for backoff filtering."""
+        if self.name_filter or self.force:
+            logger.info("  ⏭️ Name filter or Force active: Skipping backoff policy so targeted items are processed.")
+            return
         logger.info("  🔍 Pre-loading failure history for backoff filtering...")
         from dateutil import parser as dateutil_parser
         cutoff: datetime = datetime.now(timezone.utc) - timedelta(days=3)
@@ -507,6 +512,7 @@ async def enrich_untappd(
     shop_filter: Optional[str] = None,
     name_filter: Optional[str] = None,
     offline: bool = False,
+    force: bool = False,
 ) -> Set[str]:
     """
     Entry point: Enrich beers with Untappd data.
@@ -515,6 +521,7 @@ async def enrich_untappd(
         mode=mode,
         shop_filter=shop_filter,
         name_filter=name_filter,
-        offline=offline
+        offline=offline,
+        force=force
     )
     return await enricher.run(limit=limit)

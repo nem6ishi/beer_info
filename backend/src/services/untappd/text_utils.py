@@ -70,6 +70,34 @@ _ORDINAL_MAP: Dict[str, str] = {
     '25th': 'twentyfifth', '30th': 'thirtieth',
 }
 
+# Number and Roman numeral mappings to Arabic digits
+_ROMAN_UNICODE_MAP: Dict[str, str] = {
+    'Ⅰ': '1', 'Ⅱ': '2', 'Ⅲ': '3', 'Ⅳ': '4', 'Ⅴ': '5',
+    'Ⅵ': '6', 'Ⅶ': '7', 'Ⅷ': '8', 'Ⅸ': '9', 'Ⅹ': '10',
+    'ⅰ': '1', 'ⅱ': '2', 'ⅲ': '3', 'ⅳ': '4', 'ⅴ': '5',
+    'ⅵ': '6', 'ⅶ': '7', 'ⅷ': '8', 'ⅸ': '9', 'ⅹ': '10',
+}
+
+_WORD_NUMBER_MAP: Dict[str, str] = {
+    'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
+    'six': '6', 'seven': '7', 'eight': '8', 'nine': '9', 'ten': '10',
+    'ii': '2', 'iii': '3', 'iv': '4', 'vi': '6', 'vii': '7', 'viii': '8', 'ix': '9',
+}
+
+
+def normalize_numbers_and_romans(text: str) -> str:
+    """Converts Roman numerals (Ⅲ, III) and word numbers (Three) to Arabic digits (3)."""
+    if not text:
+        return ""
+    result = text
+    for char, digit in _ROMAN_UNICODE_MAP.items():
+        result = result.replace(char, digit)
+    def replace_word(m: re.Match) -> str:
+        word = m.group(0).lower()
+        return _WORD_NUMBER_MAP.get(word, m.group(0))
+    result = re.sub(r'\b[a-zA-Z]+\b', replace_word, result)
+    return result
+
 # Variant modifier phrases that distinguish different versions of the same base beer.
 # These are checked as normalized (lowered, alphanumeric-only) substrings.
 # Order: longer phrases first to allow greedy matching.
@@ -141,9 +169,11 @@ def normalize_ordinals(text: str) -> str:
 
 
 def strip_for_core_comparison(text: str) -> str:
-    """Strips year, style suffixes, dashes, and punctuation for core name comparison."""
-    # Remove year in parens like (2026)
-    text = re.sub(r'\s*\(20\d{2}\)\s*', ' ', text)
+    """Strips year, date markers, style suffixes, dashes, and punctuation for core name comparison."""
+    # Remove year/date in parens or brackets like (2026), (2026.07), [26/07], (2026-07)
+    text = re.sub(r'\s*[([（]\s*(?:20)?\d{2}(?:[./-]\d{1,2})?\s*[)\]）]\s*', ' ', text)
+    # Remove standalone dates like 2026.07 at end
+    text = re.sub(r'\s+(?:20)?\d{2}[./-]\d{1,2}$', ' ', text)
     # Remove em-dashes and en-dashes (common in Untappd names)
     text = re.sub(r'\s*[–—-]\s*', ' ', text)
     # Remove colons and everything after (often used for fruit additions in JP shops)
@@ -179,6 +209,10 @@ def clean_beer_name(name: str) -> str:
     # Remove hop treatment prefixes (TDH/DDH/SDH)
     name = re.sub(r'\b(?:TDH|DDH|SDH)\s+', '', name, flags=re.IGNORECASE)
     name = re.sub(r'\b(?:Triple|Double|Single)\s+Dry\s+Hopped\s+', '', name, flags=re.IGNORECASE)
+
+    # Remove date/year markers like (2026.07), (2026/07), (26.07), [2026.07], (2026)
+    name = re.sub(r'\s*[([（]\s*(?:20)?\d{2}(?:[./-]\d{1,2})?\s*[)\]）]\s*', ' ', name)
+    name = re.sub(r'\s+(?:20)?\d{2}[./-]\d{1,2}$', '', name)
 
     # Remove #XX, Vol.X, Batch X patterns
     name = re.sub(r'#\d+', '', name)

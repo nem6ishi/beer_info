@@ -7,8 +7,8 @@ import logging
 from typing import Dict, List
 from bs4 import Tag
 from .text_utils import (
-    normalize_for_comparison, normalize_ordinals, strip_for_core_comparison,
-    clean_brewery_name, has_variant_mismatch, COLLAB_SPLIT_PATTERN,
+    normalize_for_comparison, normalize_ordinals, normalize_numbers_and_romans,
+    strip_for_core_comparison, clean_brewery_name, has_variant_mismatch, COLLAB_SPLIT_PATTERN,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,6 +85,17 @@ def score_beer_match(result_element: Tag, expected_beer: str) -> int:
     if rb_ord in eb_ord or eb_ord in rb_ord:
         if not has_variant_mismatch(result_beer, expected_beer):
             logger.info(f"  [Validation] Beer MATCH (Ordinal, 80): '{result_beer}' matches '{expected_beer}'")
+            return 80
+
+    # 3b. Number & Roman numeral normalization check (III / Three / Ⅲ -> 3)
+    rb_num: str = normalize_for_comparison(normalize_numbers_and_romans(result_beer))
+    eb_num: str = normalize_for_comparison(normalize_numbers_and_romans(expected_beer))
+    if rb_num == eb_num:
+        logger.info(f"  [Validation] Beer MATCH (Number/Roman Exact, 85): '{result_beer}' matches '{expected_beer}'")
+        return 85
+    if rb_num in eb_num or eb_num in rb_num:
+        if not has_variant_mismatch(result_beer, expected_beer):
+            logger.info(f"  [Validation] Beer MATCH (Number/Roman, 80): '{result_beer}' matches '{expected_beer}'")
             return 80
 
     # 4. Core name comparison: strip year, dashes, style suffixes
