@@ -1,13 +1,11 @@
 import asyncio
 import os
 import re
-import requests
+import ssl
+import httpx
 from bs4 import BeautifulSoup, Tag
 from urllib.parse import urljoin
 from typing import List, Dict, Optional, Set, Any, cast
-import concurrent.futures
-from requests.adapters import HTTPAdapter
-from urllib3.util.ssl_ import create_urllib3_context
 from ..core.types import ScrapedProduct
 
 # Early stop threshold for existing items
@@ -21,21 +19,11 @@ HEADERS: Dict[str, str] = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
 }
 
-# Custom adapter to handle weak DH keys (DH_KEY_TOO_SMALL)
-class LegacySSLAdapter(HTTPAdapter):
-    def init_poolmanager(self, *args: Any, **kwargs: Any) -> Any:
-        ctx = create_urllib3_context()
-        ctx.load_default_certs()
-        ctx.set_ciphers('DEFAULT@SECLEVEL=1')
-        kwargs['ssl_context'] = ctx
-        return super(LegacySSLAdapter, self).init_poolmanager(*args, **kwargs)
-
-    def proxy_manager_for(self, *args: Any, **kwargs: Any) -> Any:
-        ctx = create_urllib3_context()
-        ctx.load_default_certs()
-        ctx.set_ciphers('DEFAULT@SECLEVEL=1')
-        kwargs['ssl_context'] = ctx
-        return super(LegacySSLAdapter, self).proxy_manager_for(*args, **kwargs)
+def get_legacy_ssl_context() -> ssl.SSLContext:
+    """Creates an SSLContext that allows legacy ciphers (SECLEVEL=1) for servers with weak DH keys."""
+    ctx = ssl.create_default_context()
+    ctx.set_ciphers('DEFAULT@SECLEVEL=1')
+    return ctx
 
 def normalize_url(url: str) -> str:
     """Extracts product_id to ensure consistent URL matching."""
@@ -83,48 +71,17 @@ def extract_product_data(item: Tag, is_area: bool = False) -> Optional[ScrapedPr
                 name_link = right_div.select_one('a')
             
             if name_link:
-                from bs4.element import NavigableString
-                name_parts: List[str] = []
-                for content in name_link.contents:
-                    if isinstance(content, Tag):
-                        if content.name == 'br' or content.name == 'span':
-                            break
-                    if isinstance(content, NavigableString):
-                        name_parts.append(str(content))
+                product_name = name_link.get_text(strip=True)
                 
-                product_name = "".join(name_parts).strip()
-                
-            elif img_tag and img_tag.get('alt'):
-                 product_name = cast(str, img_tag.get('alt'))
-
-            price_tag: Optional[Tag] = right_div.select_one("span.price")
+            price_tag: Optional[Tag] = right_div.select_one("p.price")
             if price_tag:
-                raw_price: str = price_tag.get_text(strip=True)
-                m_tax = re.search(r'税込[:：]\s*[¥￥]\s*([0-9,]+)', raw_price)
-                if m_tax:
-                    price = m_tax.group(1).replace(',', '') + "円"
-                else:
-                    m_simple = re.search(r'([0-9,]+)', raw_price)
-                    if m_simple:
-                        price = m_simple.group(1).replace(',', '') + "円"
-                        
-            if price == "Unknown":
-                text: str = right_div.get_text()
-                m = re.search(r'([0-9,]+)円', text)
-                if not m:
-                     m = re.search(r'[¥￥]\s*([0-9,]+)', text)
-                if m:
-                    price = m.group(1).replace(',', '') + "円"
+                price = price_tag.get_text(strip=True)
 
         stock_status: str = "In Stock"
-        area_text: str = area.get_text()
-        if "品切" in area_text or "只今品切れ中" in area_text or "申し訳ございません" in area_text or "在庫切れ" in area_text or "売り切れ" in area_text:
+        if area.select_one("p.soldout") or area.select_one("img[src*='soldout']"):
             stock_status = "Sold Out"
-            
-        if stock_status == "In Stock":
-            sold_out_img: Optional[Tag] = area.select_one('img[alt="売り切れ"]') or area.select_one('img[src*="soldout"]')
-            if sold_out_img:
-                stock_status = "Sold Out"
+        if "sold out" in area.get_text().lower() or "売切" in area.get_text():
+            stock_status = "Sold Out"
 
         return {
             "name": product_name,
@@ -139,19 +96,16 @@ def extract_product_data(item: Tag, is_area: bool = False) -> Optional[ScrapedPr
         print(f"[Arome] Error parsing item: {e}")
         return None
 
-def fetch_full_name(product_url: str) -> Optional[str]:
+async def fetch_full_name(client: httpx.AsyncClient, product_url: str) -> Optional[str]:
     """
     Fetches the detail page to get the full product name if truncated.
     """
     try:
-        session = requests.Session()
-        session.mount("https://", LegacySSLAdapter())
-        
-        response: requests.Response = session.get(product_url, headers=HEADERS, timeout=30)
+        response: httpx.Response = await client.get(product_url, timeout=30.0)
         if response.status_code != 200:
             return None
         
-        response.encoding = response.apparent_encoding or 'utf-8'
+        response.encoding = response.encoding or 'utf-8'
         soup: BeautifulSoup = BeautifulSoup(response.text, "html.parser")
         
         title_tag: Optional[Tag] = soup.select_one("h2.productTitle") or soup.select_one("h2.title")
@@ -174,110 +128,105 @@ async def scrape_arome(limit: Optional[int] = None, existing_urls: Optional[Set[
     if existing_urls is not None:
         print(f"[Arome] New product mode: Will stop after {SOLD_OUT_THRESHOLD} consecutive existing items")
     
-    session = requests.Session()
-    session.mount("https://", LegacySSLAdapter())
-    
-    while True:
-        url: str = SEARCH_URL_TEMPLATE.format(page=page)
-        print(f"[Arome] Scraping page {page}: {url}")
-        
-        try:
-            response: requests.Response = await asyncio.to_thread(session.get, url, headers=HEADERS, timeout=30)
-            response.encoding = response.apparent_encoding or 'utf-8'
+    ssl_ctx = get_legacy_ssl_context()
+    async with httpx.AsyncClient(verify=ssl_ctx, headers=HEADERS, timeout=30.0, follow_redirects=True) as client:
+        while True:
+            url: str = SEARCH_URL_TEMPLATE.format(page=page)
+            print(f"[Arome] Scraping page {page}: {url}")
             
-            if response.status_code != 200:
-                print(f"[Arome] Failed to fetch page {page}. Status: {response.status_code}")
-                break
+            try:
+                response: httpx.Response = await client.get(url)
+                response.encoding = response.encoding or 'utf-8'
                 
-            soup: BeautifulSoup = BeautifulSoup(response.text, "html.parser")
-            
-            items: List[Tag] = soup.select("div.list_area")
-            if not items:
-                print(f"[Arome] No items found on page {page}. Stopping.")
-                break
-            
-            print(f"[Arome] Found {len(items)} items on page {page}.")
-            
-            # 1. Parse all items on page first
-            page_products: List[ScrapedProduct] = []
-            
-            for area in items:
-                product_data: Optional[ScrapedProduct] = extract_product_data(area, is_area=True)
-                if product_data:
-                    page_products.append(product_data)
-
-            # 2. Identify items needing detail fetch (truncated names)
-            tasks: List[ScrapedProduct] = []
-            for p in page_products:
-                name: str = p["name"]
-                p_url: str = p["url"]
-                is_existing: bool = existing_urls is not None and p_url in existing_urls
-                
-                if (name.endswith("...") or name.endswith("…")):
-                    if not is_existing:
-                        tasks.append(p)
-                    else:
-                        print(f"[Arome] Name truncated but item exists. Skipping detail fetch for: {p_url}")
-
-            # 3. Parallel fetch using ThreadPool
-            if tasks:
-                print(f"[Arome] Fetching details for {len(tasks)} items in parallel...")
-                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                    future_to_product: Dict[concurrent.futures.Future[Optional[str]], ScrapedProduct] = {
-                        executor.submit(fetch_full_name, p["url"]): p for p in tasks
-                    }
+                if response.status_code != 200:
+                    print(f"[Arome] Failed to fetch page {page}. Status: {response.status_code}")
+                    break
                     
-                    for future in concurrent.futures.as_completed(future_to_product):
-                        p = future_to_product[future]
-                        try:
-                            full_name: Optional[str] = future.result()
-                            if full_name:
-                                p["name"] = full_name
-                        except Exception as exc:
-                            print(f"[Arome] Detail fetch failed for {p['url']}: {exc}")
-
-            # 4. Add to main list and check limits
-            for p in page_products:
-                if limit and len(products) >= limit:
+                soup: BeautifulSoup = BeautifulSoup(response.text, "html.parser")
+                
+                items: List[Tag] = soup.select("div.list_area")
+                if not items:
+                    print(f"[Arome] No items found on page {page}. Stopping.")
                     break
                 
-                p_url = p["url"]
-                is_existing = existing_urls is not None and p_url in existing_urls
-                if existing_urls is not None:
-                    if is_existing:
-                        consecutive_existing += 1
-                        if not full_scrape and consecutive_existing >= SOLD_OUT_THRESHOLD:
-                            print(f"[Arome] ⚠️ Stopping: {consecutive_existing} consecutive existing items found.")
-                            early_stop = True
-                            products.append(p)
-                            break 
-                    else:
-                        consecutive_existing = 0
-
-                products.append(p)
-            
-            if early_stop:
-                break
-            
-            if limit and len(products) >= limit:
-                print(f"[Arome] Limit reached ({limit}). Stopping.")
-                break
-
-            # Pagination check
-            next_link: Optional[Tag] = soup.find('a', string=re.compile("次へ"))
-            if not next_link:
-                next_link = soup.select_one(f'a[href*="pageno={page+1}"]')
-
-            if not next_link:
-                print(f"[Arome] No next page found. Stopping.")
-                break
+                print(f"[Arome] Found {len(items)} items on page {page}.")
                 
-            page += 1
-            await asyncio.sleep(1) 
-            
-        except Exception as e:
-            print(f"[Arome] Error scraping page {page}: {e}")
-            break
+                # 1. Parse all items on page first
+                page_products: List[ScrapedProduct] = []
+                
+                for area in items:
+                    product_data: Optional[ScrapedProduct] = extract_product_data(area, is_area=True)
+                    if product_data:
+                        page_products.append(product_data)
+
+                # 2. Identify items needing detail fetch (truncated names)
+                tasks: List[ScrapedProduct] = []
+                for p in page_products:
+                    name: str = p["name"]
+                    p_url: str = p["url"]
+                    is_existing: bool = existing_urls is not None and p_url in existing_urls
+                    
+                    if (name.endswith("...") or name.endswith("…")):
+                        if not is_existing:
+                            tasks.append(p)
+                        else:
+                            print(f"[Arome] Name truncated but item exists. Skipping detail fetch for: {p_url}")
+
+                # 3. Parallel fetch using asyncio.gather
+                if tasks:
+                    print(f"[Arome] Fetching details for {len(tasks)} items in parallel...")
+                    detail_results = await asyncio.gather(
+                        *[fetch_full_name(client, p["url"]) for p in tasks],
+                        return_exceptions=True
+                    )
+                    for p, res in zip(tasks, detail_results):
+                        if isinstance(res, str) and res:
+                            p["name"] = res
+                        elif isinstance(res, Exception):
+                            print(f"[Arome] Detail fetch failed for {p['url']}: {res}")
+
+                # 4. Add to main list and check limits
+                for p in page_products:
+                    if limit and len(products) >= limit:
+                        break
+                    
+                    p_url = p["url"]
+                    is_existing = existing_urls is not None and p_url in existing_urls
+                    if existing_urls is not None:
+                        if is_existing:
+                            consecutive_existing += 1
+                            if not full_scrape and consecutive_existing >= SOLD_OUT_THRESHOLD:
+                                print(f"[Arome] ⚠️ Stopping: {consecutive_existing} consecutive existing items found.")
+                                early_stop = True
+                                products.append(p)
+                                break 
+                        else:
+                            consecutive_existing = 0
+
+                    products.append(p)
+                
+                if early_stop:
+                    break
+                
+                if limit and len(products) >= limit:
+                    print(f"[Arome] Limit reached ({limit}). Stopping.")
+                    break
+
+                # Pagination check
+                next_link: Optional[Tag] = soup.find('a', string=re.compile("次へ"))
+                if not next_link:
+                    next_link = soup.select_one(f'a[href*="pageno={page+1}"]')
+
+                if not next_link:
+                    print(f"[Arome] No next page found. Stopping.")
+                    break
+                    
+                page += 1
+                await asyncio.sleep(1) 
+                
+            except Exception as e:
+                print(f"[Arome] Error scraping page {page}: {e}")
+                break
             
     print(f"[Arome] Finished! Scraped {len(products)} items.")
     return products

@@ -319,6 +319,14 @@ class UntappdEnricher:
                     'untappd_url': untappd_url,
                     'untappd_brewery_url': details.get('untappd_brewery_url')
                 }
+                
+                # Self-Healing Dictionary Feedback Loop
+                if self.brewery_manager:
+                    u_b_name = details.get('untappd_brewery_name')
+                    u_b_url = details.get('untappd_brewery_url')
+                    b_hint = beer.get('brewery_name_en') or beer.get('brewery_name_jp')
+                    if u_b_name and b_hint:
+                        self.brewery_manager.learn_brewery_alias(brewery_name_en=u_b_name, new_alias=b_hint, untappd_url=u_b_url)
             else:
                 logger.warning(f"  ⚠️  Could not scrape details")
                 untappd_payload = {'untappd_url': untappd_url, 'fetched_at': datetime.now(timezone.utc).isoformat()}
@@ -457,6 +465,14 @@ class UntappdEnricher:
                 'untappd_url': untappd_url,
                 'untappd_brewery_url': details.get('untappd_brewery_url')
             }
+            
+            # Self-Healing Dictionary Feedback Loop
+            if self.brewery_manager:
+                u_b_name = details.get('untappd_brewery_name')
+                u_b_url = details.get('untappd_brewery_url')
+                if u_b_name and brewery:
+                    self.brewery_manager.learn_brewery_alias(brewery_name_en=u_b_name, new_alias=brewery, untappd_url=u_b_url)
+                    
             return payload
         else:
             logger.warning(f"  ⚠️  Could not scrape details")

@@ -1,5 +1,6 @@
 import os
-from typing import List, Dict, Optional
+import re
+from typing import List, Dict, Optional, Any
 from backend.src.core.db import get_supabase_client
 
 class BreweryManager:
@@ -101,6 +102,85 @@ class BreweryManager:
         breweries = self.find_breweries_in_text(text)
         return breweries[0] if breweries else None
     
+    def learn_brewery_alias(
+        self,
+        brewery_name_en: Optional[str] = None,
+        new_alias: Optional[str] = None,
+        untappd_url: Optional[str] = None,
+    ) -> bool:
+        """
+        Self-Healing Dictionary: Automatically learn and persist a new alias or Japanese name for a known brewery.
+        
+        Returns:
+            True if a new alias was learned and persisted to DB, False otherwise.
+        """
+        if not new_alias or not (brewery_name_en or untappd_url):
+            return False
+            
+        new_alias = new_alias.strip()
+        if len(new_alias) <= 1:
+            return False
+            
+        # Ignore common generic words / suffixes
+        stop_words = {
+            'beer', 'brewery', 'brewing', 'craft', 'ale', 'lager', 'ipa', 'co', 'inc', 'ltd',
+            'company', 'brewing co', 'brewing company', 'beer co', 'beer company'
+        }
+        if new_alias.lower() in stop_words:
+            return False
+
+        target_brewery: Optional[Dict] = None
+        
+        if untappd_url:
+            for b in self.breweries:
+                if b.get('untappd_url') == untappd_url:
+                    target_brewery = b
+                    break
+                    
+        if not target_brewery and brewery_name_en:
+            target_brewery = self.brewery_index.get(brewery_name_en.lower())
+            
+        if not target_brewery or not target_brewery.get('id'):
+            return False
+            
+        # Check if already known
+        existing_en = target_brewery.get('name_en') or ''
+        existing_jp = target_brewery.get('name_jp') or ''
+        current_aliases = list(target_brewery.get('aliases') or [])
+        
+        alias_lower = new_alias.lower()
+        if alias_lower == existing_en.lower() or alias_lower == existing_jp.lower():
+            return False
+        if any(alias_lower == a.lower() for a in current_aliases):
+            return False
+            
+        # Prepare updates
+        payload: Dict[str, Any] = {}
+        updated_jp = False
+        
+        # If it's Japanese characters and name_jp is empty, populate name_jp
+        is_japanese = bool(re.search(r'[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]', new_alias))
+        if is_japanese and not existing_jp:
+            target_brewery['name_jp'] = new_alias
+            payload['name_jp'] = new_alias
+            updated_jp = True
+            
+        if not updated_jp or new_alias not in current_aliases:
+            current_aliases.append(new_alias)
+            target_brewery['aliases'] = current_aliases
+            payload['aliases'] = current_aliases
+            
+        if not payload:
+            return False
+            
+        try:
+            self.supabase.table('breweries').update(payload).eq('id', target_brewery['id']).execute()
+            self.brewery_index[alias_lower] = target_brewery
+            print(f"[BreweryManager] 📈 Self-Healing Dict: Learned new alias '{new_alias}' for brewery '{target_brewery.get('name_en')}'")
+            return True
+        except Exception as e:
+            print(f"[BreweryManager] Error persisting new alias to DB: {e}")
+            return False
 
     def get_stats(self) -> Dict:
         """Get statistics about brewery database."""

@@ -12,7 +12,7 @@ import random
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Set, Tuple
 
-import requests
+import httpx
 from bs4 import BeautifulSoup
 from ..core.types import ScrapedProduct
 
@@ -71,6 +71,7 @@ class BaseScraper(ABC):
         encoding: Optional[str] = None,
         delay: Tuple[float, float] = (0.3, 0.8),
         timeout: int = 30,
+        client: Optional[httpx.AsyncClient] = None,
     ) -> Optional[BeautifulSoup]:
         """
         Fetch a URL and return a BeautifulSoup object.
@@ -81,6 +82,7 @@ class BaseScraper(ABC):
             encoding: Force a specific encoding. If None, auto-detect.
             delay: (min, max) seconds to wait before fetching.
             timeout: Request timeout in seconds.
+            client: Optional existing httpx.AsyncClient to reuse.
 
         Returns:
             BeautifulSoup or None on failure.
@@ -89,16 +91,21 @@ class BaseScraper(ABC):
             await asyncio.sleep(random.uniform(*delay))
 
         try:
-            response: requests.Response = await asyncio.to_thread(
-                requests.get, url, headers=self.default_headers, timeout=timeout
-            )
+            if client:
+                response: httpx.Response = await client.get(
+                    url, headers=self.default_headers, timeout=float(timeout), follow_redirects=True
+                )
+            else:
+                async with httpx.AsyncClient(headers=self.default_headers, timeout=float(timeout), follow_redirects=True) as new_client:
+                    response = await new_client.get(url)
+
             response.raise_for_status()
             if encoding:
                 response.encoding = encoding
             else:
-                response.encoding = response.apparent_encoding or 'utf-8'
+                response.encoding = response.encoding or 'utf-8'
             return BeautifulSoup(response.content, 'lxml')
-        except requests.RequestException as e:
+        except httpx.HTTPError as e:
             logger.error(f"[{self.shop_name}] HTTP error fetching {url}: {e}")
             return None
         except Exception as e:

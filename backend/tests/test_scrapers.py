@@ -6,7 +6,7 @@ from backend.src.core.types import ScrapedProduct
 
 # Arome scraper tests
 @pytest.mark.asyncio
-@patch('backend.src.scrapers.arome.requests.get')
+@patch('backend.src.scrapers.arome.httpx.AsyncClient.get')
 async def test_arome_scrape_basic(mock_get):
     html_content = """
     <html>
@@ -24,7 +24,10 @@ async def test_arome_scrape_basic(mock_get):
     """
     mock_resp = MagicMock()
     mock_resp.status_code = 200
+    mock_resp.text = html_content
     mock_resp.content = html_content.encode('utf-8')
+    mock_resp.encoding = 'utf-8'
+    mock_resp.raise_for_status = MagicMock()
     mock_get.return_value = mock_resp
 
     results = await arome.scrape_arome(limit=1)
@@ -33,7 +36,7 @@ async def test_arome_scrape_basic(mock_get):
 
 # Beervolta scraper tests
 @pytest.mark.asyncio
-@patch('backend.src.scrapers.beervolta.requests.get')
+@patch('backend.src.scrapers.beervolta.httpx.AsyncClient.get')
 async def test_beervolta_scrape_basic(mock_get):
     html_content = """
     <html>
@@ -51,7 +54,10 @@ async def test_beervolta_scrape_basic(mock_get):
     """
     mock_resp = MagicMock()
     mock_resp.status_code = 200
+    mock_resp.text = html_content
     mock_resp.content = html_content.encode('utf-8')
+    mock_resp.encoding = 'utf-8'
+    mock_resp.raise_for_status = MagicMock()
     mock_get.return_value = mock_resp
 
     results = await beervolta.scrape_beervolta(limit=1)

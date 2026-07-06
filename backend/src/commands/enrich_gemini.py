@@ -149,11 +149,17 @@ class GeminiEnricher:
                     record_enrichment_failure(self.supabase, url, 'gemini_no_info', error_message="Gemini returned no valid info.")
                     return 'error', None
                 
+                # Self-Healing Dictionary Feedback Loop
+                b_en = enriched_info.get('brewery_name_en')
+                b_jp = enriched_info.get('brewery_name_jp')
+                if b_en and b_jp:
+                    self.brewery_manager.learn_brewery_alias(brewery_name_en=b_en, new_alias=b_jp)
+
                 # Prepare payload
                 payload: Dict[str, Any] = {
                     'url': url,
-                    'brewery_name_en': enriched_info.get('brewery_name_en'),
-                    'brewery_name_jp': enriched_info.get('brewery_name_jp'),
+                    'brewery_name_en': b_en,
+                    'brewery_name_jp': b_jp,
                     'beer_name_en': enriched_info.get('beer_name_en'),
                     'beer_name_jp': enriched_info.get('beer_name_jp'),
                     'beer_name_core': enriched_info.get('beer_name_core'),
