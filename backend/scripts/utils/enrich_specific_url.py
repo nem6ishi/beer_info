@@ -80,6 +80,8 @@ async def enrich_specific_url(url: str):
         'brewery_name_jp': enriched_info.get('brewery_name_jp'),
         'beer_name_en': enriched_info.get('beer_name_en'),
         'beer_name_jp': enriched_info.get('beer_name_jp'),
+        'beer_name_core': enriched_info.get('beer_name_core'),
+        'search_hint': enriched_info.get('search_hint'),
         'product_type': enriched_info.get('product_type', 'beer'),
         'is_set': enriched_info.get('is_set', False),
         'payload': enriched_info.get('raw_response'),
@@ -98,10 +100,16 @@ async def enrich_specific_url(url: str):
         if not brewery_name or not beer_name:
             logger.warning("⚠️  醸造所名またはビール名が不足しています。Untappd検索をスキップします。")
         else:
-            untappd_result = get_untappd_url(brewery_name, beer_name)
+            untappd_result = await get_untappd_url(
+                brewery_name, 
+                beer_name,
+                beer_name_jp=enriched_info.get('beer_name_jp'),
+                search_hint=enriched_info.get('search_hint'),
+                beer_name_core=enriched_info.get('beer_name_core')
+            )
             
-            if untappd_result['success']:
-                untappd_url = untappd_result['url']
+            if untappd_result.get('success'):
+                untappd_url = untappd_result.get('url')
                 logger.info(f"✓ Untappd URL: {untappd_url}")
                 
                 # Untappd URLを保存
@@ -111,14 +119,15 @@ async def enrich_specific_url(url: str):
                 }).eq('url', url).execute()
                 logger.info("✓ 保存完了")
             else:
-                logger.warning(f"⚠️  Untappd URLが見つかりませんでした: {untappd_result.get('reason', 'Unknown')}")
+                failure_reason = untappd_result.get('failure_reason', 'Unknown')
+                logger.warning(f"⚠️  Untappd URLが見つかりませんでした: {failure_reason}")
                 
                 # 失敗を記録
                 failure_payload = {
                     'url': url,
                     'brewery_name': brewery_name,
                     'beer_name': beer_name,
-                    'failure_reason': untappd_result.get('reason', 'Unknown'),
+                    'failure_reason': failure_reason,
                     'attempted_at': datetime.now(timezone.utc).isoformat()
                 }
                 supabase.table('untappd_search_failures').upsert(failure_payload, on_conflict='url').execute()

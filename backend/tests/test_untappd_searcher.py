@@ -307,8 +307,8 @@ class TestSearchBreweryBeerScoring(unittest.IsolatedAsyncioTestCase):
             </div>'''
         return f"<html><body>{items}</body></html>"
 
-    @patch('backend.src.services.untappd.http_client.requests.get')
-    async def test_scoring_selects_exact_over_variant(self, mock_get):
+    @patch('backend.src.services.untappd.http_client.get_async_client')
+    async def test_scoring_selects_exact_over_variant(self, mock_get_client):
         """Scoring should prefer exact match over variant."""
         html = self._make_html([
             ("Fresh Hop What Rough Beast (2019)", "/b/breakside-fresh-hop-wrb/111"),
@@ -317,7 +317,12 @@ class TestSearchBreweryBeerScoring(unittest.IsolatedAsyncioTestCase):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.text = html
-        mock_get.return_value = mock_resp
+
+        mock_client = MagicMock()
+        async def mock_get(*args, **kwargs):
+            return mock_resp
+        mock_client.get = mock_get
+        mock_get_client.return_value = mock_client
 
         from backend.src.services.untappd.http_client import search_brewery_beer
 
@@ -329,8 +334,8 @@ class TestSearchBreweryBeerScoring(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result, "https://untappd.com/b/breakside-wrb/222")
 
-    @patch('backend.src.services.untappd.http_client.requests.get')
-    async def test_scoring_blocks_variant_only(self, mock_get):
+    @patch('backend.src.services.untappd.http_client.get_async_client')
+    async def test_scoring_blocks_variant_only(self, mock_get_client):
         """When only variant exists, scoring returns None."""
         html = self._make_html([
             ("Fresh Hop What Rough Beast (2019)", "/b/breakside-fresh-hop-wrb/111"),
@@ -338,7 +343,12 @@ class TestSearchBreweryBeerScoring(unittest.IsolatedAsyncioTestCase):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.text = html
-        mock_get.return_value = mock_resp
+
+        mock_client = MagicMock()
+        async def mock_get(*args, **kwargs):
+            return mock_resp
+        mock_client.get = mock_get
+        mock_get_client.return_value = mock_client
 
         from backend.src.services.untappd.http_client import search_brewery_beer
 

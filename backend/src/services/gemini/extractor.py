@@ -44,10 +44,14 @@ class GeminiExtractor:
         self.daily_request_count = 0
         
         # Model Configuration: Gemma 4 31B (15 RPM, 1,500 RPD)
-        self.model_id = "gemma-4-31b-it"
-        self.fallback_model_id = "gemma-4-26b-a4b-it"
+        self.model_id = os.getenv("GEMINI_MODEL_ID", "gemma-4-31b-it")
+        self.fallback_model_id = os.getenv("GEMINI_FALLBACK_MODEL_ID", "gemma-4-26b-a4b-it")
         self.model_interval = 4.5  # 15 RPMの制限に余裕を持たせる (約 13.3 RPM)
         self.global_daily_limit = 1450  # 1,500 RPDの制限に余裕を持たせる
+
+    def _supports_response_schema(self, model_id: str) -> bool:
+        """Returns True if the model supports response_schema (e.g. Gemini models)."""
+        return model_id.lower().startswith("gemini-")
 
 
     def _load_shop_rules(self) -> Dict[str, Any]:
@@ -63,8 +67,8 @@ class GeminiExtractor:
         return {}
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=4, max=20))
-    async def _generate_content(self, prompt: str) -> Optional[Dict[str, Any]]:
-        """Generates content using the configured Gemma model with fallback."""
+    async def _generate_content(self, prompt: str, schema: Optional[Any] = None) -> Optional[Dict[str, Any]]:
+        """Generates content using the configured model with fallback and optional schema."""
         if not self.client:
             return None
 
@@ -88,10 +92,19 @@ class GeminiExtractor:
 
             await self._throttle(self.model_interval, self.model_id)
 
+            config = None
+            if schema and self._supports_response_schema(self.model_id):
+                from google.genai import types
+                config = types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=schema,
+                )
+
             logger.info(f"  [Gemini] Calling {self.model_id}...")
             response: Any = await self.client.aio.models.generate_content(
                 model=self.model_id,
-                contents=prompt
+                contents=prompt,
+                config=config,
             )
         except Exception as e:
             error_msg: str = str(e).lower()
@@ -101,9 +114,17 @@ class GeminiExtractor:
                     self.model_id = self.fallback_model_id
                     await self._throttle(self.model_interval, self.model_id)
                     logger.info(f"  [Gemini] Calling fallback {self.model_id}...")
+                    fallback_config = None
+                    if schema and self._supports_response_schema(self.model_id):
+                        from google.genai import types
+                        fallback_config = types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=schema,
+                        )
                     response = await self.client.aio.models.generate_content(
                         model=self.model_id,
-                        contents=prompt
+                        contents=prompt,
+                        config=fallback_config,
                     )
                 else:
                     raise
@@ -129,7 +150,7 @@ class GeminiExtractor:
                 await asyncio.sleep(wait_time)
 
     def _parse_json_response(self, text: str, sanitize: bool = False) -> Optional[Dict[str, Any]]:
-        """Parses JSON from response text, optionally cleaning markdown blocks."""
+        """Parses JSON from response text, cleaning markdown blocks and normalizing schema fields."""
         try:
             content: str = text.strip()
             if sanitize:
@@ -143,8 +164,21 @@ class GeminiExtractor:
             
             data: Any = json.loads(content)
             if isinstance(data, dict):
-                data["raw_response"] = text
-            return data
+                normalized: Dict[str, Any] = {}
+                for key in ["brewery_name_jp", "brewery_name_en", "beer_name_jp", "beer_name_en", "beer_name_core", "search_hint"]:
+                    val = data.get(key)
+                    normalized[key] = str(val).strip() if isinstance(val, str) and val.strip() else None
+                
+                ptype = data.get("product_type")
+                normalized["product_type"] = ptype if ptype in ["beer", "set", "glass", "other"] else "beer"
+                normalized["is_set"] = bool(data.get("is_set", False))
+                
+                if "queries" in data and isinstance(data["queries"], list):
+                    normalized["queries"] = [str(q).strip() for q in data["queries"] if isinstance(q, str) and str(q).strip()]
+                
+                normalized["raw_response"] = text
+                return normalized
+            return None
         except Exception as e:
             logger.error(f"  [Gemini] Failed to parse JSON: {e}")
             return None
@@ -241,7 +275,24 @@ class GeminiExtractor:
         logger.debug(f"[Gemini] Full Prompt:\n{'-'*40}\n{prompt}\n{'-'*40}")
 
         try:
-            data: Optional[Dict[str, Any]] = await self._generate_content(prompt)
+            schema = None
+            if self._supports_response_schema(self.model_id):
+                from google.genai import types
+                schema = types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "brewery_name_jp": types.Schema(type=types.Type.STRING, nullable=True),
+                        "brewery_name_en": types.Schema(type=types.Type.STRING, nullable=True),
+                        "beer_name_jp": types.Schema(type=types.Type.STRING, nullable=True),
+                        "beer_name_en": types.Schema(type=types.Type.STRING, nullable=True),
+                        "beer_name_core": types.Schema(type=types.Type.STRING, nullable=True),
+                        "search_hint": types.Schema(type=types.Type.STRING, nullable=True),
+                        "product_type": types.Schema(type=types.Type.STRING, enum=["beer", "set", "glass", "other"]),
+                        "is_set": types.Schema(type=types.Type.BOOLEAN),
+                    },
+                    required=["product_type", "is_set"],
+                )
+            data: Optional[Dict[str, Any]] = await self._generate_content(prompt, schema=schema)
             if data:
                 logger.info(f"  ✅ Extraction Success:")
                 logger.info(f"     - Brewery: {data.get('brewery_name_en')} ({data.get('brewery_name_jp')})")
@@ -307,7 +358,20 @@ class GeminiExtractor:
         """
 
         try:
-            data: Optional[Dict[str, Any]] = await self._generate_content(prompt)
+            schema = None
+            if self._supports_response_schema(self.model_id):
+                from google.genai import types
+                schema = types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "queries": types.Schema(
+                            type=types.Type.ARRAY,
+                            items=types.Schema(type=types.Type.STRING)
+                        )
+                    },
+                    required=["queries"],
+                )
+            data: Optional[Dict[str, Any]] = await self._generate_content(prompt, schema=schema)
             if data and isinstance(data.get("queries"), list):
                 queries: List[str] = [q for q in data["queries"] if isinstance(q, str) and len(q) >= 3]
                 logger.info(f"  [Gemini] Suggested retry queries: {queries}")
