@@ -75,13 +75,16 @@ def extract_product_data(item: Tag) -> Optional[ScrapedProduct]:
              
         name = html.unescape(name)
         
-        # Cleanup
-        indicators: List[str] = ['≪12/10入荷予定≫', '≪入荷予定≫', '≪予約≫', '売切', 'SOLD OUT', 'SALE!!', 'SALE!']
+        # Cleanup extra status tags and dates (e.g. ≪7/4入荷予定≫, 《7/4入荷予定》, 【空輸】)
+        name = re.sub(r'[≪《<＜【\[].*?(?:入荷|予約|予定|出荷|空輸|クール|SALE|売切|新着).*?[≫》>＞\]】]', '', name, flags=re.IGNORECASE)
+        
+        indicators: List[str] = ['≪入荷予定≫', '《入荷予定》', '≪予約≫', '《予約》', '売切', 'SOLD OUT', 'SALE!!', 'SALE!']
         for indicator in indicators:
-            name = name.replace(indicator, '').strip()
+            name = re.sub(re.escape(indicator), '', name, flags=re.IGNORECASE)
             
         # Remove price info from name if it leaked from text content
-        name = re.sub(r'[0-9,]+円.*', '', name).strip()
+        name = re.sub(r'[0-9,]+円.*', '', name)
+        name = re.sub(r'\s+', ' ', name).strip()
         
         price: str = "Unknown"
         prices_found: List[str] = [part for part in item.get_text(strip=True, separator='|').split('|') if '円' in part]

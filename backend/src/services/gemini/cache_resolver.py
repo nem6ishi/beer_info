@@ -127,6 +127,12 @@ class LocalCacheResolver:
             
             # 分割できた場合、ブルワリーが既知かチェック
             if brewery_part and beer_part:
+                # 入荷予定などの不要テキストやセール文字列を除去
+                beer_part = re.sub(r'[≪《<＜【\[].*?(?:入荷|予約|予定|出荷|空輸|クール|SALE|売切|新着).*?[≫》>＞\]】]', '', beer_part, flags=re.IGNORECASE).strip()
+                for ind in ['≪入荷予定≫', '《入荷予定》', '≪予約≫', '《予約》', '売切', 'SOLD OUT', 'SALE!!', 'SALE!']:
+                    beer_part = re.sub(re.escape(ind), '', beer_part, flags=re.IGNORECASE).strip()
+                beer_part = re.sub(r'\s+', ' ', beer_part).strip()
+
                 brewery_key = brewery_part.lower()
                 if brewery_key in self.brewery_dict:
                     brewery_info = self.brewery_dict[brewery_key]
