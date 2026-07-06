@@ -107,8 +107,8 @@ def extract_product_data(item: Tag) -> Optional[ScrapedProduct]:
         return {
             'name': name,
             'price': price,
-            'url': full_url,
-            'image': image_url,
+            'url': link,
+            'image': img_url,
             'stock_status': stock_status,
             'shop': 'BEER VOLTA'
         }
