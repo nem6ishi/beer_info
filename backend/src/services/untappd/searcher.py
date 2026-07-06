@@ -13,6 +13,7 @@ from typing import Optional, List, Dict, Any
 
 from .text_utils import (
     normalize_for_comparison, strip_for_core_comparison,
+    normalize_singular_plural,
     has_variant_mismatch, COLLAB_SPLIT_PATTERN,
     clean_brewery_name
 )
@@ -209,7 +210,9 @@ async def _get_untappd_url_single(
             # Check beer
             if exp_beer:
                 beer_core: str = normalize_for_comparison(strip_for_core_comparison(exp_beer))
-                if beer_core and beer_core not in t_norm:
+                beer_core_pl: str = normalize_for_comparison(strip_for_core_comparison(normalize_singular_plural(exp_beer)))
+                t_norm_pl: str = normalize_for_comparison(normalize_singular_plural(title))
+                if beer_core and beer_core not in t_norm and beer_core_pl not in t_norm_pl:
                     if beer_name_jp and normalize_for_comparison(beer_name_jp) in t_norm:
                         pass
                     else:

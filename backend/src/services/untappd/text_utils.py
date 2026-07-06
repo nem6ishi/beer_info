@@ -98,6 +98,23 @@ def normalize_numbers_and_romans(text: str) -> str:
     result = re.sub(r'\b[a-zA-Z]+\b', replace_word, result)
     return result
 
+
+def normalize_singular_plural(text: str) -> str:
+    """Normalizes plural and singular English words (e.g. Fruits -> Fruit, Berries -> Berry) for robust matching."""
+    if not text:
+        return ""
+    def _stem_word(w: str) -> str:
+        w_lower = w.lower()
+        if len(w_lower) > 4 and w_lower.endswith('ies'):
+            return w[:-3] + ('y' if w.islower() else 'Y')
+        if len(w_lower) > 4 and w_lower.endswith('es') and w_lower[-3] in 'xzsh':
+            return w[:-2]
+        if len(w_lower) > 3 and w_lower.endswith('s') and not w_lower.endswith(('ss', 'us', 'is', 'as', 'os', 'ys')):
+            return w[:-1]
+        return w
+    return re.sub(r'\b[a-zA-Z]+\b', lambda m: _stem_word(m.group(0)), text)
+
+
 # Variant modifier phrases that distinguish different versions of the same base beer.
 # These are checked as normalized (lowered, alphanumeric-only) substrings.
 # Order: longer phrases first to allow greedy matching.

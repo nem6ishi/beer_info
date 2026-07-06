@@ -8,6 +8,7 @@ from typing import Dict, List
 from bs4 import Tag
 from .text_utils import (
     normalize_for_comparison, normalize_ordinals, normalize_numbers_and_romans,
+    normalize_singular_plural,
     strip_for_core_comparison, clean_brewery_name, has_variant_mismatch, COLLAB_SPLIT_PATTERN,
 )
 
@@ -98,6 +99,17 @@ def score_beer_match(result_element: Tag, expected_beer: str) -> int:
             logger.info(f"  [Validation] Beer MATCH (Number/Roman, 80): '{result_beer}' matches '{expected_beer}'")
             return 80
 
+    # 3c. Singular/Plural normalization check (Fruits -> Fruit)
+    rb_pl: str = normalize_for_comparison(normalize_singular_plural(result_beer))
+    eb_pl: str = normalize_for_comparison(normalize_singular_plural(expected_beer))
+    if rb_pl == eb_pl:
+        logger.info(f"  [Validation] Beer MATCH (Singular/Plural Exact, 85): '{result_beer}' matches '{expected_beer}'")
+        return 85
+    if rb_pl in eb_pl or eb_pl in rb_pl:
+        if not has_variant_mismatch(result_beer, expected_beer):
+            logger.info(f"  [Validation] Beer MATCH (Singular/Plural, 80): '{result_beer}' matches '{expected_beer}'")
+            return 80
+
     # 4. Core name comparison: strip year, dashes, style suffixes
     rb_core: str = normalize_for_comparison(strip_for_core_comparison(result_beer))
     eb_core: str = normalize_for_comparison(strip_for_core_comparison(expected_beer))
@@ -116,9 +128,9 @@ def score_beer_match(result_element: Tag, expected_beer: str) -> int:
                 logger.info(f"  [Validation] Beer MATCH (Core, 70): '{result_beer}' matches '{expected_beer}'")
                 return 70
 
-    # 5. Combined: ordinal + core stripping
-    rb_ord_core: str = normalize_for_comparison(strip_for_core_comparison(normalize_ordinals(result_beer)))
-    eb_ord_core: str = normalize_for_comparison(strip_for_core_comparison(normalize_ordinals(expected_beer)))
+    # 5. Combined: ordinal + number/roman + singular/plural + core stripping
+    rb_ord_core: str = normalize_for_comparison(strip_for_core_comparison(normalize_singular_plural(normalize_numbers_and_romans(normalize_ordinals(result_beer)))))
+    eb_ord_core: str = normalize_for_comparison(strip_for_core_comparison(normalize_singular_plural(normalize_numbers_and_romans(normalize_ordinals(expected_beer)))))
     if rb_ord_core and eb_ord_core and (rb_ord_core in eb_ord_core or eb_ord_core in rb_ord_core):
         if has_variant_mismatch(result_beer, expected_beer):
             logger.debug(f"  [Validation] Beer BLOCKED (Ordinal+Core + Variant): '{result_beer}' vs '{expected_beer}'")
