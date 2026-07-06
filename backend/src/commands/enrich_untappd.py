@@ -204,7 +204,8 @@ class UntappdEnricher:
             db_fetch_limit,
             self.shop_filter,
             self.name_filter,
-            self.skip_urls_for_backoff
+            self.skip_urls_for_backoff,
+            self.force,
         )
 
     def _prefetch_caches(self, beers_to_process: List[Dict[str, Any]]) -> None:

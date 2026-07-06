@@ -11,7 +11,8 @@ def fetch_beers(
     db_fetch_limit: int,
     shop_filter: Optional[str] = None,
     name_filter: Optional[str] = None,
-    skip_urls_for_backoff: Optional[Set[str]] = None
+    skip_urls_for_backoff: Optional[Set[str]] = None,
+    force: bool = False,
 ) -> List[Dict[str, Any]]:
     """Fetches candidates based on current mode."""
     if mode == 'missing':
@@ -32,12 +33,13 @@ def fetch_beers(
 
     elif mode == 'refresh':
         logger.info(f"\n📂 Loading batch of REFRESH beers (offset={offset})...")
-        cutoff_date: str = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
         query = supabase.table('beer_info_view') \
             .select('url, name, untappd_url, stock_status, untappd_fetched_at') \
             .not_.is_('untappd_url', 'null') \
-            .neq('stock_status', 'Sold Out') \
-            .or_(f'untappd_fetched_at.is.null,untappd_fetched_at.lt.{cutoff_date}')
+            .neq('stock_status', 'Sold Out')
+        if not (name_filter or force):
+            cutoff_date: str = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+            query = query.or_(f'untappd_fetched_at.is.null,untappd_fetched_at.lt.{cutoff_date},untappd_beer_name.is.null')
         if shop_filter:
             query = query.eq('shop', shop_filter)
         if name_filter:
