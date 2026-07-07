@@ -161,6 +161,32 @@ async def _get_untappd_url_single(
                 validate_beer=beer_name_jp,
                 score_beer_fn=score_beer_match,
             )
+        if not found_url:
+            tokens = []
+            for text in [target_beer_name, beer_name_jp]:
+                if not text:
+                    continue
+                words = re.split(r'[\s/—–\-([（）\])]+', text)
+                for w in reversed(words):
+                    w_clean = w.strip()
+                    if len(w_clean) < 2 or (w_clean.isascii() and len(w_clean) < 3):
+                        continue
+                    if w_clean.lower() in {'ipa', 'dipa', 'tipa', 'neipa', 'ale', 'stout', 'lager', 'pilsner', 'sour', 'porter', 'saison', 'gose', 'hazy', 'double', 'triple', 'single', 'imperial', 'session', 'fruited', 'wild', 'beer', 'cider', 'mead', '330ml', '350ml', '500ml', '750ml'}:
+                        continue
+                    if w_clean not in tokens and w_clean != target_beer_name and w_clean != beer_name_jp:
+                        tokens.append(w_clean)
+            for token in tokens[:4]:
+                logger.info(f"🔄 [Token-fallback] Searching for token '{token}' within brewery: {u_brewery_url}")
+                found_url = await search_brewery_beer(
+                    u_brewery_url,
+                    token,
+                    validate_beer_fn=validate_beer_match,
+                    validate_beer=target_beer_name,
+                    score_beer_fn=score_beer_match,
+                )
+                if found_url:
+                    logger.info(f" Beer found via token fallback search ('{token}'): {found_url}")
+                    break
         if found_url:
             logger.info(f" Beer found via brewery search: {found_url}")
             return {

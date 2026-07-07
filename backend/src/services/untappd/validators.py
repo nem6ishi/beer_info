@@ -23,6 +23,22 @@ def set_brewery_aliases(aliases: Dict[str, List[str]]) -> None:
     _BREWERY_ALIASES = aliases
 
 
+def get_name_parts(name: str) -> List[str]:
+    """Extracts the full name, the part before parentheses, and any parts inside parentheses."""
+    if not name:
+        return []
+    parts = [name]
+    outside = re.sub(r'\s*[（(][^）)]*[）)]\s*', ' ', name).strip()
+    if outside and outside != name:
+        parts.append(outside)
+    insides = re.findall(r'[（(]([^）)]+)[）)]', name)
+    for inc in insides:
+        inc_clean = inc.strip()
+        if inc_clean and inc_clean not in parts:
+            parts.append(inc_clean)
+    return parts
+
+
 def validate_beer_match(result_element: Tag, expected_beer: str) -> bool:
     """Checks if the beer name in the search result matches the expected beer."""
     return score_beer_match(result_element, expected_beer) > 0
@@ -137,6 +153,24 @@ def score_beer_match(result_element: Tag, expected_beer: str) -> int:
         else:
             logger.info(f"  [Validation] Beer MATCH (Ordinal+Core, 60): '{result_beer}' matches '{expected_beer}'")
             return 60
+
+    # 6. Part / Token Inclusion Check (for multilingual or parenthesized titles like "Doron (どろん)" vs "Ise Shima Doron")
+    rb_parts = get_name_parts(result_beer)
+    eb_parts = get_name_parts(expected_beer)
+    for rp in rb_parts:
+        for ep in eb_parts:
+            rp_norm = normalize_for_comparison(strip_for_core_comparison(rp))
+            ep_norm = normalize_for_comparison(strip_for_core_comparison(ep))
+            if not rp_norm or not ep_norm:
+                continue
+            if (rp_norm.isascii() and len(rp_norm) < 3) or len(rp_norm) < 2:
+                continue
+            if (ep_norm.isascii() and len(ep_norm) < 3) or len(ep_norm) < 2:
+                continue
+            if rp_norm == ep_norm or rp_norm in ep_norm or ep_norm in rp_norm:
+                if not has_variant_mismatch(result_beer, expected_beer):
+                    logger.info(f"  [Validation] Beer MATCH (Part/Token Inclusion, 75): '{rp}' matches '{ep}'")
+                    return 75
 
     logger.info(f"  [Validation] Beer FAIL: '{result_beer}' ({rb_norm}) != '{expected_beer}' ({eb_norm})")
     return 0
