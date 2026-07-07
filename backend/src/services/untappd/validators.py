@@ -5,6 +5,7 @@ Split from searcher.py for better modularity.
 import re
 import logging
 from typing import Dict, List
+from difflib import SequenceMatcher
 from bs4 import Tag
 from .text_utils import (
     normalize_for_comparison, normalize_ordinals, normalize_numbers_and_romans,
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Loaded dynamically by searcher.py – injected here for alias lookup
 _BREWERY_ALIASES: Dict[str, List[str]] = {}
+
 
 def set_brewery_aliases(aliases: Dict[str, List[str]]) -> None:
     """Set brewery aliases dict (called from searcher after loading aliases.json)."""
@@ -171,6 +173,14 @@ def score_beer_match(result_element: Tag, expected_beer: str) -> int:
                 if not has_variant_mismatch(result_beer, expected_beer):
                     logger.info(f"  [Validation] Beer MATCH (Part/Token Inclusion, 75): '{rp}' matches '{ep}'")
                     return 75
+
+    # 7. Fuzzy Match / Typo Tolerance (for minor spelling errors like "Hopwierd" vs "Hopwired")
+    if len(rb_core) >= 4 and len(eb_core) >= 4:
+        ratio = SequenceMatcher(None, rb_core, eb_core).ratio()
+        if ratio >= 0.82:
+            if not has_variant_mismatch(result_beer, expected_beer):
+                logger.info(f"  [Validation] Beer MATCH (Fuzzy Typo, 70): '{result_beer}' ≈ '{expected_beer}' (ratio={ratio:.2f})")
+                return 70
 
     logger.info(f"  [Validation] Beer FAIL: '{result_beer}' ({rb_norm}) != '{expected_beer}' ({eb_norm})")
     return 0

@@ -67,7 +67,7 @@ async def search_brewery_beer(
 
             if score_beer_fn and validate_beer:
                 candidates: List[tuple] = []
-                for res in results[:10]:
+                for res in results[:50]:
                     name_tag: Optional[Tag] = res.select_one('.name a')
                     if name_tag:
                         href: Optional[str] = name_tag.get('href')
@@ -91,7 +91,7 @@ async def search_brewery_beer(
                     return best_url
                 return None
 
-            for res in results[:5]:
+            for res in results[:25]:
                 name_tag_legacy: Optional[Tag] = res.select_one('.name a')
                 if name_tag_legacy:
                     href_legacy: Optional[str] = name_tag_legacy.get('href')
