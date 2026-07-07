@@ -18,7 +18,7 @@ def fetch_beers(
     if mode == 'missing':
         query: Any = supabase.table('beer_info_view') \
             .select('*') \
-            .or_('untappd_url.is.null,untappd_url.ilike.%/search?%') \
+            .or_('untappd_url.is.null,untappd_url.ilike.%/search?%,untappd_beer_name.is.null') \
             .eq('product_type', 'beer')
         if shop_filter:
             query = query.eq('shop', shop_filter)
