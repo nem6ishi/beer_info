@@ -22,6 +22,7 @@ export async function GET(request: Request) {
         const untappd_status = searchParams.get('untappd_status')
         const brewery_filter = searchParams.get('brewery_filter')
         const days = searchParams.get('days')
+        const only_sale = searchParams.get('only_sale')
 
         const pageNum = parseInt(page, 10)
         const limitNum = parseInt(limit, 10)
@@ -40,6 +41,10 @@ export async function GET(request: Request) {
                     thresholdDate.setDate(thresholdDate.getDate() - daysNum)
                     q = q.gte('first_seen', thresholdDate.toISOString())
                 }
+            }
+
+            if (only_sale === '1') {
+                q = q.eq('is_sale', true)
             }
 
             if (search) {

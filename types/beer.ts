@@ -28,6 +28,11 @@ export interface Beer {
   brewery_logo: string | null;
   brewery_location: string | null;
   brewery_type: string | null;
+
+  // Sale & Expiry attributes
+  is_sale?: boolean | null;
+  sale_tag?: string | null;
+  expiry_notice?: string | null;
 }
 
 /** Pagination metadata from the API. */
@@ -81,6 +86,7 @@ export interface FilterState {
   product_type?: string;
   days?: string;
   debug?: string;
+  only_sale?: string;
 }
 
 /** Grouped beer record for the /grouped view. */
@@ -100,6 +106,9 @@ export interface GroupedBeer {
   untappd_updated_at: string | null;
   is_set: boolean | null;
   product_type: string | null;
+  is_sale?: boolean | null;
+  sale_tag?: string | null;
+  expiry_notice?: string | null;
   items: {
     shop: string;
     price: number | string | null;
@@ -109,6 +118,9 @@ export interface GroupedBeer {
     last_seen: string | null;
     first_seen: string | null;
     image: string | null;
+    is_sale?: boolean | null;
+    sale_tag?: string | null;
+    expiry_notice?: string | null;
   }[];
   min_price: number;
   max_price: number;

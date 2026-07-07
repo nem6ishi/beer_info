@@ -109,6 +109,9 @@ export default function BeerTable({ beers, loading, error, isDebug }: BeerTableP
                                 shopContent={shopContent}
                                 isDebug={isDebug}
                                 firstSeen={beer.first_seen}
+                                isSale={beer.is_sale}
+                                saleTag={beer.sale_tag}
+                                expiryNotice={beer.expiry_notice}
                                 priority={index < 5}
                             />
                         );

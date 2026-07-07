@@ -37,6 +37,11 @@ export interface BeerTableRowProps {
     isDebug?: boolean;
     firstSeen?: string | null;
 
+    // Sale & Expiry
+    isSale?: boolean | null;
+    saleTag?: string | null;
+    expiryNotice?: string | null;
+
     // Performance
     priority?: boolean;
 }
@@ -62,6 +67,9 @@ export default function BeerTableRow({
     shopContent,
     isDebug,
     firstSeen,
+    isSale,
+    saleTag,
+    expiryNotice,
     priority = false
 }: BeerTableRowProps) {
     return (
@@ -84,6 +92,9 @@ export default function BeerTableRow({
                     fallbackName={fallbackName}
                     isDebug={isDebug}
                     firstSeen={firstSeen}
+                    isSale={isSale}
+                    saleTag={saleTag}
+                    expiryNotice={expiryNotice}
                 />
             </td>
             <td className="col-beer-style">

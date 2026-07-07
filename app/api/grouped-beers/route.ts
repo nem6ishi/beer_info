@@ -21,6 +21,7 @@ export async function GET(request: Request) {
         const product_type = searchParams.get('product_type')
         const brewery_filter = searchParams.get('brewery_filter')
         const days = searchParams.get('days')
+        const only_sale = searchParams.get('only_sale')
 
         const pageNum = parseInt(page, 10)
         const limitNum = parseInt(limit, 10)
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
         const { groupsData, shopCounts, totalCount } = await getGroupedBeers({
             search, sort, page: pageNum, limit: limitNum, shop,
             min_abv, max_abv, min_ibu, max_ibu, min_rating,
-            style_filter, stock_filter, product_type, brewery_filter, days
+            style_filter, stock_filter, product_type, brewery_filter, days, only_sale
         });
 
         const response = NextResponse.json({

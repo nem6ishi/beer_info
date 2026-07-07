@@ -16,13 +16,14 @@ export interface GetGroupedBeersOptions {
     product_type: string | null;
     brewery_filter: string | null;
     days?: string | null;
+    only_sale?: string | null;
 }
 
 export async function getGroupedBeers(options: GetGroupedBeersOptions) {
     const {
         search, sort, page, limit, shop,
         min_abv, max_abv, min_ibu, max_ibu, min_rating,
-        style_filter, stock_filter, product_type, brewery_filter, days
+        style_filter, stock_filter, product_type, brewery_filter, days, only_sale
     } = options;
 
     const offset = (page - 1) * limit;
@@ -39,6 +40,10 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
                 thresholdDate.setDate(thresholdDate.getDate() - daysNum);
                 q = q.gte('newest_seen', thresholdDate.toISOString());
             }
+        }
+
+        if (only_sale === '1') {
+            q = q.eq('is_sale', true);
         }
 
         if (search) {

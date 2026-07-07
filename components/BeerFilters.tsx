@@ -104,6 +104,26 @@ export default function BeerFilters({
                     </div>
                 </FilterSection>
 
+                {/* Sale Quick Toggle */}
+                <FilterSection label="Sale:">
+                    <div className="view-toggle-group">
+                        <button
+                            className={`view-toggle-btn ${!tempFilters.only_sale ? 'active' : ''}`}
+                            onClick={() => onFilterChange('only_sale', '')}
+                        >
+                            All
+                        </button>
+                        <button
+                            className={`view-toggle-btn ${tempFilters.only_sale === '1' ? 'active' : ''}`}
+                            onClick={() => onFilterChange('only_sale', tempFilters.only_sale === '1' ? '' : '1')}
+                            style={tempFilters.only_sale === '1' ? { background: 'linear-gradient(135deg, #ff0844, #ffb199)', color: 'white', borderColor: '#ff0844', fontWeight: 'bold' } : { color: '#ff0844', fontWeight: 'bold' }}
+                            title="Show sale and discount items only"
+                        >
+                            🔥 セール品
+                        </button>
+                    </div>
+                </FilterSection>
+
                 {/* Store Dropdown */}
                 <FilterSection label="Store:">
                     <MultiSelectDropdown
@@ -299,6 +319,22 @@ export default function BeerFilters({
                                     <option value="linked">Has Untappd Link</option>
                                     <option value="missing">Missing Untappd Link</option>
                                 </select>
+                            </div>
+                        </FilterSection>
+
+                        {/* Sale Items Only Filter */}
+                        <FilterSection label="Bargains & Sale" className="filter-item">
+                            <div className="checkbox-wrapper" style={{ display: 'flex', alignItems: 'center', height: '100%', gap: '8px', paddingLeft: '4px' }}>
+                                <input
+                                    type="checkbox"
+                                    id="saleToggle"
+                                    checked={tempFilters.only_sale === '1'}
+                                    onChange={(e) => onFilterChange('only_sale', e.target.checked ? '1' : '')}
+                                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#ff0844' }}
+                                />
+                                <label htmlFor="saleToggle" style={{ margin: 0, cursor: 'pointer', fontWeight: 'bold', color: '#ff0844' }}>
+                                    🔥 セール・特価品のみ
+                                </label>
                             </div>
                         </FilterSection>
 

@@ -60,13 +60,29 @@ interface BeerInfoCellProps {
     fallbackName: string;
     isDebug?: boolean;
     firstSeen?: string | null;
+    isSale?: boolean | null;
+    saleTag?: string | null;
+    expiryNotice?: string | null;
 }
 
-export default function BeerInfoCell({ brewery, beer, logo, location, type, fallbackName, isDebug, firstSeen }: BeerInfoCellProps) {
+export default function BeerInfoCell({ brewery, beer, logo, location, type, fallbackName, isDebug, firstSeen, isSale, saleTag, expiryNotice }: BeerInfoCellProps) {
     const flag = getFlag(location);
 
+    // Fallback extraction from fallbackName (raw title) if DB columns aren't populated yet
+    const rawTitle = fallbackName || '';
+    const computedSaleTag = saleTag || (() => {
+        const match = rawTitle.match(/([0-9.]+%\s*OFF|SALE!*|セール|最終特価|特価|アウトレット|訳あり|決算セール|在庫整理|お試しセット)/i);
+        return match ? match[1] : null;
+    })();
+    const computedExpiry = expiryNotice || (() => {
+        const match = rawTitle.match(/((?:賞味)?期限[^】\)]+)/);
+        return match ? match[1] : null;
+    })();
+    const computedIsSale = isSale !== undefined && isSale !== null ? isSale : (!!computedSaleTag || !!computedExpiry || /OFF|SALE|セール|特価|訳あり|賞味期限/i.test(rawTitle));
+
     // Use beer name if available, otherwise use fallback (original product name)
-    const displayName = beer || fallbackName || 'Beer name not available';
+    const rawDisplayName = beer || fallbackName || 'Beer name not available';
+    const displayName = rawDisplayName.replace(/^([0-9.]+%\s*OFF|SALE!*|セール|最終特価|特価|アウトレット|訳あり|決算セール|在庫整理|お試しセット)\s*/i, '').trim() || rawDisplayName;
     const recent = isRecent(firstSeen);
 
     const badgeStyle: React.CSSProperties = {
@@ -80,6 +96,35 @@ export default function BeerInfoCell({ brewery, beer, logo, location, type, fall
         textTransform: 'uppercase',
         letterSpacing: '0.5px',
         boxShadow: '0 2px 4px rgba(255, 75, 43, 0.3)',
+        marginLeft: '6px',
+        verticalAlign: 'middle',
+        whiteSpace: 'nowrap'
+    };
+
+    const saleBadgeStyle: React.CSSProperties = {
+        display: 'inline-block',
+        background: 'linear-gradient(135deg, #ff0844, #ffb199)',
+        color: 'white',
+        fontSize: '0.68rem',
+        fontWeight: '800',
+        padding: '2px 7px',
+        borderRadius: '12px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        boxShadow: '0 2px 6px rgba(255, 8, 68, 0.35)',
+        marginLeft: '6px',
+        verticalAlign: 'middle',
+        whiteSpace: 'nowrap'
+    };
+
+    const expiryBadgeStyle: React.CSSProperties = {
+        display: 'inline-block',
+        background: 'linear-gradient(135deg, #f6d365, #fda085)',
+        color: '#7c3f00',
+        fontSize: '0.65rem',
+        fontWeight: 'bold',
+        padding: '1px 6px',
+        borderRadius: '10px',
         marginLeft: '6px',
         verticalAlign: 'middle',
         whiteSpace: 'nowrap'
@@ -109,32 +154,43 @@ export default function BeerInfoCell({ brewery, beer, logo, location, type, fall
                     </div>
                 </div>
             )}
-            <div className="beer-name" style={{ lineHeight: '1.4' }}>
-                {recent ? (
-                    (() => {
-                        const words = displayName.trim().split(' ');
-                        if (words.length <= 1) {
+            <div className="beer-name" style={{ lineHeight: '1.4', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px' }}>
+                <span>
+                    {recent ? (
+                        (() => {
+                            const words = displayName.trim().split(' ');
+                            if (words.length <= 1) {
+                                return (
+                                    <span style={{ whiteSpace: 'nowrap' }}>
+                                        {displayName}
+                                        <span style={badgeStyle}>NEW</span>
+                                    </span>
+                                );
+                            }
+                            const lastWord = words.pop();
+                            const firstPart = words.join(' ') + ' ';
                             return (
-                                <span style={{ whiteSpace: 'nowrap' }}>
-                                    {displayName}
-                                    <span style={badgeStyle}>NEW</span>
-                                </span>
+                                <>
+                                    {firstPart}
+                                    <span style={{ whiteSpace: 'nowrap' }}>
+                                        {lastWord}
+                                        <span style={badgeStyle}>NEW</span>
+                                    </span>
+                                </>
                             );
-                        }
-                        const lastWord = words.pop();
-                        const firstPart = words.join(' ') + ' ';
-                        return (
-                            <>
-                                {firstPart}
-                                <span style={{ whiteSpace: 'nowrap' }}>
-                                    {lastWord}
-                                    <span style={badgeStyle}>NEW</span>
-                                </span>
-                            </>
-                        );
-                    })()
-                ) : (
-                    displayName
+                        })()
+                    ) : (
+                        displayName
+                    )}
+                </span>
+                {computedSaleTag && (
+                    <span style={saleBadgeStyle}>🔥 {computedSaleTag}</span>
+                )}
+                {computedIsSale && !computedSaleTag && (
+                    <span style={saleBadgeStyle}>🔥 SALE</span>
+                )}
+                {computedExpiry && (
+                    <span style={expiryBadgeStyle}>⏳ {computedExpiry}</span>
                 )}
             </div>
             {isDebug && beer && fallbackName && beer !== fallbackName && (

@@ -25,7 +25,8 @@ export function useBeerFilters() {
         style_filter: searchParams.get('style_filter') || '', 
         set_mode: searchParams.get('set_mode') || '',
         days: searchParams.get('days') || '',
-        debug: searchParams.get('debug') || ''
+        debug: searchParams.get('debug') || '',
+        only_sale: searchParams.get('only_sale') || ''
     });
 
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -97,7 +98,8 @@ export function useBeerFilters() {
             style_filter: searchParams.get('style_filter') || '',
             set_mode: searchParams.get('set_mode') || '',
             days: searchParams.get('days') || '',
-            debug: searchParams.get('debug') || ''
+            debug: searchParams.get('debug') || '',
+            only_sale: searchParams.get('only_sale') || ''
         });
     }, [searchParams]);
 

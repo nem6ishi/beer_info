@@ -136,6 +136,9 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug }: Gr
                                 shopContent={shopContent}
                                 isDebug={isDebug}
                                 firstSeen={group.newest_seen}
+                                isSale={group.is_sale}
+                                saleTag={group.sale_tag}
+                                expiryNotice={group.expiry_notice}
                                 priority={index < 5}
                             />
                         );
