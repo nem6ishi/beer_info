@@ -121,6 +121,7 @@ export default function GroupedClient({ initialData, availableStyles, availableB
                     loading={loading || isPending}
                     error={error}
                     isDebug={searchParams.get('debug') === '1'}
+                    stockFilter={(searchParams.get('stock_filter') || 'in_stock') as string}
                 />
 
                 {!loading && !error && (

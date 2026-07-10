@@ -20,6 +20,13 @@ export default async function GroupedPage({
 
     let q = supabase.from('beer_groups_view').select('*', { count: 'exact' });
 
+    const stockFilter = (searchParams.stock_filter as string) || 'in_stock';
+    if (stockFilter === 'in_stock') {
+        q = q.contains('items', [{ stock_status: 'In Stock' }]);
+    } else if (stockFilter === 'sold_out') {
+        q = q.not('items', 'cs', '[{"stock_status":"In Stock"}]');
+    }
+
     if (search) q = q.or(`beer_name.ilike.%${search}%,brewery_name.ilike.%${search}%`);
     if (searchParams.min_abv) q = q.gte('abv', searchParams.min_abv as string);
     if (searchParams.max_abv) q = q.lte('abv', searchParams.max_abv as string);
@@ -56,7 +63,7 @@ export default async function GroupedPage({
             p_min_ibu: searchParams.min_ibu ? parseFloat(searchParams.min_ibu as string) : null,
             p_max_ibu: searchParams.max_ibu ? parseFloat(searchParams.max_ibu as string) : null,
             p_min_rating: searchParams.min_rating ? parseFloat(searchParams.min_rating as string) : null,
-            p_stock_filter: (searchParams.stock_filter as string) || null,
+            p_stock_filter: stockFilter === 'all' ? null : stockFilter,
             p_style_filter: searchParams.style_filter ? (searchParams.style_filter as string).split(',').filter(Boolean) : null,
             p_brewery_filter: searchParams.brewery_filter ? (searchParams.brewery_filter as string).split(',').filter(Boolean) : null,
             p_product_type: (searchParams.product_type as string) || null

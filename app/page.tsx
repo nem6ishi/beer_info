@@ -10,7 +10,7 @@ export default async function Page() {
     const offset = 0
 
     let q = supabase.from('beer_info_view').select('*', { count: 'exact' });
-    q = q.order('first_seen', { ascending: false });
+    q = q.eq('stock_status', 'In Stock').order('first_seen', { ascending: false });
 
     // Fetch beers, shop counts, and available filters in parallel
     const [ { data: beers, count, error: dataError }, countRes, filterRes ] = await Promise.all([
@@ -22,7 +22,7 @@ export default async function Page() {
             p_min_ibu: null,
             p_max_ibu: null,
             p_min_rating: null,
-            p_stock_filter: null,
+            p_stock_filter: 'in_stock',
             p_style_filter: null,
             p_brewery_filter: null,
             p_product_type: null,

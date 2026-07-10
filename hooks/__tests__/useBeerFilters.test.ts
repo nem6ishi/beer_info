@@ -52,4 +52,28 @@ describe('useBeerFilters', () => {
         expect(result.current.searchInput).toBe('Test Beer');
         expect(result.current.tempFilters.min_abv).toBe('5');
     });
+
+    it('should handle stock_filter changes and remove param when set to in_stock default', () => {
+        vi.useFakeTimers();
+        const { result } = renderHook(() => useBeerFilters());
+
+        act(() => {
+            result.current.handleFilterChange('stock_filter', 'sold_out');
+        });
+        act(() => {
+            vi.runAllTimers();
+        });
+        expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('stock_filter=sold_out'), { scroll: false });
+
+        act(() => {
+            result.current.handleFilterChange('stock_filter', 'in_stock');
+        });
+        act(() => {
+            vi.runAllTimers();
+        });
+        // Since in_stock is default, it should delete stock_filter from URL
+        const lastCall = pushMock.mock.calls[pushMock.mock.calls.length - 1][0];
+        expect(lastCall).not.toContain('stock_filter=in_stock');
+        vi.useRealTimers();
+    });
 });

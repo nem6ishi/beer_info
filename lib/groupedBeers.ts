@@ -27,6 +27,7 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
     } = options;
 
     const offset = (page - 1) * limit;
+    const effectiveStockFilter = stock_filter || 'in_stock';
 
     const buildQuery = () => {
         let q = supabase
@@ -74,9 +75,9 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
             }
         }
 
-        if (stock_filter === 'in_stock') {
+        if (effectiveStockFilter === 'in_stock') {
             q = q.contains('items', [{ stock_status: 'In Stock' }]);
-        } else if (stock_filter === 'sold_out') {
+        } else if (effectiveStockFilter === 'sold_out') {
             q = q.not('items', 'cs', '[{"stock_status":"In Stock"}]');
         }
 
@@ -121,7 +122,7 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
             p_min_ibu: min_ibu ? parseFloat(min_ibu) : null,
             p_max_ibu: max_ibu ? parseFloat(max_ibu) : null,
             p_min_rating: min_rating ? parseFloat(min_rating) : null,
-            p_stock_filter: stock_filter || null,
+            p_stock_filter: effectiveStockFilter === 'all' ? null : effectiveStockFilter,
             p_style_filter: styles && styles.length > 0 ? styles : null,
             p_brewery_filter: breweries && breweries.length > 0 ? breweries : null,
             p_product_type: product_type || null
@@ -209,12 +210,12 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
                     }
                 }
 
-                if (stock_filter === 'in_stock') {
+                if (effectiveStockFilter === 'in_stock') {
                     allGroups = allGroups.filter(g => {
                         const items = (g.items as any[]) || [];
                         return items.some(item => item.stock_status === 'In Stock');
                     });
-                } else if (stock_filter === 'sold_out') {
+                } else if (effectiveStockFilter === 'sold_out') {
                     allGroups = allGroups.filter(g => {
                         const items = (g.items as any[]) || [];
                         return !items.some(item => item.stock_status === 'In Stock');

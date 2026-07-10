@@ -9,9 +9,10 @@ interface GroupedBeerTableProps {
     loading: boolean;
     error: string | null;
     isDebug?: boolean;
+    stockFilter?: string;
 }
 
-export default function GroupedBeerTable({ groups, loading, error, isDebug }: GroupedBeerTableProps) {
+export default function GroupedBeerTable({ groups, loading, error, isDebug, stockFilter = 'in_stock' }: GroupedBeerTableProps) {
 
     if (error) return <div className="status-message error">Error: {error}</div>
 
@@ -65,6 +66,9 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug }: Gr
                             seenUrls.add(item.url);
 
                             const isSoldOut = item.stock_status?.toLowerCase().includes('out');
+                            if (stockFilter === 'in_stock' && isSoldOut) return false;
+                            if (stockFilter === 'sold_out' && !isSoldOut) return false;
+
                             if (isSoldOut) {
                                 if (shopsWithInStock.has(item.shop)) {
                                     return false;
@@ -75,6 +79,7 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug }: Gr
                             }
                             return true;
                         });
+                        if (sortedItems.length === 0) return null;
                         const cheapestItem = sortedItems[0] || rawSorted[0];
 
                         // Image selection logic:

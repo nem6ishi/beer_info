@@ -17,7 +17,7 @@ export async function GET(request: Request) {
         const max_ibu = searchParams.get('max_ibu')
         const min_rating = searchParams.get('min_rating')
         const style_filter = searchParams.get('style_filter')
-        const stock_filter = searchParams.get('stock_filter')
+        const stock_filter = searchParams.get('stock_filter') || 'in_stock'
         const product_type = searchParams.get('product_type')
         const untappd_status = searchParams.get('untappd_status')
         const brewery_filter = searchParams.get('brewery_filter')
@@ -124,7 +124,7 @@ export async function GET(request: Request) {
                 p_min_ibu: min_ibu ? parseFloat(min_ibu) : null,
                 p_max_ibu: max_ibu ? parseFloat(max_ibu) : null,
                 p_min_rating: min_rating ? parseFloat(min_rating) : null,
-                p_stock_filter: stock_filter || null,
+                p_stock_filter: stock_filter === 'all' ? null : stock_filter,
                 p_style_filter: styles && styles.length > 0 ? styles : null,
                 p_brewery_filter: breweries && breweries.length > 0 ? breweries : null,
                 p_product_type: product_type || null,
