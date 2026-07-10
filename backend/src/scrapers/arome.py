@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import os
 import re
 import ssl
@@ -71,11 +72,27 @@ def extract_product_data(item: Tag, is_area: bool = False) -> Optional[ScrapedPr
                 name_link = right_div.select_one('a')
             
             if name_link:
-                product_name = name_link.get_text(strip=True)
+                link_copy = copy.copy(name_link)
+                for p_el in link_copy.select(".price, span[id^='price02_'], p.price"):
+                    p_el.decompose()
+                product_name = link_copy.get_text(strip=True)
+                if product_name.endswith("¥") or product_name.endswith("￥"):
+                    product_name = product_name[:-1].strip()
                 
-            price_tag: Optional[Tag] = right_div.select_one("p.price")
+            price_tag: Optional[Tag] = right_div.select_one(".price") or right_div.select_one("span[id^='price02_']") or right_div.select_one("p.price")
             if price_tag:
-                price = price_tag.get_text(strip=True)
+                raw_price: str = price_tag.get_text(strip=True)
+                m = re.search(r'税込:\s*[¥￥]?\s*([0-9,]+)', raw_price)
+                if m:
+                    clean_num = re.sub(r'[^0-9]', '', m.group(1))
+                    price = f"{clean_num}円"
+                else:
+                    m2 = re.search(r'([0-9,]+)', raw_price)
+                    if m2:
+                        clean_num = re.sub(r'[^0-9]', '', m2.group(1))
+                        price = f"{clean_num}円"
+                    else:
+                        price = raw_price
 
         stock_status: str = "In Stock"
         if area.select_one("p.soldout") or area.select_one("img[src*='soldout']"):
@@ -96,12 +113,18 @@ def extract_product_data(item: Tag, is_area: bool = False) -> Optional[ScrapedPr
         print(f"[Arome] Error parsing item: {e}")
         return None
 
-async def fetch_full_name(client: httpx.AsyncClient, product_url: str) -> Optional[str]:
+async def fetch_full_name(client: httpx.AsyncClient, product_url: str, sem: Optional[asyncio.Semaphore] = None) -> Optional[str]:
     """
     Fetches the detail page to get the full product name if truncated.
     """
     try:
-        response: httpx.Response = await client.get(product_url, timeout=30.0)
+        if sem:
+            await sem.acquire()
+        try:
+            response: httpx.Response = await client.get(product_url, timeout=30.0)
+        finally:
+            if sem:
+                sem.release()
         if response.status_code != 200:
             return None
         
@@ -174,9 +197,10 @@ async def scrape_arome(limit: Optional[int] = None, existing_urls: Optional[Set[
 
                 # 3. Parallel fetch using asyncio.gather
                 if tasks:
-                    print(f"[Arome] Fetching details for {len(tasks)} items in parallel...")
+                    print(f"[Arome] Fetching details for {len(tasks)} items with concurrency control...")
+                    sem: asyncio.Semaphore = asyncio.Semaphore(10)
                     detail_results = await asyncio.gather(
-                        *[fetch_full_name(client, p["url"]) for p in tasks],
+                        *[fetch_full_name(client, p["url"], sem) for p in tasks],
                         return_exceptions=True
                     )
                     for p, res in zip(tasks, detail_results):
