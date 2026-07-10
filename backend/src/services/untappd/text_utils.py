@@ -172,6 +172,17 @@ def has_variant_mismatch(name_a: str, name_b: str) -> bool:
     diff = mods_a.symmetric_difference(mods_b)
     
     if diff:
+        # Check if name_b (expected/shop name) has no modifiers and is a direct prefix of name_a
+        # (e.g., "Whisky Sour" vs "Whisky Sour Barrel Aged Sour Ale") where the subtitle on Untappd just describes the style/aging of the base beer.
+        if not mods_b and mods_a:
+            norm_a = normalize_for_comparison(name_a)
+            norm_b = normalize_for_comparison(name_b)
+            if norm_a.startswith(norm_b) and len(norm_b) >= 4:
+                remainder = norm_a[len(norm_b):]
+                if any(m in remainder for m in mods_a) or any(s in remainder for s in ["sour", "ale", "stout", "ipa", "lager", "pilsner"]):
+                    logger.debug(f"  [Variant] Subtitle match allowed: '{name_a}' extends base '{name_b}' with descriptive modifiers {mods_a}")
+                    return False
+
         logger.debug(f"  [Variant] Modifier mismatch: '{name_a}' has {mods_a}, '{name_b}' has {mods_b}, diff={diff}")
         return True
     return False
@@ -196,12 +207,16 @@ def strip_for_core_comparison(text: str) -> str:
     # Remove colons and everything after (often used for fruit additions in JP shops)
     text = re.sub(r':.*$', '', text)
     # Remove common beer style suffixes at end
-    text = re.sub(
+    stripped = re.sub(
         r'\s+(?:IPA|DIPA|TIPA|Hazy IPA|Double IPA|Triple IPA|NEIPA|West Coast IPA|'
         r'Session IPA|Stout|Imperial Stout|Pale Ale|Lager|Pilsner|Sour|Porter|Ale|Saison|Gose)\s*$',
         '', text, flags=re.IGNORECASE
     )
-    return text.strip()
+    stripped_clean = stripped.strip()
+    # Avoid over-stripping when the style word is part of a short core title (e.g. "Whisky Sour", "Breakfast Stout")
+    if len(stripped_clean) <= 4 or (len(stripped_clean.split()) == 1 and len(text.strip().split()) == 2 and len(stripped_clean) <= 7):
+        return text.strip()
+    return stripped_clean
 
 
 def clean_beer_name(name: str) -> str:

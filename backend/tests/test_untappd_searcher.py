@@ -224,6 +224,23 @@ class TestScoreBeerMatch(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(score, 95)
 
+    async def test_whisky_sour_does_not_match_whisky_smoke(self):
+        """Short core names like Whisky Sour should not match Whisky Smoke when 'Sour' is stripped."""
+        score = score_beer_match(
+            self._make_element("Whisky Smoke"),
+            "Whisky Sour"
+        )
+        self.assertEqual(score, 0)
+
+    async def test_whisky_sour_matches_barrel_aged_sour_ale_subtitle(self):
+        """Should allow descriptive subtitles on base beers (e.g. Barrel Aged Sour Ale when base is Whisky Sour)."""
+        score = score_beer_match(
+            self._make_element("Whisky Sour Barrel Aged Sour Ale"),
+            "Whisky Sour"
+        )
+        self.assertGreater(score, 0)
+
+
 
 class TestAbbreviationExpansion(unittest.IsolatedAsyncioTestCase):
     """Tests for expand_abbreviations utility."""
