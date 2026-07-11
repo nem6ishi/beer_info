@@ -113,9 +113,9 @@ def extract_product_data(item: Tag, is_area: bool = False) -> Optional[ScrapedPr
         print(f"[Arome] Error parsing item: {e}")
         return None
 
-async def fetch_full_name(client: httpx.AsyncClient, product_url: str, sem: Optional[asyncio.Semaphore] = None) -> Optional[str]:
+async def fetch_product_detail(client: httpx.AsyncClient, product_url: str, sem: Optional[asyncio.Semaphore] = None) -> Optional[Dict[str, str]]:
     """
-    Fetches the detail page to get the full product name if truncated.
+    Fetches the detail page to get the full product name and tax-included price if needed.
     """
     try:
         if sem:
@@ -131,11 +131,24 @@ async def fetch_full_name(client: httpx.AsyncClient, product_url: str, sem: Opti
         response.encoding = response.encoding or 'utf-8'
         soup: BeautifulSoup = BeautifulSoup(response.text, "html.parser")
         
+        result: Dict[str, str] = {}
         title_tag: Optional[Tag] = soup.select_one("h2.productTitle") or soup.select_one("h2.title")
         if title_tag:
-            return title_tag.get_text(strip=True)
+            clean_title = title_tag.get_text(strip=True)
+            clean_title = re.sub(r'¥[0-9,]+.*$', '', clean_title).strip()
+            result["name"] = clean_title
             
-        return None
+        sale_p = soup.select_one("p.sale_price")
+        if sale_p:
+            raw_price = sale_p.get_text(strip=True)
+            m = re.search(r'税込:\s*[¥￥]?\s*([0-9,]+)', raw_price)
+            if not m:
+                m = re.search(r'([0-9,]+)', raw_price)
+            if m:
+                clean_num = re.sub(r'[^0-9]', '', m.group(1))
+                result["price"] = f"{clean_num}円"
+                
+        return result if result else None
     except Exception as e:
         print(f"[Arome] Error fetching detail: {e}")
         return None
@@ -182,30 +195,34 @@ async def scrape_arome(limit: Optional[int] = None, existing_urls: Optional[Set[
                     if product_data:
                         page_products.append(product_data)
 
-                # 2. Identify items needing detail fetch (truncated names)
+                # 2. Identify items needing detail fetch (truncated names or unknown prices)
                 tasks: List[ScrapedProduct] = []
                 for p in page_products:
                     name: str = p["name"]
                     p_url: str = p["url"]
                     is_existing: bool = existing_urls is not None and p_url in existing_urls
                     
-                    if (name.endswith("...") or name.endswith("…")):
-                        if not is_existing:
+                    needs_detail = (name.endswith("...") or name.endswith("…") or p["price"] == "Unknown" or "¥" in name or "￥" in name)
+                    if needs_detail:
+                        if not is_existing or p["price"] == "Unknown" or "¥" in name or "￥" in name:
                             tasks.append(p)
                         else:
-                            print(f"[Arome] Name truncated but item exists. Skipping detail fetch for: {p_url}")
+                            print(f"[Arome] Name truncated but item exists and looks valid. Skipping detail fetch for: {p_url}")
 
                 # 3. Parallel fetch using asyncio.gather
                 if tasks:
                     print(f"[Arome] Fetching details for {len(tasks)} items with concurrency control...")
                     sem: asyncio.Semaphore = asyncio.Semaphore(10)
                     detail_results = await asyncio.gather(
-                        *[fetch_full_name(client, p["url"], sem) for p in tasks],
+                        *[fetch_product_detail(client, p["url"], sem) for p in tasks],
                         return_exceptions=True
                     )
                     for p, res in zip(tasks, detail_results):
-                        if isinstance(res, str) and res:
-                            p["name"] = res
+                        if isinstance(res, dict) and res:
+                            if "name" in res and res["name"]:
+                                p["name"] = res["name"]
+                            if "price" in res and res["price"] and (p["price"] == "Unknown" or p["price"] == "0円"):
+                                p["price"] = res["price"]
                         elif isinstance(res, Exception):
                             print(f"[Arome] Detail fetch failed for {p['url']}: {res}")
 
