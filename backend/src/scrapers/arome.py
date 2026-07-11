@@ -153,6 +153,13 @@ async def fetch_product_detail(client: httpx.AsyncClient, product_url: str, sem:
         print(f"[Arome] Error fetching detail: {e}")
         return None
 
+async def fetch_full_name(client: httpx.AsyncClient, product_url: str, sem: Optional[asyncio.Semaphore] = None) -> Optional[str]:
+    """
+    Backward compatibility wrapper: fetches detail page and returns only the clean product name.
+    """
+    detail = await fetch_product_detail(client, product_url, sem)
+    return detail.get("name") if detail else None
+
 async def scrape_arome(limit: Optional[int] = None, existing_urls: Optional[Set[str]] = None, full_scrape: bool = False) -> List[ScrapedProduct]:
     """Scrapes product data from Arome."""
     products: List[ScrapedProduct] = []
