@@ -13,7 +13,7 @@ from typing import List, Optional, Dict, Any, Set
 
 from backend.src.core.db import get_supabase_client, refresh_materialized_view
 from backend.src.core.types import UntappdBeerDetails, UntappdSearchResult
-from backend.src.services.untappd.searcher import get_untappd_url, scrape_beer_details
+from backend.src.services.untappd.searcher import get_untappd_url, scrape_beer_details, search_brewery_beer
 from backend.src.services.gemini.extractor import GeminiExtractor
 from backend.src.services.store.brewery_manager import BreweryManager
 from backend.src.commands.failure_tracker import record_enrichment_failure, resolve_search_failure
@@ -439,9 +439,54 @@ class UntappdEnricher:
             beer_name_core=beer_name_core
         )
 
-        # 3. Two-pass retry: ask Gemini for alternative queries
+        # 3. Two-pass retry & inference when no_results
         if not search_result.get('success') and search_result.get('failure_reason') == 'no_results' and self.extractor:
-            logger.info(f"  🔄 [Two-pass] Asking Gemini for alternative queries...")
+            # Phase A: Gemini structured English translation & slug inference + self-healing learning loop
+            logger.info(f"  🤖 [Phase A] Asking Gemini to infer English brewery & slug for self-healing loop...")
+            try:
+                full_name: str = beer.get('name', '')
+                inferred = await self.extractor.infer_untappd_brewery_info(
+                    product_name=full_name,
+                    brewery=brewery,
+                    beer_name=beer_name
+                )
+                if inferred:
+                    eb_name = inferred.get("english_brewery_name", "")
+                    b_slug = inferred.get("brewery_slug", "")
+                    eb_beer = inferred.get("english_beer_name", "")
+                    
+                    candidate_brewery_urls = []
+                    if b_slug:
+                        candidate_brewery_urls.append(f"https://untappd.com/w/{b_slug}")
+                    
+                    for c_b_url in candidate_brewery_urls:
+                        logger.info(f"  🔍 [Phase A] Testing inferred brewery slug: {c_b_url}")
+                        b_found, b_score = await search_brewery_beer(c_b_url, eb_beer or beer_name)
+                        if b_found:
+                            logger.info(f"  🎉 [Phase A] Found via inferred slug! {b_found}")
+                            if self.brewery_manager and eb_name and brewery:
+                                self.brewery_manager.learn_brewery_alias(brewery_name_en=eb_name, new_alias=brewery, untappd_url=c_b_url)
+                            return b_found
+                        await asyncio.sleep(1)
+
+                    if eb_name and eb_beer:
+                        logger.info(f"  🔍 [Phase A] Trying get_untappd_url with inferred English names: {eb_name} - {eb_beer}")
+                        inf_result: UntappdSearchResult = await get_untappd_url(
+                            brewery_name=eb_name,
+                            beer_name=eb_beer,
+                            search_hint=f"{eb_name} {eb_beer}"
+                        )
+                        if inf_result.get('success') and inf_result.get('url'):
+                            logger.info(f"  🎉 [Phase A] Found via inferred English names: {inf_result.get('url')}")
+                            if self.brewery_manager and eb_name and brewery:
+                                self.brewery_manager.learn_brewery_alias(brewery_name_en=eb_name, new_alias=brewery)
+                            return inf_result.get('url')
+                        await asyncio.sleep(1)
+            except Exception as inf_e:
+                logger.warning(f"  ⚠️ [Phase A] Gemini inference failed: {inf_e}")
+
+            # Phase B: Two-pass retry queries
+            logger.info(f"  🔄 [Phase B] Asking Gemini for alternative queries...")
             try:
                 full_name: str = beer.get('name', '')
                 alt_queries: List[str] = await self.extractor.suggest_search_queries(
@@ -450,7 +495,7 @@ class UntappdEnricher:
                     beer_name=beer_name
                 )
                 for alt_query in alt_queries:
-                    logger.info(f"  🔍 [Two-pass] Trying: '{alt_query}'")
+                    logger.info(f"  🔍 [Phase B] Trying: '{alt_query}'")
                     retry_result: UntappdSearchResult = await get_untappd_url(
                         brewery_name=brewery,
                         beer_name=beer_name,
@@ -458,11 +503,11 @@ class UntappdEnricher:
                         beer_name_core=beer_name_core
                     )
                     if retry_result.get('success'):
-                        logger.info(f"  ✅ [Two-pass] Found: {retry_result.get('url')}")
+                        logger.info(f"  ✅ [Phase B] Found: {retry_result.get('url')}")
                         return retry_result.get('url')
                     await asyncio.sleep(1)
             except Exception as e:
-                logger.warning(f"  ⚠️ [Two-pass] Gemini retry failed: {e}")
+                logger.warning(f"  ⚠️ [Phase B] Gemini retry failed: {e}")
 
         # Record failure
         if not search_result.get('success'):

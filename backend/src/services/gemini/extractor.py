@@ -164,8 +164,8 @@ class GeminiExtractor:
             
             data: Any = json.loads(content)
             if isinstance(data, dict):
-                normalized: Dict[str, Any] = {}
-                for key in ["brewery_name_jp", "brewery_name_en", "beer_name_jp", "beer_name_en", "beer_name_core", "search_hint"]:
+                normalized: Dict[str, Any] = dict(data)  # Keep all keys from parsed JSON
+                for key in ["brewery_name_jp", "brewery_name_en", "beer_name_jp", "beer_name_en", "beer_name_core", "search_hint", "english_brewery_name", "brewery_slug", "english_beer_name"]:
                     val = data.get(key)
                     normalized[key] = str(val).strip() if isinstance(val, str) and val.strip() else None
                 
@@ -380,6 +380,65 @@ class GeminiExtractor:
             logger.error(f"[Gemini] suggest_search_queries failed: {e}")
 
         return []
+
+    async def infer_untappd_brewery_info(self, product_name: str, brewery: str, beer_name: str) -> Optional[Dict[str, str]]:
+        """
+        When an Untappd search hits no_results, infer the exact English brewery name,
+        likely Untappd brewery URL slug, and English beer name from Japanese/Katakana input.
+        """
+        if not self.client:
+            return None
+
+        prompt: str = f"""
+        An Untappd search for a craft beer failed because the Japanese/Katakana text does not match Untappd's English database.
+        Please infer the exact official English brewery name, its likely URL slug on Untappd (e.g. 'finback-brewery' or 'ise-kado-brewery'), and the official English beer name.
+
+        Product Title: "{product_name}"
+        Brewery Text: "{brewery}"
+        Beer Name Text: "{beer_name}"
+
+        Rules:
+        - Convert Katakana names to their official English names (e.g. 'フィンバック' -> 'Finback Brewery', 'アザーハーフ' -> 'Other Half Brewing Co.', '箕面ビール' -> 'Minoh Beer').
+        - 'brewery_slug' must be lowercase with hyphens, matching standard Untappd slug conventions (e.g. 'other-half-brewing-co', 'minoh-beer').
+        - 'english_beer_name' should remove Japanese edition tags and style suffixes if redundant, giving the clean core English name on Untappd.
+
+        Output JSON only:
+        {{
+            "english_brewery_name": "...",
+            "brewery_slug": "...",
+            "english_beer_name": "..."
+        }}
+        """
+
+        try:
+            schema = None
+            if self._supports_response_schema(self.model_id):
+                from google.genai import types
+                schema = types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "english_brewery_name": types.Schema(type=types.Type.STRING),
+                        "brewery_slug": types.Schema(type=types.Type.STRING),
+                        "english_beer_name": types.Schema(type=types.Type.STRING)
+                    },
+                    required=["english_brewery_name", "brewery_slug", "english_beer_name"],
+                )
+            data: Optional[Dict[str, Any]] = await self._generate_content(prompt, schema=schema)
+            if data and isinstance(data, dict):
+                eb = data.get("english_brewery_name")
+                bs = data.get("brewery_slug")
+                en = data.get("english_beer_name")
+                if eb and bs and en:
+                    logger.info(f"  🤖 [Gemini Inference] Brewery: '{eb}' (slug: {bs}), Beer: '{en}'")
+                    return {
+                        "english_brewery_name": str(eb).strip(),
+                        "brewery_slug": str(bs).strip().lower(),
+                        "english_beer_name": str(en).strip()
+                    }
+        except Exception as e:
+            logger.error(f"[Gemini] infer_untappd_brewery_info failed: {e}")
+
+        return None
 
 # Usage Example:
 # extractor = GeminiExtractor()
