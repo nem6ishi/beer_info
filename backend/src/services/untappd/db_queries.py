@@ -46,6 +46,29 @@ def fetch_beers(
             query = query.ilike('name', f'%{name_filter}%')
         res = query.order('untappd_fetched_at', desc=False, nullsfirst=True).limit(db_fetch_limit).offset(offset).execute()
         return res.data or []
+
+    elif mode == 'retry-failures':
+        logger.info(f"\n📂 Loading unresolved failures from untappd_search_failures (offset={offset})...")
+        query = supabase.table('untappd_search_failures') \
+            .select('product_url, failure_reason, beer_name, brewery_name') \
+            .eq('resolved', False)
+        if name_filter:
+            query = query.ilike('beer_name', f'%{name_filter}%')
+        res = query.order('last_failed_at', desc=False).limit(db_fetch_limit).offset(offset).execute()
+        urls = [f['product_url'] for f in (res.data or []) if f.get('product_url')]
+        if not urls:
+            return []
+        b_query = supabase.table('beer_info_view').select('*').in_('url', urls)
+        if shop_filter:
+            b_query = b_query.eq('shop', shop_filter)
+        b_res = b_query.execute()
+        beer_map = {b['url']: b for b in (b_res.data or [])}
+        beers = []
+        for f in (res.data or []):
+            b = beer_map.get(f['product_url'])
+            if b:
+                beers.append(b)
+        return beers
     
     return []
 

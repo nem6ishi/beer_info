@@ -124,8 +124,13 @@ class UntappdEnricher:
                     logger.info(f"[Batch {i}/{len(beers_to_process)} | Total {self.total_processed + i}] Processing: {name_display[:60]}")
 
                     result: Optional[Dict[str, Any]] = None
-                    if self.mode == 'missing':
-                        result = await self._process_beer_missing(beer)
+                    if self.mode in ('missing', 'retry-failures'):
+                        if beer.get('untappd_url') and '/search?' not in beer['untappd_url']:
+                            result = await self._process_beer_refresh(beer)
+                            if result and product_url_loop:
+                                resolve_search_failure(self.supabase, product_url_loop)
+                        else:
+                            result = await self._process_beer_missing(beer)
                     elif self.mode == 'refresh':
                         result = await self._process_beer_refresh(beer)
                     
@@ -214,6 +219,14 @@ class UntappdEnricher:
         
         if urls_to_process:
             self.gemini_cache.update(prefetch_gemini_untappd_urls(self.supabase, urls_to_process))
+            try:
+                sb_res = self.supabase.table('scraped_beers').select('url, untappd_url').in_('url', urls_to_process).not_.is_('untappd_url', 'null').execute()
+                for item in (sb_res.data or []):
+                    if item.get('untappd_url') and '/search?' not in item['untappd_url']:
+                        if item['url'] not in self.gemini_cache or not self.gemini_cache[item['url']]:
+                            self.gemini_cache[item['url']] = item['untappd_url']
+            except Exception as e:
+                logger.warning(f"  ⚠️ Failed to prefetch scraped_beers untappd_url cache: {e}")
 
         known_untappd_urls = []
         for b in beers_to_process:
@@ -243,18 +256,36 @@ class UntappdEnricher:
             logger.info(f"  ⏭️ Item is a {product_type}. Skipping Untappd.")
             return None
 
-        if (not brewery or not beer_name) and beer.get('shop') == "ちょうせいや":
-            match: Optional[re.Match] = re.search(r'【(.*?)/(.*?)】', beer.get('name', ''))
+        # Check if brewery was mistakenly identified as the bottle shop name
+        shop_names = {'choseiya', 'ちょうせいや', 'arome', 'アローム', 'beervolta', 'beer volta', 'maruho', 'maruho saketen', 'マルホ酒店', '151l', '一期一会～る', 'antenna america', 'アンテナアメリカ'}
+        if brewery and brewery.strip().lower() in shop_names:
+            logger.info(f"  🔧 Brewery identified as shop name ('{brewery}'). Attempting to infer true brewery from product name...")
+            brewery = None
+
+        if (not brewery or not beer_name) and ("【" in beer.get('name', '') and "】" in beer.get('name', '')):
+            match: Optional[re.Match] = re.search(r'【(.*?)[/／](.*?)】', beer.get('name', ''))
             if match:
-                beer_name, brewery = match.group(1), match.group(2)
+                p1, p2 = match.group(1).strip(), match.group(2).strip()
+                if self.brewery_manager and self.brewery_manager.find_breweries_in_text(p2):
+                    beer_name, brewery = p1, p2
+                elif self.brewery_manager and self.brewery_manager.find_breweries_in_text(p1):
+                    brewery, beer_name = p1, p2
+                elif not brewery:
+                    beer_name, brewery = p1, p2
                 logger.info(f"  🔧 Parsed from title: {brewery} - {beer_name}")
+
+        if not brewery and self.brewery_manager:
+            found_list = self.brewery_manager.find_breweries_in_text(beer.get('name', ''))
+            if found_list:
+                brewery = found_list[0].get('name_en') or found_list[0].get('name_jp')
+                logger.info(f"  🔧 Inferred brewery from product text: {brewery}")
 
         if not brewery or not beer_name:
             logger.warning(f"  ⚠️  Missing brewery or beer name - skipping")
             return None
 
         try:
-            brewery_url_hint: Optional[str] = self._get_brewery_url_hint(brewery)
+            brewery_url_hint: Optional[str] = self._get_brewery_url_hint(brewery, beer_name)
             untappd_url: Optional[str] = None
 
             if self.offline:
@@ -279,14 +310,15 @@ class UntappdEnricher:
             gemini_updates: Dict[str, Any] = {'url': url, 'untappd_url': untappd_url}
 
             logger.info(f"  ✅ Found URL: {untappd_url}")
-            if url:
-                resolve_search_failure(self.supabase, url)
 
             untappd_payload: Dict[str, Any] = {}
             if not self.offline:
                 untappd_payload = await self._scrape_and_save_details(untappd_url, beer, brewery, beer_name)
                 if untappd_payload:
                     untappd_payload['untappd_url'] = untappd_url
+
+            if url and (untappd_payload.get('beer_name') or untappd_payload.get('untappd_rating') or self.offline):
+                resolve_search_failure(self.supabase, url)
 
             brewery_url_to_return = untappd_payload.get('untappd_brewery_url')
             if not brewery_url_to_return and untappd_url in self.untappd_cache:
@@ -320,6 +352,8 @@ class UntappdEnricher:
                 untappd_payload = map_details_to_payload(details)
                 untappd_payload['untappd_url'] = untappd_url
                 logger.info(f"  ✅ Details updated: Rating {details.get('untappd_rating', 'N/A')}")
+                if beer.get('url'):
+                    resolve_search_failure(self.supabase, beer.get('url'))
                 
                 self.untappd_cache[untappd_url] = {
                     'untappd_url': untappd_url,
@@ -347,16 +381,24 @@ class UntappdEnricher:
             logger.error(f"  ❌ Refresh error: {e}")
             return None
 
-    def _get_brewery_url_hint(self, brewery: str) -> Optional[str]:
+    def _get_brewery_url_hint(self, brewery: str, beer_name: Optional[str] = None) -> Optional[str]:
         """Looks up the known Untappd brewery URL from BreweryManager."""
         if not self.brewery_manager or not brewery:
             return None
         try:
             b_info: Optional[Dict[str, Any]] = self.brewery_manager.brewery_index.get(brewery.lower())
+            if not b_info:
+                found_list = self.brewery_manager.find_breweries_in_text(brewery)
+                if found_list:
+                    b_info = found_list[0]
+            if not b_info and beer_name:
+                found_list = self.brewery_manager.find_breweries_in_text(beer_name)
+                if found_list:
+                    b_info = found_list[0]
             if b_info:
                 url: Optional[str] = b_info.get('untappd_url')
                 if url:
-                    logger.info(f"  🏢 Known brewery URL: {url}")
+                    logger.info(f"  🏢 Known brewery URL: {url} ({b_info.get('name_en')})")
                     return url
         except Exception as e:
             logger.warning(f"  ⚠️  BreweryManager lookup failed: {e}")

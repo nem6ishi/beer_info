@@ -37,7 +37,7 @@ def main() -> None:
     # Enrich Untappd only
     enrich_untappd_parser = subparsers.add_parser("enrich-untappd", help="Run Untappd enrichment only")
     enrich_untappd_parser.add_argument("--limit", type=int, help="Limit number of items to enrich", default=50)
-    enrich_untappd_parser.add_argument("--mode", choices=['missing', 'refresh'], default='missing', help="Enrichment mode")
+    enrich_untappd_parser.add_argument("--mode", choices=['missing', 'refresh', 'retry-failures'], default='missing', help="Enrichment mode")
     enrich_untappd_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
     enrich_untappd_parser.add_argument("--name_filter", type=str, help="Filter enrichment by partial name match", default=None)
     enrich_untappd_parser.add_argument("--force", action="store_true", help="Force re-process / ignore backoff")

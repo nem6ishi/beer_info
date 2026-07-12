@@ -135,12 +135,18 @@ async def _get_untappd_url_single(
 
     # --- Stage 1: Identify Brewery URL if not provided ---
     primary_brewery_search = re.split(COLLAB_SPLIT_PATTERN, brewery_name)[0] if brewery_name else ""
+    shop_names = {'choseiya', 'ちょうせいや', 'arome', 'アローム', 'beervolta', 'beer volta', 'maruho', 'maruho saketen', 'マルホ酒店', '151l', '一期一会～る', 'antenna america', 'アンテナアメリカ'}
 
-    if not u_brewery_url and primary_brewery_search:
-        logger.info(f"Brewery URL missing. Searching for brewery: '{primary_brewery_search}'")
-        u_brewery_url = await search_brewery(primary_brewery_search)
-        if u_brewery_url:
-            logger.info(f" Brewery found: {u_brewery_url}")
+    if not u_brewery_url and primary_brewery_search and primary_brewery_search.strip().lower() not in shop_names:
+        aliases_to_try = [primary_brewery_search]
+        if primary_brewery_search in BREWERY_ALIASES:
+            aliases_to_try.extend(BREWERY_ALIASES[primary_brewery_search])
+        for b_query in aliases_to_try:
+            logger.info(f"Brewery URL missing. Searching for brewery: '{b_query}'")
+            u_brewery_url = await search_brewery(b_query)
+            if u_brewery_url:
+                logger.info(f" Brewery found: {u_brewery_url}")
+                break
 
     # --- Stage 2: Search WITHIN Brewery ---
     if u_brewery_url:

@@ -226,5 +226,76 @@
     ],
     "Hop Butcher": [
         "Hop Butcher For The World"
+    ],
+    "Koppotan": [
+        "Hop Kotan Brewing",
+        "Hop Kotan",
+        "忽布古丹醸造"
+    ],
+    "Hop Kotan": [
+        "Hop Kotan Brewing",
+        "忽布古丹醸造"
+    ],
+    "HopKotan": [
+        "Hop Kotan Brewing",
+        "忽布古丹醸造"
+    ],
+    "Hop Kotan Brewing": [
+        "Hop Kotan",
+        "忽布古丹醸造",
+        "Koppotan"
+    ],
+    "忽布古丹": [
+        "Hop Kotan Brewing"
+    ],
+    "Beer Hearn": [
+        "Shimane Beer Co.",
+        "Beer Hearn",
+        "ビアへるん"
+    ],
+    "ビアへるん": [
+        "Shimane Beer Co.",
+        "Beer Hearn"
+    ],
+    "Shimane Beer Co.": [
+        "Beer Hearn"
+    ],
+    "志賀高原ビール": [
+        "Tamamura Honten Co.",
+        "Tamamura Honten",
+        "Shiga Kogen Beer"
+    ],
+    "VERTERE": [
+        "Vertere",
+        "バテレ",
+        "VERTERE (バテレ)"
+    ],
+    "バテレ": [
+        "VERTERE",
+        "Vertere"
+    ],
+    "Ise Kadoya Brewing": [
+        "Ise Kadoya Brewery",
+        "ISEKADOYA BEER",
+        "伊勢角屋麦酒"
+    ],
+    "ISEKADOYA BEER": [
+        "Ise Kadoya Brewery",
+        "Ise Kadoya Brewing"
+    ],
+    "Himitsu Beer": [
+        "Himitsu Beer",
+        "ひみつビール"
+    ],
+    "ひみつビール": [
+        "Himitsu Beer"
+    ],
+    "2nd Story Ale Works": [
+        "2nd Story Ale Works",
+        "セカンドストーリーエールワークス"
+    ],
+    "Minami Shinshu Beer": [
+        "Minamishinshu Beer",
+        "南信州ビール"
     ]
 }

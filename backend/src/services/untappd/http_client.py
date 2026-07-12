@@ -56,13 +56,47 @@ async def search_brewery_beer(
 
     encoded_query: str = urllib.parse.quote(query)
     base_url: str = brewery_url.rstrip('/')
+    for suffix in ('/beer', '/photos', '/activity'):
+        if base_url.endswith(suffix):
+            base_url = base_url[:-len(suffix)]
     url: str = f"{base_url}/beer?q={encoded_query}&sort=created_at_desc"
 
+    headers: Dict[str, str] = {
+        "User-Agent": _UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Referer": brewery_url
+    }
+    html: Optional[str] = None
     try:
         client = get_async_client()
-        resp: httpx.Response = await client.get(url)
-        if resp.status_code == 200:
-            soup: BeautifulSoup = BeautifulSoup(resp.text, 'lxml')
+        for attempt in range(3):
+            try:
+                resp: httpx.Response = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    html = resp.text
+                    break
+                elif resp.status_code in (429, 403, 503):
+                    await asyncio.sleep(1 * (attempt + 1))
+            except Exception as httpx_e:
+                logger.debug(f"httpx error on search_brewery_beer: {httpx_e}")
+                await asyncio.sleep(1)
+
+        if not html:
+            curl_cmd: List[str] = [
+                'curl', '-s', '-L',
+                '-H', f"User-Agent: {headers['User-Agent']}",
+                '-H', f"Referer: {headers['Referer']}",
+                url
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *curl_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=12.0)
+            if proc.returncode == 0 and len(stdout) > 500:
+                html = stdout.decode('utf-8', errors='ignore')
+
+        if html:
+            soup: BeautifulSoup = BeautifulSoup(html, 'lxml')
             results: List[Tag] = soup.select('.beer-item')
 
             if score_beer_fn and validate_beer:
@@ -111,15 +145,49 @@ async def scrape_beer_details(url: str) -> UntappdBeerDetails:
         return details
 
     logger.info(f"Scraping details from: {url}")
+    headers: Dict[str, str] = {
+        "User-Agent": _UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://untappd.com/"
+    }
 
+    html: Optional[str] = None
     try:
         client = get_async_client()
-        resp: httpx.Response = await client.get(url)
-        if resp.status_code != 200:
-            logger.warning(f"Failed to load details. Status: {resp.status_code}")
-            return details
+        for attempt in range(3):
+            try:
+                resp: httpx.Response = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    html = resp.text
+                    break
+                elif resp.status_code in (429, 403, 503):
+                    await asyncio.sleep(2 * (attempt + 1))
+            except Exception as httpx_e:
+                logger.warning(f"httpx error on {url} (attempt {attempt+1}): {httpx_e}")
+                await asyncio.sleep(1)
 
-        soup: BeautifulSoup = BeautifulSoup(resp.text, 'lxml')
+        if not html:
+            logger.warning("httpx failed to load details. Trying curl fallback...")
+            curl_cmd: List[str] = [
+                'curl', '-s', '-L',
+                '-H', f"User-Agent: {headers['User-Agent']}",
+                '-H', f"Accept: {headers['Accept']}",
+                '-H', f"Referer: {headers['Referer']}",
+                url
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *curl_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15.0)
+            if proc.returncode == 0 and len(stdout) > 1000:
+                html = stdout.decode('utf-8', errors='ignore')
+                logger.info("  ✅ Curl fallback successful for beer details")
+            else:
+                logger.error(f"  ❌ Curl fallback failed for beer details (code: {proc.returncode})")
+                return details
+
+        soup: BeautifulSoup = BeautifulSoup(html, 'lxml')
 
         name_tag: Optional[Tag] = soup.select_one('.name h1')
         if name_tag:
@@ -172,6 +240,7 @@ async def scrape_beer_details(url: str) -> UntappdBeerDetails:
         logger.error(f"Detail scrape error: {e}")
 
     return details
+
 
 
 async def scrape_brewery_details(url: str) -> UntappdBreweryDetails:
@@ -273,13 +342,12 @@ async def search_brewery(query: str) -> Optional[str]:
     encoded_query: str = urllib.parse.quote(query)
     url: str = f"https://untappd.com/search?q={encoded_query}&type=brewery"
 
+    candidates = []
     try:
         client = get_async_client()
         resp: httpx.Response = await client.get(url)
         if resp.status_code == 200:
             soup: BeautifulSoup = BeautifulSoup(resp.text, 'lxml')
-            
-            candidates = []
             for res in soup.select('.beer-item')[:5]:
                 name_tag: Optional[Tag] = res.select_one('.name a')
                 if name_tag:
@@ -287,26 +355,43 @@ async def search_brewery(query: str) -> Optional[str]:
                     if href and "/b/" not in href:
                         name_text = name_tag.get_text(strip=True)
                         candidates.append((name_text, f"https://untappd.com{href}"))
-            
-            if not candidates:
-                return None
-                
-            query_norm = normalize_for_comparison(query)
-            
-            for name, link in candidates:
-                if normalize_for_comparison(name) == query_norm:
-                    logger.info(f"  [Brewery Search] Exact match found: {name}")
-                    return link
-                    
-            for name, link in candidates:
-                if query_norm in normalize_for_comparison(name):
-                    logger.info(f"  [Brewery Search] Partial match found: {name}")
-                    return link
-                    
-            logger.info(f"  [Brewery Search] No exact match, falling back to first: {candidates[0][0]}")
-            return candidates[0][1]
-
     except Exception as e:
         logger.error(f"Brewery search error for '{query}': {e}")
 
-    return None
+    # If no candidates found via direct /search page (since Untappd often JS-blocks it), try DuckDuckGo site search
+    if not candidates:
+        try:
+            from ddgs import DDGS
+            def _ddg_brewery():
+                with DDGS(timeout=10) as ddgs:
+                    res = ddgs.text(f"site:untappd.com/w/ {query}", max_results=3)
+                    if not res:
+                        res = ddgs.text(f"site:untappd.com {query} brewery", max_results=3)
+                    return list(res) if res else []
+            ddg_res = await asyncio.to_thread(_ddg_brewery)
+            for r in ddg_res:
+                href = r.get("href", "")
+                if "/w/" in href or ("untappd.com/" in href and "/b/" not in href and "/user/" not in href and "/search" not in href):
+                    href_clean = href.rstrip('/')
+                    for suffix in ('/beer', '/photos', '/activity'):
+                        if href_clean.endswith(suffix):
+                            href_clean = href_clean[:-len(suffix)]
+                    logger.info(f"  [Brewery Search] Found brewery URL via DDG: {href_clean}")
+                    return href_clean
+        except Exception as ddg_e:
+            logger.debug(f"  [Brewery Search] DDG brewery fallback failed: {ddg_e}")
+        return None
+
+    query_norm = normalize_for_comparison(query)
+    for name, link in candidates:
+        if normalize_for_comparison(name) == query_norm:
+            logger.info(f"  [Brewery Search] Exact match found: {name}")
+            return link
+            
+    for name, link in candidates:
+        if query_norm in normalize_for_comparison(name):
+            logger.info(f"  [Brewery Search] Partial match found: {name}")
+            return link
+            
+    logger.info(f"  [Brewery Search] No exact match, falling back to first: {candidates[0][0]}")
+    return candidates[0][1]
