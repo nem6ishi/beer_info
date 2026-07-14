@@ -186,4 +186,27 @@ describe('GroupedClient (Grouped Display Page Integration Tests)', () => {
         const lastCall = pushMock.mock.calls[pushMock.mock.calls.length - 1][0];
         expect(lastCall).not.toContain('search=old query');
     });
+
+    it('should display "Error: Refresh failed" when client fetch to /api/grouped-beers fails with 500 status', async () => {
+        currentSearchParams.set('search', 'failing-query');
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: false,
+            status: 500,
+            json: async () => ({ error: 'Internal server error' })
+        }));
+
+        await act(async () => {
+            render(
+                <GroupedClient
+                    initialData={initialData}
+                    availableStyles={[]}
+                    availableBreweries={[]}
+                />
+            );
+        });
+
+        // Because searchParams has parameters, GroupedClient triggers fetchData() via useEffect on mount
+        const errorElement = await screen.findByText('Error: Refresh failed');
+        expect(errorElement).toBeDefined();
+    });
 });

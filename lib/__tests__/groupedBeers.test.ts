@@ -134,4 +134,19 @@ describe('getGroupedBeers filter behavior', () => {
             p_stock_filter: null
         }));
     });
+
+    it('should throw database execution errors when dataRes.error occurs (e.g. 22P02 invalid json syntax)', async () => {
+        const syntaxError = {
+            code: '22P02',
+            message: 'invalid input syntax for type json',
+            details: 'Expected string or "}", but found "["'
+        };
+        rangeMock.mockResolvedValueOnce({ data: null, count: null, error: syntaxError });
+
+        await expect(getGroupedBeers({
+            page: 1, limit: 20, sort: 'newest', search: '', shop: '',
+            min_abv: null, max_abv: null, min_ibu: null, max_ibu: null, min_rating: null,
+            style_filter: null, stock_filter: 'in_stock', product_type: null, brewery_filter: null
+        })).rejects.toEqual(syntaxError);
+    });
 });
