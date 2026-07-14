@@ -168,7 +168,7 @@ describe('getGroupedBeers filter behavior', () => {
             brewery_filter: null
         });
 
-        expect(orMock).toHaveBeenCalledWith('items.cs.[{"shop":"arome","stock_status":"In Stock"}]');
+        expect(containsMock).toHaveBeenCalledWith('items', '[{"shop":"arome","stock_status":"In Stock"}]');
     });
 
     it('should combine shop and sold_out filter using item-level matching', async () => {
@@ -189,7 +189,28 @@ describe('getGroupedBeers filter behavior', () => {
             brewery_filter: null
         });
 
-        expect(orMock).toHaveBeenCalledWith('items.cs.[{"shop":"arome"}]');
+        expect(containsMock).toHaveBeenCalledWith('items', '[{"shop":"arome"}]');
         expect(notMock).toHaveBeenCalledWith('items', 'cs', '[{"shop":"arome","stock_status":"In Stock"}]');
+    });
+
+    it('should use or filtering and post-fetch filtering when multiple shops are specified', async () => {
+        await getGroupedBeers({
+            page: 1,
+            limit: 20,
+            sort: 'newest',
+            search: '',
+            shop: 'arome,beervolta',
+            min_abv: null,
+            max_abv: null,
+            min_ibu: null,
+            max_ibu: null,
+            min_rating: null,
+            style_filter: null,
+            stock_filter: 'in_stock',
+            product_type: null,
+            brewery_filter: null
+        });
+
+        expect(orMock).toHaveBeenCalledWith('items.cs.[{"shop":"arome"}],items.cs.[{"shop":"beervolta"}]');
     });
 });

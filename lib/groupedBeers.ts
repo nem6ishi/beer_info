@@ -70,15 +70,16 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
         if (shop) {
             const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean);
             if (shops.length > 0) {
-                if (effectiveStockFilter === 'in_stock') {
-                    const orFilters = shops.map(s => `items.cs.[{"shop":"${s}","stock_status":"In Stock"}]`).join(',');
-                    q = q.or(orFilters);
-                } else if (effectiveStockFilter === 'sold_out') {
-                    const orFilters = shops.map(s => `items.cs.[{"shop":"${s}"}]`).join(',');
-                    q = q.or(orFilters);
-                    shops.forEach(s => {
+                if (shops.length === 1) {
+                    const s = shops[0];
+                    if (effectiveStockFilter === 'in_stock') {
+                        q = q.contains('items', `[{"shop":"${s}","stock_status":"In Stock"}]`);
+                    } else if (effectiveStockFilter === 'sold_out') {
+                        q = q.contains('items', `[{"shop":"${s}"}]`);
                         q = q.not('items', 'cs', `[{"shop":"${s}","stock_status":"In Stock"}]`);
-                    });
+                    } else {
+                        q = q.contains('items', `[{"shop":"${s}"}]`);
+                    }
                 } else {
                     const orFilters = shops.map(s => `items.cs.[{"shop":"${s}"}]`).join(',');
                     q = q.or(orFilters);
@@ -245,7 +246,23 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
                 throw dataRes.error;
             }
         } else {
-            groupsData = dataRes.data || [];
+            let fetchedGroups = dataRes.data || [];
+            if (shop) {
+                const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean);
+                if (shops.length > 1) {
+                    fetchedGroups = fetchedGroups.filter(g => {
+                        const items = (g.items as any[]) || [];
+                        if (effectiveStockFilter === 'in_stock') {
+                            return items.some(item => shops.includes(item.shop) && item.stock_status === 'In Stock');
+                        } else if (effectiveStockFilter === 'sold_out') {
+                            return items.some(item => shops.includes(item.shop) && item.stock_status !== 'In Stock');
+                        } else {
+                            return items.some(item => shops.includes(item.shop));
+                        }
+                    });
+                }
+            }
+            groupsData = fetchedGroups;
             totalCount = dataRes.count || 0;
         }
     } catch (dbError) {
