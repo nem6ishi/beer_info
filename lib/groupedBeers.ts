@@ -70,15 +70,26 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
         if (shop) {
             const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean);
             if (shops.length > 0) {
-                const orFilters = shops.map(s => `items.cs.[{"shop":"${s}"}]`).join(',');
-                q = q.or(orFilters);
+                if (effectiveStockFilter === 'in_stock') {
+                    const orFilters = shops.map(s => `items.cs.[{"shop":"${s}","stock_status":"In Stock"}]`).join(',');
+                    q = q.or(orFilters);
+                } else if (effectiveStockFilter === 'sold_out') {
+                    const orFilters = shops.map(s => `items.cs.[{"shop":"${s}"}]`).join(',');
+                    q = q.or(orFilters);
+                    shops.forEach(s => {
+                        q = q.not('items', 'cs', `[{"shop":"${s}","stock_status":"In Stock"}]`);
+                    });
+                } else {
+                    const orFilters = shops.map(s => `items.cs.[{"shop":"${s}"}]`).join(',');
+                    q = q.or(orFilters);
+                }
             }
-        }
-
-        if (effectiveStockFilter === 'in_stock') {
-            q = q.contains('items', '[{"stock_status":"In Stock"}]');
-        } else if (effectiveStockFilter === 'sold_out') {
-            q = q.not('items', 'cs', '[{"stock_status":"In Stock"}]');
+        } else {
+            if (effectiveStockFilter === 'in_stock') {
+                q = q.contains('items', '[{"stock_status":"In Stock"}]');
+            } else if (effectiveStockFilter === 'sold_out') {
+                q = q.not('items', 'cs', '[{"stock_status":"In Stock"}]');
+            }
         }
 
         if (product_type) {
@@ -205,21 +216,27 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
                     if (shops.length > 0) {
                         allGroups = allGroups.filter(g => {
                             const items = (g.items as any[]) || [];
-                            return items.some(item => shops.includes(item.shop));
+                            if (effectiveStockFilter === 'in_stock') {
+                                return items.some(item => shops.includes(item.shop) && item.stock_status === 'In Stock');
+                            } else if (effectiveStockFilter === 'sold_out') {
+                                return items.some(item => shops.includes(item.shop) && item.stock_status !== 'In Stock');
+                            } else {
+                                return items.some(item => shops.includes(item.shop));
+                            }
                         });
                     }
-                }
-
-                if (effectiveStockFilter === 'in_stock') {
-                    allGroups = allGroups.filter(g => {
-                        const items = (g.items as any[]) || [];
-                        return items.some(item => item.stock_status === 'In Stock');
-                    });
-                } else if (effectiveStockFilter === 'sold_out') {
-                    allGroups = allGroups.filter(g => {
-                        const items = (g.items as any[]) || [];
-                        return !items.some(item => item.stock_status === 'In Stock');
-                    });
+                } else {
+                    if (effectiveStockFilter === 'in_stock') {
+                        allGroups = allGroups.filter(g => {
+                            const items = (g.items as any[]) || [];
+                            return items.some(item => item.stock_status === 'In Stock');
+                        });
+                    } else if (effectiveStockFilter === 'sold_out') {
+                        allGroups = allGroups.filter(g => {
+                            const items = (g.items as any[]) || [];
+                            return !items.some(item => item.stock_status === 'In Stock');
+                        });
+                    }
                 }
 
                 totalCount = allGroups.length;

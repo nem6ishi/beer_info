@@ -190,4 +190,43 @@ describe('GroupedBeerTable comprehensive display and behavior tests', () => {
         render(<GroupedBeerTable groups={[]} loading={false} error="Failed to fetch beer collection" />);
         expect(screen.getByText('Error: Failed to fetch beer collection')).toBeDefined();
     });
+
+    it('should hide group if no items match selectedShops after stock filtering', () => {
+        render(<GroupedBeerTable groups={mockGroups} loading={false} error={null} stockFilter="in_stock" selectedShops={['Shop B']} />);
+        expect(screen.queryByText('Test IPA')).toBeNull();
+    });
+
+    it('should sort items matching selectedShops first', () => {
+        const multiShopGroups: GroupedBeer[] = [
+            {
+                ...mockGroups[0],
+                items: [
+                    {
+                        name: 'Test IPA - Shop B',
+                        url: 'https://shopb.example.com/item/2',
+                        price: '800円',
+                        price_value: 800,
+                        shop: 'Shop B',
+                        stock_status: 'In Stock',
+                        image: 'https://shopb.example.com/img.jpg',
+                        last_seen: '2026-07-10T00:00:00Z'
+                    },
+                    {
+                        name: 'Test IPA - Shop A',
+                        url: 'https://shopa.example.com/item/1',
+                        price: '1,000円',
+                        price_value: 1000,
+                        shop: 'Shop A',
+                        stock_status: 'In Stock',
+                        image: 'https://shopa.example.com/img.jpg',
+                        last_seen: '2026-07-10T00:00:00Z'
+                    }
+                ]
+            }
+        ];
+        const { container } = render(<GroupedBeerTable groups={multiShopGroups} loading={false} error={null} stockFilter="in_stock" selectedShops={['Shop A']} />);
+        const shopNames = Array.from(container.querySelectorAll('.shop-name-text')).map(el => el.textContent);
+        expect(shopNames[0]).toBe('Shop A');
+        expect(shopNames[1]).toBe('Shop B');
+    });
 });

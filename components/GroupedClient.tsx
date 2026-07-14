@@ -122,6 +122,7 @@ export default function GroupedClient({ initialData, availableStyles, availableB
                     error={error}
                     isDebug={searchParams.get('debug') === '1'}
                     stockFilter={(searchParams.get('stock_filter') || 'in_stock') as string}
+                    selectedShops={searchParams.get('shop') ? (searchParams.get('shop') as string).split(',') : []}
                 />
 
                 {!loading && !error && (

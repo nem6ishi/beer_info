@@ -149,4 +149,47 @@ describe('getGroupedBeers filter behavior', () => {
             style_filter: null, stock_filter: 'in_stock', product_type: null, brewery_filter: null
         })).rejects.toEqual(syntaxError);
     });
+
+    it('should combine shop and in_stock filter using item-level shop+stock_status matching', async () => {
+        await getGroupedBeers({
+            page: 1,
+            limit: 20,
+            sort: 'newest',
+            search: '',
+            shop: 'arome',
+            min_abv: null,
+            max_abv: null,
+            min_ibu: null,
+            max_ibu: null,
+            min_rating: null,
+            style_filter: null,
+            stock_filter: 'in_stock',
+            product_type: null,
+            brewery_filter: null
+        });
+
+        expect(orMock).toHaveBeenCalledWith('items.cs.[{"shop":"arome","stock_status":"In Stock"}]');
+    });
+
+    it('should combine shop and sold_out filter using item-level matching', async () => {
+        await getGroupedBeers({
+            page: 1,
+            limit: 20,
+            sort: 'newest',
+            search: '',
+            shop: 'arome',
+            min_abv: null,
+            max_abv: null,
+            min_ibu: null,
+            max_ibu: null,
+            min_rating: null,
+            style_filter: null,
+            stock_filter: 'sold_out',
+            product_type: null,
+            brewery_filter: null
+        });
+
+        expect(orMock).toHaveBeenCalledWith('items.cs.[{"shop":"arome"}]');
+        expect(notMock).toHaveBeenCalledWith('items', 'cs', '[{"shop":"arome","stock_status":"In Stock"}]');
+    });
 });
