@@ -80,7 +80,7 @@ describe('getGroupedBeers filter behavior', () => {
             brewery_filter: null
         });
 
-        expect(containsMock).toHaveBeenCalledWith('items', [{ stock_status: 'In Stock' }]);
+        expect(containsMock).toHaveBeenCalledWith('items', '[{"stock_status":"In Stock"}]');
         expect(rpcMock).toHaveBeenCalledWith('get_filtered_shop_counts', expect.objectContaining({
             p_stock_filter: 'in_stock'
         }));

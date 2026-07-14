@@ -76,7 +76,7 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
         }
 
         if (effectiveStockFilter === 'in_stock') {
-            q = q.contains('items', [{ stock_status: 'In Stock' }]);
+            q = q.contains('items', '[{"stock_status":"In Stock"}]');
         } else if (effectiveStockFilter === 'sold_out') {
             q = q.not('items', 'cs', '[{"stock_status":"In Stock"}]');
         }
