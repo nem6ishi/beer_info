@@ -11,6 +11,7 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 from ...core.types import UntappdBeerDetails, UntappdBreweryDetails
 from .text_utils import normalize_for_comparison
+from .validators import clean_brewery_name
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +48,10 @@ async def close_async_client() -> None:
 async def search_brewery_beer(
     brewery_url: str,
     query: str,
-    validate_beer_fn: Optional[Callable[[Tag, str], bool]] = None,
+    validate_beer_fn: Optional[Callable] = None,
     validate_beer: Optional[str] = None,
-    score_beer_fn: Optional[Callable[[Tag, str], int]] = None,
+    score_beer_fn: Optional[Callable] = None,
+    validate_brewery: Optional[str] = None,
 ) -> Optional[str]:
     if not brewery_url or not query:
         return None
@@ -106,7 +108,10 @@ async def search_brewery_beer(
                     if name_tag:
                         href: Optional[str] = name_tag.get('href')
                         if href and "/b/" in href:
-                            score = score_beer_fn(res, validate_beer)
+                            try:
+                                score = score_beer_fn(res, validate_beer, validate_brewery)
+                            except TypeError:
+                                score = score_beer_fn(res, validate_beer)
                             if score > 0:
                                 full_url = f"https://untappd.com{href}"
                                 beer_text = name_tag.get_text(strip=True)
@@ -130,8 +135,13 @@ async def search_brewery_beer(
                 if name_tag_legacy:
                     href_legacy: Optional[str] = name_tag_legacy.get('href')
                     if href_legacy and "/b/" in href_legacy:
-                        if validate_beer and validate_beer_fn and not validate_beer_fn(res, validate_beer):
-                            continue
+                        if validate_beer and validate_beer_fn:
+                            try:
+                                valid = validate_beer_fn(res, validate_beer, validate_brewery)
+                            except TypeError:
+                                valid = validate_beer_fn(res, validate_beer)
+                            if not valid:
+                                continue
                         return f"https://untappd.com{href_legacy}"
     except Exception as e:
         logger.error(f"Brewery beer search error for '{query}' at {brewery_url}: {e}")
@@ -369,15 +379,32 @@ async def search_brewery(query: str) -> Optional[str]:
                         res = ddgs.text(f"site:untappd.com {query} brewery", max_results=3)
                     return list(res) if res else []
             ddg_res = await asyncio.to_thread(_ddg_brewery)
+            query_norm = normalize_for_comparison(query)
+            query_clean = normalize_for_comparison(clean_brewery_name(query))
             for r in ddg_res:
                 href = r.get("href", "")
+                title = r.get("title", "")
                 if "/w/" in href or ("untappd.com/" in href and "/b/" not in href and "/user/" not in href and "/search" not in href):
                     href_clean = href.rstrip('/')
                     for suffix in ('/beer', '/photos', '/activity'):
                         if href_clean.endswith(suffix):
                             href_clean = href_clean[:-len(suffix)]
-                    logger.info(f"  [Brewery Search] Found brewery URL via DDG: {href_clean}")
-                    return href_clean
+                    title_norm = normalize_for_comparison(title)
+                    href_norm = normalize_for_comparison(href_clean)
+                    is_valid_brewery = False
+                    if query_norm and (query_norm in title_norm or query_norm in href_norm):
+                        is_valid_brewery = True
+                    elif query_clean and len(query_clean) >= 3 and (query_clean in title_norm or query_clean in href_norm):
+                        is_valid_brewery = True
+                    else:
+                        words = [w for w in query_clean.split() if len(w) >= 4]
+                        if words and any(w in title_norm or w in href_norm for w in words):
+                            is_valid_brewery = True
+                    if is_valid_brewery:
+                        logger.info(f"  [Brewery Search] Found validated brewery URL via DDG: {href_clean}")
+                        return href_clean
+                    else:
+                        logger.debug(f"  [Brewery Search] Ignored DDG result (mismatch with query '{query}'): {href_clean} ({title})")
         except Exception as ddg_e:
             logger.debug(f"  [Brewery Search] DDG brewery fallback failed: {ddg_e}")
         return None

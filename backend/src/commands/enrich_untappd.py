@@ -14,6 +14,7 @@ from typing import List, Optional, Dict, Any, Set
 from backend.src.core.db import get_supabase_client, refresh_materialized_view
 from backend.src.core.types import UntappdBeerDetails, UntappdSearchResult
 from backend.src.services.untappd.searcher import get_untappd_url, scrape_beer_details, search_brewery_beer
+from backend.src.services.untappd.validators import validate_beer_match, score_beer_match
 from backend.src.services.gemini.extractor import GeminiExtractor
 from backend.src.services.store.brewery_manager import BreweryManager
 from backend.src.commands.failure_tracker import record_enrichment_failure, resolve_search_failure
@@ -461,7 +462,14 @@ class UntappdEnricher:
                     
                     for c_b_url in candidate_brewery_urls:
                         logger.info(f"  🔍 [Phase A] Testing inferred brewery slug: {c_b_url}")
-                        b_found, b_score = await search_brewery_beer(c_b_url, eb_beer or beer_name)
+                        b_found = await search_brewery_beer(
+                            c_b_url,
+                            eb_beer or beer_name,
+                            validate_beer_fn=validate_beer_match,
+                            validate_beer=(eb_beer or beer_name),
+                            score_beer_fn=score_beer_match,
+                            validate_brewery=(eb_name or brewery)
+                        )
                         if b_found:
                             logger.info(f"  🎉 [Phase A] Found via inferred slug! {b_found}")
                             if self.brewery_manager and eb_name and brewery:

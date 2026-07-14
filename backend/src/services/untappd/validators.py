@@ -4,7 +4,7 @@ Split from searcher.py for better modularity.
 """
 import re
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 from difflib import SequenceMatcher
 from bs4 import Tag
 from .text_utils import (
@@ -63,12 +63,12 @@ def _is_safe_substring_match(str_a: str, str_b: str) -> bool:
     return False
 
 
-def validate_beer_match(result_element: Tag, expected_beer: str) -> bool:
-    """Checks if the beer name in the search result matches the expected beer."""
-    return score_beer_match(result_element, expected_beer) > 0
+def validate_beer_match(result_element: Tag, expected_beer: str, expected_brewery: Optional[str] = None) -> bool:
+    """Checks if the beer name in the search result matches the expected beer and brewery."""
+    return score_beer_match(result_element, expected_beer, expected_brewery) > 0
 
 
-def score_beer_match(result_elem: Tag, expected_beer: str) -> int:
+def score_beer_match(result_elem: Tag, expected_beer: str, expected_brewery: Optional[str] = None) -> int:
     """
     Evaluates how well a search result matches the expected beer name.
     
@@ -89,6 +89,10 @@ def score_beer_match(result_elem: Tag, expected_beer: str) -> int:
     if not expected_beer:
         return 100
 
+    if expected_brewery and not validate_brewery_match(result_elem, expected_brewery):
+        logger.debug(f"  [Validation] Beer BLOCKED (Brewery Mismatch): expected brewery '{expected_brewery}'")
+        return 0
+
     name_tag: Optional[Tag] = result_elem.select_one('.name a')
     if not name_tag:
         return 0
@@ -105,6 +109,18 @@ def score_beer_match(result_elem: Tag, expected_beer: str) -> int:
 
     if not rb_norm or not eb_norm:
         return 0
+
+    # Check distinct keyword/style clashes if names are not exact matches
+    if rb_norm != eb_norm:
+        style_tag = result_elem.select_one('.style')
+        style_text = normalize_for_comparison(style_tag.get_text(strip=True)) if style_tag else ""
+        for kw in ['engi', 'weizen', 'stout', 'porter', 'pilsner', 'saison', 'barleywine', 'gose', 'keller']:
+            if kw in eb_norm.split():
+                if kw not in rb_norm.split() and kw not in style_text.split():
+                    # For distinctive brand/style keywords like engi or completely clashing styles, block
+                    if kw == 'engi' or ('ipa' in style_text.split() and kw in ['weizen', 'stout', 'porter', 'pilsner']):
+                        logger.debug(f"  [Validation] Beer BLOCKED (Keyword/Style Clash '{kw}'): '{result_beer}' vs '{expected_beer}'")
+                        return 0
 
     # 1. Exact match after standard normalization
     if rb_norm == eb_norm:
@@ -218,7 +234,7 @@ def validate_brewery_match(result_element: Tag, expected_brewery: str) -> bool:
 
     brewery_tag = result_element.select_one('.brewery')
     if not brewery_tag:
-        return False
+        return True
 
     result_brewery: str = brewery_tag.get_text(strip=True)
     rb_norm: str = normalize_for_comparison(result_brewery)
