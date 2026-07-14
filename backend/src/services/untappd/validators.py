@@ -4,7 +4,7 @@ Split from searcher.py for better modularity.
 """
 import re
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union, Any
 from difflib import SequenceMatcher
 from bs4 import Tag
 from .text_utils import (
@@ -41,7 +41,7 @@ def get_name_parts(name: str) -> List[str]:
     return parts
 
 
-def _is_safe_substring_match(str_a: str, str_b: str) -> bool:
+def _is_safe_substring_match(str_a: str, str_b: str, expected_brewery: Optional[str] = None) -> bool:
     """Checks if one string being inside the other is a safe match without major extra unrelated words."""
     if not str_a or not str_b:
         return False
@@ -57,31 +57,46 @@ def _is_safe_substring_match(str_a: str, str_b: str) -> bool:
         return True
     # If ratio < 0.78, check if the extra portion is purely style/variant/number/brewery noise
     remainder = longer.replace(shorter, "")
-    allowed_noise = ["barrel", "aged", "sour", "ale", "stout", "ipa", "collaborat", "batch", "edition", "series", "vol", "ver", "double", "triple", "imperial", "hazy", "neipa"]
+    allowed_noise = ["barrel", "aged", "sour", "ale", "stout", "ipa", "collaborat", "batch", "edition", "series", "vol", "ver", "double", "triple", "imperial", "hazy", "neipa", "shigakogen", "tamamura", "honten"]
     if any(n in remainder for n in allowed_noise):
         return True
+    if expected_brewery:
+        brew_norm = normalize_for_comparison(expected_brewery)
+        if brew_norm and (brew_norm in remainder or remainder in brew_norm):
+            return True
+        for b_word in re.findall(r'[a-z0-9]+', expected_brewery.lower()):
+            if len(b_word) >= 3 and b_word in remainder:
+                return True
+        for alias_list in _BREWERY_ALIASES.values():
+            if any(normalize_for_comparison(expected_brewery) == normalize_for_comparison(a) for a in alias_list):
+                for a in alias_list:
+                    a_norm = normalize_for_comparison(a)
+                    if a_norm and len(a_norm) >= 4 and (a_norm in remainder or remainder in a_norm):
+                        return True
     return False
 
 
-def validate_beer_match(result_element: Tag, expected_beer: str, expected_brewery: Optional[str] = None) -> bool:
-    """Checks if the beer name in the search result matches the expected beer and brewery."""
+def validate_beer_match(result_element: Union[Tag, Dict[str, Any]], expected_beer: str, expected_brewery: Optional[str] = None) -> bool:
+    """
+    Returns True if the Untappd beer element matches expected_beer and expected_brewery.
+    Calls score_beer_match internally and requires score > 0.
+    """
     return score_beer_match(result_element, expected_beer, expected_brewery) > 0
 
 
-def score_beer_match(result_elem: Tag, expected_beer: str, expected_brewery: Optional[str] = None) -> int:
+def score_beer_match(result_elem: Union[Tag, Dict[str, Any]], expected_beer: str, expected_brewery: Optional[str] = None) -> int:
     """
-    Evaluates how well a search result matches the expected beer name.
-    
-    Returns a score from 0 to 100:
-      - 100: Exact match after standard normalization
-      -  95: Match after expanding common abbreviations (e.g. BA, DDH)
-      -  90: Direct inclusion match (with variant check)
-      -  88: Inclusion match after abbreviation expansion
-      -  85: Exact match after ordinal/number normalization (e.g. 11th -> eleventh, III -> 3)
-      -  80: Inclusion match after ordinal/number normalization
-      -  75: Core exact match (after removing year/date, dashes, style suffixes)
-      -  70: Core inclusion match
-      -  60: Combined ordinal + core inclusion match
+    Scores how well an Untappd beer element matches expected_beer (and expected_brewery).
+    Returns an integer from 0 to 100:
+      - 100: Exact match after basic normalization
+      -  95: Exact match after abbreviation expansion
+      -  90: Direct inclusion match
+      -  85: Exact match after ordinal normalization (11th -> eleventh)
+      -  80: Substring match after ordinal normalization
+      -  75: Exact match after core name stripping (no year, no style suffix)
+      -  70: Substring match after core name stripping
+      -  60: Substring match after ordinal + core stripping
+      -  50: Part/Token exact or inclusion match (parentheses splitting)
       -   0: No acceptable match or variant mismatch detected
     """
     if not result_elem:
@@ -93,11 +108,18 @@ def score_beer_match(result_elem: Tag, expected_beer: str, expected_brewery: Opt
         logger.debug(f"  [Validation] Beer BLOCKED (Brewery Mismatch): expected brewery '{expected_brewery}'")
         return 0
 
-    name_tag: Optional[Tag] = result_elem.select_one('.name a')
-    if not name_tag:
-        return 0
-
-    result_beer: str = name_tag.get_text(strip=True)
+    if isinstance(result_elem, dict):
+        result_beer = result_elem.get('beer_name') or result_elem.get('name') or ''
+        if not result_beer:
+            return 0
+        style_text = (result_elem.get('style') or '').lower()
+    else:
+        name_tag: Optional[Tag] = result_elem.select_one('.name a')
+        if not name_tag:
+            return 0
+        result_beer = name_tag.get_text(strip=True)
+        style_tag = result_elem.select_one('.style')
+        style_text = style_tag.get_text(strip=True).lower() if style_tag else ""
     
     # 0. Check variant mismatch right upfront
     if has_variant_mismatch(result_beer, expected_beer):
@@ -112,13 +134,23 @@ def score_beer_match(result_elem: Tag, expected_beer: str, expected_brewery: Opt
 
     # Check distinct keyword/style clashes if names are not exact matches
     if rb_norm != eb_norm:
-        style_tag = result_elem.select_one('.style')
-        style_text = normalize_for_comparison(style_tag.get_text(strip=True)) if style_tag else ""
+        eb_words = set(re.findall(r'[a-z0-9]+', expected_beer.lower()))
+        rb_words = set(re.findall(r'[a-z0-9]+', result_beer.lower()))
+        style_words = set(re.findall(r'[a-z0-9]+', style_text))
+
+        # Block New Engi-land vs Engi!? cross-matching on Shiga Kogen
+        if 'engi' in eb_words and ('engiland' in rb_norm or 'land' in rb_words or 'new' in rb_words) and 'engiland' not in eb_norm and 'land' not in eb_words:
+            logger.debug(f"  [Validation] Beer BLOCKED (Engi vs New Engi-land clash): '{result_beer}' vs '{expected_beer}'")
+            return 0
+        if ('engiland' in eb_norm or 'land' in eb_words or 'new' in eb_words) and 'engi' in rb_words and 'engiland' not in rb_norm and 'land' not in rb_words:
+            logger.debug(f"  [Validation] Beer BLOCKED (New Engi-land vs Engi clash): '{result_beer}' vs '{expected_beer}'")
+            return 0
+
         for kw in ['engi', 'weizen', 'stout', 'porter', 'pilsner', 'saison', 'barleywine', 'gose', 'keller']:
-            if kw in eb_norm.split():
-                if kw not in rb_norm.split() and kw not in style_text.split():
+            if kw in eb_words:
+                if kw not in rb_words and kw not in style_words:
                     # For distinctive brand/style keywords like engi or completely clashing styles, block
-                    if kw == 'engi' or ('ipa' in style_text.split() and kw in ['weizen', 'stout', 'porter', 'pilsner']):
+                    if kw == 'engi' or ('ipa' in style_words and kw in ['weizen', 'stout', 'porter', 'pilsner']):
                         logger.debug(f"  [Validation] Beer BLOCKED (Keyword/Style Clash '{kw}'): '{result_beer}' vs '{expected_beer}'")
                         return 0
 
@@ -135,12 +167,12 @@ def score_beer_match(result_elem: Tag, expected_beer: str, expected_brewery: Opt
         return 95
 
     # 2. Direct inclusion check (with variant guard)
-    if _is_safe_substring_match(rb_norm, eb_norm):
+    if _is_safe_substring_match(rb_norm, eb_norm, expected_brewery):
         logger.info(f"  [Validation] Beer MATCH (90): '{result_beer}' matches '{expected_beer}'")
         return 90
 
     # 2b. Direct inclusion after abbreviation expansion
-    if _is_safe_substring_match(rb_expanded, eb_expanded):
+    if _is_safe_substring_match(rb_expanded, eb_expanded, expected_brewery):
         logger.info(f"  [Validation] Beer MATCH (Abbr Inclusion, 88): '{result_beer}' matches '{expected_beer}'")
         return 88
 
@@ -150,7 +182,7 @@ def score_beer_match(result_elem: Tag, expected_beer: str, expected_brewery: Opt
     if rb_ord == eb_ord:
         logger.info(f"  [Validation] Beer MATCH (Ordinal Exact, 85): '{result_beer}' matches '{expected_beer}'")
         return 85
-    if _is_safe_substring_match(rb_ord, eb_ord):
+    if _is_safe_substring_match(rb_ord, eb_ord, expected_brewery):
         logger.info(f"  [Validation] Beer MATCH (Ordinal, 80): '{result_beer}' matches '{expected_beer}'")
         return 80
 
@@ -160,7 +192,7 @@ def score_beer_match(result_elem: Tag, expected_beer: str, expected_brewery: Opt
     if rb_num == eb_num:
         logger.info(f"  [Validation] Beer MATCH (Number/Roman Exact, 85): '{result_beer}' matches '{expected_beer}'")
         return 85
-    if _is_safe_substring_match(rb_num, eb_num):
+    if _is_safe_substring_match(rb_num, eb_num, expected_brewery):
         logger.info(f"  [Validation] Beer MATCH (Number/Roman, 80): '{result_beer}' matches '{expected_beer}'")
         return 80
 
@@ -170,7 +202,7 @@ def score_beer_match(result_elem: Tag, expected_beer: str, expected_brewery: Opt
     if rb_pl == eb_pl:
         logger.info(f"  [Validation] Beer MATCH (Singular/Plural Exact, 85): '{result_beer}' matches '{expected_beer}'")
         return 85
-    if _is_safe_substring_match(rb_pl, eb_pl):
+    if _is_safe_substring_match(rb_pl, eb_pl, expected_brewery):
         logger.info(f"  [Validation] Beer MATCH (Singular/Plural, 80): '{result_beer}' matches '{expected_beer}'")
         return 80
 
@@ -183,14 +215,14 @@ def score_beer_match(result_elem: Tag, expected_beer: str, expected_brewery: Opt
         if rb_core == eb_core:
             logger.info(f"  [Validation] Beer MATCH (Core Exact, 75): '{result_beer}' matches '{expected_beer}'")
             return 75
-        elif _is_safe_substring_match(rb_core, eb_core):
+        elif _is_safe_substring_match(rb_core, eb_core, expected_brewery):
             logger.info(f"  [Validation] Beer MATCH (Core, 70): '{result_beer}' matches '{expected_beer}'")
             return 70
 
     # 5. Combined: ordinal + number/roman + singular/plural + core stripping
     rb_ord_core: str = normalize_for_comparison(strip_for_core_comparison(normalize_singular_plural(normalize_numbers_and_romans(normalize_ordinals(rb_clean)))))
     eb_ord_core: str = normalize_for_comparison(strip_for_core_comparison(normalize_singular_plural(normalize_numbers_and_romans(normalize_ordinals(eb_clean)))))
-    if rb_ord_core and eb_ord_core and _is_safe_substring_match(rb_ord_core, eb_ord_core):
+    if rb_ord_core and eb_ord_core and _is_safe_substring_match(rb_ord_core, eb_ord_core, expected_brewery):
         logger.info(f"  [Validation] Beer MATCH (Ordinal+Core, 60): '{result_beer}' matches '{expected_beer}'")
         return 60
 
@@ -207,7 +239,7 @@ def score_beer_match(result_elem: Tag, expected_beer: str, expected_brewery: Opt
                 continue
             if (ep_norm.isascii() and len(ep_norm) < 3) or len(ep_norm) < 2:
                 continue
-            if rp_norm == ep_norm or _is_safe_substring_match(rp_norm, ep_norm):
+            if rp_norm == ep_norm or _is_safe_substring_match(rp_norm, ep_norm, expected_brewery):
                 if not has_variant_mismatch(result_beer, expected_beer):
                     logger.info(f"  [Validation] Beer MATCH (Part/Token Inclusion, 75): '{rp}' matches '{ep}'")
                     return 75
@@ -224,7 +256,7 @@ def score_beer_match(result_elem: Tag, expected_beer: str, expected_brewery: Opt
     return 0
 
 
-def validate_brewery_match(result_element: Tag, expected_brewery: str) -> bool:
+def validate_brewery_match(result_element: Union[Tag, Dict[str, Any]], expected_brewery: str) -> bool:
     """
     Checks if the brewery name in the search result matches the expected brewery.
     Uses normalized comparison, aliases, and collab logic.
@@ -232,11 +264,16 @@ def validate_brewery_match(result_element: Tag, expected_brewery: str) -> bool:
     if not expected_brewery:
         return True
 
-    brewery_tag = result_element.select_one('.brewery')
-    if not brewery_tag:
-        return True
+    if isinstance(result_element, dict):
+        result_brewery = result_element.get('brewery_name') or result_element.get('brewery') or ''
+        if not result_brewery:
+            return True
+    else:
+        brewery_tag = result_element.select_one('.brewery')
+        if not brewery_tag:
+            return True
+        result_brewery = brewery_tag.get_text(strip=True)
 
-    result_brewery: str = brewery_tag.get_text(strip=True)
     rb_norm: str = normalize_for_comparison(result_brewery)
     eb_norm: str = normalize_for_comparison(expected_brewery)
 

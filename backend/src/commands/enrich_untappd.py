@@ -281,6 +281,10 @@ class UntappdEnricher:
                 brewery = found_list[0].get('name_en') or found_list[0].get('name_jp')
                 logger.info(f"  🔧 Inferred brewery from product text: {brewery}")
 
+        if not beer_name and beer.get('name'):
+            beer_name = beer.get('name')
+            logger.info(f"  🔧 Fallback beer_name to shop title: {beer_name}")
+
         if not brewery or not beer_name:
             logger.warning(f"  ⚠️  Missing brewery or beer name - skipping")
             return None
@@ -405,6 +409,28 @@ class UntappdEnricher:
             logger.warning(f"  ⚠️  BreweryManager lookup failed: {e}")
         return None
 
+    def _validate_cached_url(self, cached_url: str, beer_name: str, brewery: str) -> bool:
+        """Checks if a cached untappd_url actually matches the expected beer and brewery using score_beer_match."""
+        try:
+            if not self.supabase or self.offline or not cached_url or '/search?' in cached_url:
+                return True
+            res = self.supabase.table('untappd_data').select('beer_name, brewery_name, style').eq('untappd_url', cached_url).limit(1).execute()
+            if not res.data:
+                return True
+            db_item = res.data[0]
+            from bs4 import BeautifulSoup
+            from backend.src.services.untappd.validators import score_beer_match
+            html = f'<div class="beer-item"><p class="name"><a>{db_item.get("beer_name", "")}</a></p><p class="brewery"><a>{db_item.get("brewery_name", "")}</a></p><p class="style">{db_item.get("style", "")}</p></div>'
+            soup = BeautifulSoup(html, 'lxml')
+            item = soup.select_one('.beer-item')
+            score = score_beer_match(item, beer_name, brewery)
+            if score == 0:
+                return False
+            return True
+        except Exception as e:
+            logger.debug(f"  [Validation] Cached URL check error: {e}")
+            return True
+
     async def _resolve_untappd_url(
         self,
         beer: Dict[str, Any],
@@ -420,11 +446,23 @@ class UntappdEnricher:
         if not untappd_url and url:
             p_url = self.gemini_cache.get(url)
             if p_url and '/search?' not in p_url:
-                logger.info(f"  ✅ [Persistence] Found link in gemini_cache: {p_url}")
-                return p_url
+                if self._validate_cached_url(p_url, beer_name, brewery):
+                    logger.info(f"  ✅ [Persistence] Found link in gemini_cache: {p_url}")
+                    return p_url
+                else:
+                    logger.warning(f"  ⚠️ [Persistence] Invalid/mismatched link in gemini_cache ({p_url}) for '{beer_name}'. Ignoring cache!")
+                    self.gemini_cache[url] = None
+                    try:
+                        if self.supabase and not self.offline:
+                            self.supabase.table('gemini_data').update({'untappd_url': None}).eq('url', url).execute()
+                    except Exception as e:
+                        logger.debug(f"  ⚠️ Could not null gemini_data untappd_url: {e}")
 
         if untappd_url and '/search?' not in untappd_url:
-            return untappd_url
+            if self._validate_cached_url(untappd_url, beer_name, brewery):
+                return untappd_url
+            else:
+                logger.warning(f"  ⚠️ [Persistence] Invalid/mismatched existing untappd_url ({untappd_url}) for '{beer_name}'. Ignoring!")
 
         # 2. Search Untappd
         beer_name_jp: Optional[str] = beer.get('beer_name_jp')

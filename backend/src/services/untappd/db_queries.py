@@ -19,7 +19,7 @@ def fetch_beers(
         query: Any = supabase.table('beer_info_view') \
             .select('*') \
             .or_('untappd_url.is.null,untappd_url.ilike.%/search?%,untappd_beer_name.is.null') \
-            .eq('product_type', 'beer')
+            .or_('product_type.eq.beer,product_type.is.null')
         if shop_filter:
             query = query.eq('shop', shop_filter)
         if name_filter:

@@ -49,6 +49,7 @@ def normalize_for_comparison(text: str, expand_abbr: bool = False) -> str:
 
 # Common beer style suffixes (sorted by length descending for greedy matching)
 COMMON_SUFFIXES: List[str] = [
+    " Sake IPA", " Sake Ale", " Rice Ale", " Sake",
     " IPA", " Hazy IPA", " Double IPA", " DIPA", " Triple IPA", " TIPA", " NEIPA",
     " NE IPA", " NE-IPA", " WCIPA", " WC IPA", " West Coast IPA", " Session IPA",
     " DDH IPA", " TDH IPA",
@@ -208,13 +209,13 @@ def strip_for_core_comparison(text: str) -> str:
     text = re.sub(r':.*$', '', text)
     # Remove common beer style suffixes at end
     stripped = re.sub(
-        r'\s+(?:IPA|DIPA|TIPA|Hazy IPA|Double IPA|Triple IPA|NEIPA|West Coast IPA|'
+        r'\s+(?:Sake IPA|Sake Ale|Rice Ale|Sake|IPA|DIPA|TIPA|Hazy IPA|Double IPA|Triple IPA|NEIPA|West Coast IPA|'
         r'Session IPA|Stout|Imperial Stout|Pale Ale|Lager|Pilsner|Sour|Porter|Ale|Saison|Gose)\s*$',
         '', text, flags=re.IGNORECASE
     )
     stripped_clean = stripped.strip()
     # Avoid over-stripping when the style word is part of a short core title (e.g. "Whisky Sour", "Breakfast Stout")
-    if len(stripped_clean) <= 4 or (len(stripped_clean.split()) == 1 and len(text.strip().split()) == 2 and len(stripped_clean) <= 7):
+    if len(stripped_clean) <= 3 or (len(stripped_clean.split()) == 1 and len(text.strip().split()) == 2 and len(stripped_clean) <= 4):
         return text.strip()
     return stripped_clean
 
@@ -289,7 +290,7 @@ def clean_beer_name(name: str) -> str:
         '', name, flags=re.IGNORECASE
     )
     # Single-word styles at the end
-    name = re.sub(r'\s+(?:IPA|DIPA|TIPA|Stout|Porter|Lager|Pilsner|Saison|Ale)$', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+(?:Sake IPA|Sake Ale|Rice Ale|Sake|Hazy IPA|Double IPA|Triple IPA|West Coast IPA|Session IPA|NEIPA|IPA|DIPA|TIPA|Stout|Porter|Lager|Pilsner|Saison|Ale)$', '', name, flags=re.IGNORECASE)
 
     # Remove -〇〇編- style suffixes
     name = re.sub(r'-[^-]+編-?$', '', name)
