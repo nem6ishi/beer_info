@@ -1,4 +1,4 @@
-from typing import TypedDict, Optional
+from typing import TypedDict, Optional, List
 
 class ScrapedProduct(TypedDict, total=False):
     """Data structure returned by scrapers."""
@@ -76,9 +76,22 @@ class GeminiExtraction(TypedDict):
     is_set: bool
     raw_response: Optional[str]
 
-class UntappdSearchResult(TypedDict):
+class UntappdSearchCandidate(TypedDict, total=False):
+    """A candidate beer item found during an Untappd or DDG search."""
+    url: str
+    beer_name: str
+    brewery_name: str
+    style: str
+    score: float
+    source: str
+
+class UntappdSearchResult(TypedDict, total=False):
     """Result of an Untappd search attempt."""
     url: Optional[str]
     success: bool
     failure_reason: Optional[str]
     error_message: Optional[str]
+    candidates: Optional[List[UntappdSearchCandidate]]
+    selected_index: Optional[int]
+    selection_reason: Optional[str]
+

@@ -19,9 +19,9 @@ from .text_utils import (
 )
 from .validators import validate_beer_match, score_beer_match, set_brewery_aliases
 from .http_client import (
-    search_brewery_beer, scrape_beer_details, search_brewery
+    search_brewery_beer, search_brewery_beer_candidates, scrape_beer_details, search_brewery
 )
-from ...core.types import UntappdSearchResult
+from ...core.types import UntappdSearchResult, UntappdSearchCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -165,28 +165,44 @@ async def _get_untappd_url_single(
                     break
 
     # --- Stage 2: Search WITHIN Brewery ---
-    found_url: Optional[str] = None
+    all_candidates: List[UntappdSearchCandidate] = []
+    seen_urls = set()
+
     for cand_b_url in candidate_brewery_urls:
         logger.info(f"Searching for '{target_beer_name}' within brewery: {cand_b_url}")
-        found_url = await search_brewery_beer(
+        cands = await search_brewery_beer_candidates(
             cand_b_url, 
             target_beer_name, 
             validate_beer_fn=validate_beer_match,
             validate_beer=target_beer_name,
             score_beer_fn=score_beer_match,
             validate_brewery=brewery_name,
+            max_candidates=10
         )
-        if not found_url and beer_name_jp and beer_name_jp != target_beer_name:
+        for c in cands:
+            u = c.get('url')
+            if u and u not in seen_urls:
+                seen_urls.add(u)
+                all_candidates.append(c)
+
+        if len(all_candidates) < 3 and beer_name_jp and beer_name_jp != target_beer_name:
             logger.info(f"🔄 [JP-fallback] Searching for Japanese name '{beer_name_jp}' within brewery: {cand_b_url}")
-            found_url = await search_brewery_beer(
+            cands_jp = await search_brewery_beer_candidates(
                 cand_b_url,
                 beer_name_jp,
                 validate_beer_fn=validate_beer_match,
                 validate_beer=beer_name_jp,
                 score_beer_fn=score_beer_match,
                 validate_brewery=brewery_name,
+                max_candidates=5
             )
-        if not found_url:
+            for c in cands_jp:
+                u = c.get('url')
+                if u and u not in seen_urls:
+                    seen_urls.add(u)
+                    all_candidates.append(c)
+
+        if len(all_candidates) < 3:
             tokens = []
             for text in [target_beer_name, beer_name_jp]:
                 if not text:
@@ -202,141 +218,193 @@ async def _get_untappd_url_single(
                         tokens.append(w_clean)
             for token in tokens[:4]:
                 logger.info(f"🔄 [Token-fallback] Searching for token '{token}' within brewery: {cand_b_url}")
-                found_url = await search_brewery_beer(
+                cands_token = await search_brewery_beer_candidates(
                     cand_b_url,
                     token,
                     validate_beer_fn=validate_beer_match,
                     validate_beer=target_beer_name,
                     score_beer_fn=score_beer_match,
                     validate_brewery=brewery_name,
+                    max_candidates=5
                 )
-                if found_url:
-                    logger.info(f" Beer found via token fallback search ('{token}'): {found_url}")
+                for c in cands_token:
+                    u = c.get('url')
+                    if u and u not in seen_urls:
+                        seen_urls.add(u)
+                        all_candidates.append(c)
+                if len(all_candidates) >= 5:
                     break
-        if found_url:
-            logger.info(f" Beer found via brewery search: {found_url}")
+
+    if candidate_brewery_urls and not all_candidates:
+        logger.info(" Brewery-specific search returned no candidate matches.")
+
+    # --- Stage 3: Fallback / Supplement via DuckDuckGo ---
+    has_high_confidence_candidate = any(c.get('score', 0) >= 90 for c in all_candidates)
+    if not all_candidates or (len(all_candidates) < 3 and not has_high_confidence_candidate):
+        query: str
+        if search_hint:
+            query = f"untappd {search_hint}"
+        else:
+            query = f"untappd {primary_brewery_search} {target_beer_name}".strip()
+
+        logger.info(f"Searching DuckDuckGo for: '{query}'")
+
+        try:
+            from ddgs import DDGS
+
+            def title_is_valid(title: str, exp_brewery: str, exp_beer: str) -> bool:
+                t_norm: str = normalize_for_comparison(title)
+                
+                # Check brewery
+                if exp_brewery:
+                    primary_breweries = re.split(COLLAB_SPLIT_PATTERN, exp_brewery)
+                    brewery_match = False
+                    for p_brew in primary_breweries:
+                        b_norm: str = normalize_for_comparison(clean_brewery_name(p_brew))
+                        if b_norm and b_norm in t_norm:
+                            brewery_match = True
+                            break
+                        if BREWERY_ALIASES:
+                            for alias in BREWERY_ALIASES.get(p_brew, []):
+                                if normalize_for_comparison(alias) in t_norm:
+                                    brewery_match = True
+                                    break
+                        if brewery_match:
+                            break
+                    
+                    if not brewery_match:
+                        return False
+                        
+                # Check beer
+                if exp_beer:
+                    beer_core: str = normalize_for_comparison(strip_for_core_comparison(exp_beer))
+                    beer_core_pl: str = normalize_for_comparison(strip_for_core_comparison(normalize_singular_plural(exp_beer)))
+                    t_norm_pl: str = normalize_for_comparison(normalize_singular_plural(title))
+                    if beer_core and beer_core not in t_norm and beer_core_pl not in t_norm_pl:
+                        if beer_name_jp and normalize_for_comparison(beer_name_jp) in t_norm:
+                            pass
+                        else:
+                            return False
+                    if has_variant_mismatch(title, exp_beer):
+                        logger.debug(f"  [DDG] Variant mismatch in title: '{title}' vs '{exp_beer}'")
+                        return False
+                return True
+
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    def _do_ddg_search():
+                        with DDGS(timeout=10) as ddgs:
+                            res = ddgs.text(query, max_results=5)
+                            return list(res) if res else []
+                            
+                    results: Any = await asyncio.to_thread(_do_ddg_search)
+                    if not results:
+                        results = []
+                            
+                    for res in results:
+                        href: str = res.get("href", "")
+                        title: str = res.get("title", "")
+                            
+                        if "untappd.com/b/" in href and href not in seen_urls:
+                            if title_is_valid(title, brewery_name, target_beer_name):
+                                logger.info(f" Found candidate via DuckDuckGo: {href}")
+                                seen_urls.add(href)
+                                all_candidates.append({
+                                    'url': href,
+                                    'beer_name': title,
+                                    'brewery_name': brewery_name,
+                                    'style': '',
+                                    'score': 0.8,
+                                    'source': 'duckduckgo'
+                                })
+                            else:
+                                logger.debug(f" DDG result failed validation: {title}")
+                        
+                    break
+                except Exception as inner_e:
+                    error_str = str(inner_e).lower()
+                    if "rate limit" in error_str or "202" in error_str or "timeout" in error_str or "ratelimit" in error_str:
+                        wait_time = 15 * (attempt + 1)
+                        logger.warning(f"  [DDG] Rate limit or timeout hit. Sleeping for {wait_time}s... (Attempt {attempt+1}/{max_retries})")
+                        await asyncio.sleep(wait_time)
+                        if attempt == max_retries - 1:
+                            raise inner_e
+                    else:
+                        raise inner_e
+        except Exception as e:
+            logger.error(f"Error during DuckDuckGo search: {e}")
+
+    # --- Stage 4: LLM Candidate Selection ---
+    if all_candidates:
+        logger.info(f"  [LLM Selection] Evaluating {len(all_candidates)} collected candidates...")
+        try:
+            from backend.src.services.gemini.extractor import GeminiExtractor
+            extractor = GeminiExtractor()
+            if extractor.client:
+                best_match = await extractor.select_best_untappd_candidate(
+                    product_name=target_beer_name,
+                    brewery=brewery_name,
+                    beer_name=target_beer_name,
+                    candidates=all_candidates
+                )
+                if best_match:
+                    logger.info(f"  ✅ [LLM Selection] Selected best match: {best_match.get('url')} | Reason: {best_match.get('selection_reason')}")
+                    return {
+                        'url': best_match.get('url'),
+                        'success': True,
+                        'failure_reason': None,
+                        'error_message': None,
+                        'candidates': all_candidates,
+                        'selected_index': all_candidates.index(best_match) if best_match in all_candidates else 0,
+                        'selection_reason': best_match.get('selection_reason'),
+                    }
+                else:
+                    logger.info("  ⏭️ [LLM Selection] LLM rejected all candidates as none matched accurately.")
+                    top_cand = all_candidates[0]
+                    if top_cand.get('score', 0) >= 95 or top_cand.get('source') == 'duckduckgo':
+                        logger.info(f"  [Scoring Safety Net] Selecting top candidate despite LLM reject: {top_cand.get('url')}")
+                        return {
+                            'url': top_cand.get('url'),
+                            'success': True,
+                            'failure_reason': None,
+                            'error_message': None,
+                            'candidates': all_candidates,
+                        }
+                    return {
+                        'url': None,
+                        'success': False,
+                        'failure_reason': 'no_results',
+                        'error_message': 'LLM judged no suitable candidates matched.',
+                        'candidates': all_candidates,
+                    }
+        except Exception as llm_e:
+            logger.warning(f"  ⚠️ [LLM Selection] Exception during selection: {llm_e}. Falling back to top scoring candidate.")
+
+        # Fallback if LLM failed or offline: pick candidate with highest score
+        top_cand = all_candidates[0]
+        if top_cand.get('score', 0) > 0 or top_cand.get('source') == 'duckduckgo':
+            logger.info(f"  [Scoring Fallback] Selecting top candidate: {top_cand.get('url')}")
             return {
-                'url': found_url,
+                'url': top_cand.get('url'),
                 'success': True,
                 'failure_reason': None,
-                'error_message': None
+                'error_message': None,
+                'candidates': all_candidates,
             }
-    if candidate_brewery_urls:
-        logger.info(" Brewery-specific search returned no verified matches.")
 
-    # --- Stage 3: Fallback to DuckDuckGo ---
-    query: str
-    if search_hint:
-        query = f"untappd {search_hint}"
-    else:
-        query = f"untappd {primary_brewery_search} {target_beer_name}".strip()
+    # Fallback if 0 candidates found
+    fallback_query = search_hint or f"{primary_brewery_search} {target_beer_name}".strip()
+    fallback_url: str = f"https://untappd.com/search?q={urllib.parse.quote(fallback_query)}"
+    logger.info(f"No direct link found. Returning search URL as failure.")
+    return {
+        'url': fallback_url,
+        'success': False,
+        'failure_reason': 'no_results',
+        'error_message': f'No direct beer page found for: {fallback_query}',
+        'candidates': []
+    }
 
-    logger.info(f"Falling back to DuckDuckGo search for: '{query}'")
-
-    try:
-        from ddgs import DDGS
-
-        def title_is_valid(title: str, exp_brewery: str, exp_beer: str) -> bool:
-            t_norm: str = normalize_for_comparison(title)
-            
-            # Check brewery
-            if exp_brewery:
-                primary_breweries = re.split(COLLAB_SPLIT_PATTERN, exp_brewery)
-                brewery_match = False
-                for p_brew in primary_breweries:
-                    b_norm: str = normalize_for_comparison(clean_brewery_name(p_brew))
-                    if b_norm and b_norm in t_norm:
-                        brewery_match = True
-                        break
-                    # check aliases
-                    if BREWERY_ALIASES:
-                        for alias in BREWERY_ALIASES.get(p_brew, []):
-                            if normalize_for_comparison(alias) in t_norm:
-                                brewery_match = True
-                                break
-                    if brewery_match:
-                        break
-                
-                if not brewery_match:
-                    return False
-                    
-            # Check beer
-            if exp_beer:
-                beer_core: str = normalize_for_comparison(strip_for_core_comparison(exp_beer))
-                beer_core_pl: str = normalize_for_comparison(strip_for_core_comparison(normalize_singular_plural(exp_beer)))
-                t_norm_pl: str = normalize_for_comparison(normalize_singular_plural(title))
-                if beer_core and beer_core not in t_norm and beer_core_pl not in t_norm_pl:
-                    if beer_name_jp and normalize_for_comparison(beer_name_jp) in t_norm:
-                        pass
-                    else:
-                        return False
-                # Check for variant modifier mismatch in the title
-                if has_variant_mismatch(title, exp_beer):
-                    logger.debug(f"  [DDG] Variant mismatch in title: '{title}' vs '{exp_beer}'")
-                    return False
-            return True
-
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                def _do_ddg_search():
-                    with DDGS(timeout=10) as ddgs:
-                        res = ddgs.text(query, max_results=5)
-                        return list(res) if res else []
-                        
-                results: Any = await asyncio.to_thread(_do_ddg_search)
-                    
-                if not results:
-                    results = []
-                        
-                for res in results:
-                    href: str = res.get("href", "")
-                    title: str = res.get("title", "")
-                        
-                    if "untappd.com/b/" in href:
-                        if title_is_valid(title, brewery_name, target_beer_name):
-                            logger.info(f" Found via DuckDuckGo: {href}")
-                            return {
-                                'url': href,
-                                'success': True,
-                                'failure_reason': None,
-                                'error_message': None
-                            }
-                        else:
-                            logger.debug(f" DDG result failed validation: {title}")
-                    
-                # If we finish the loop without returning, it means we either got 0 results or none validated.
-                # This is a normal failure, not a rate limit exception, so break and fallback.
-                break
-            except Exception as inner_e:
-                error_str = str(inner_e).lower()
-                if "rate limit" in error_str or "202" in error_str or "timeout" in error_str or "ratelimit" in error_str:
-                    wait_time = 15 * (attempt + 1)
-                    logger.warning(f"  [DDG] Rate limit or timeout hit. Sleeping for {wait_time}s... (Attempt {attempt+1}/{max_retries})")
-                    await asyncio.sleep(wait_time)
-                    if attempt == max_retries - 1:
-                        raise inner_e
-                else:
-                    raise inner_e
-                    
-        # Fallback if no result
-        fallback_url: str = f"https://untappd.com/search?q={urllib.parse.quote(query.replace('untappd ', ''))}"
-        logger.info(f"No direct link found. Returning search URL as failure.")
-        return {
-            'url': fallback_url,
-            'success': False,
-            'failure_reason': 'no_results',
-            'error_message': f'No direct beer page found for: {query}'
-        }
-
-    except Exception as e:
-        logger.error(f"Error during DuckDuckGo search: {e}")
-        return {
-            'url': None,
-            'success': False,
-            'failure_reason': 'network_error',
-            'error_message': str(e)
-        }
 
 
 if __name__ == "__main__":

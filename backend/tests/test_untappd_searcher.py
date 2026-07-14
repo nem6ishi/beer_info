@@ -260,33 +260,40 @@ class TestAbbreviationExpansion(unittest.IsolatedAsyncioTestCase):
         b = normalize_for_comparison("Double Dry Hopped Caligula", expand_abbr=True)
         self.assertEqual(a, b)
 
-@patch('backend.src.services.untappd.searcher.search_brewery_beer')
+@patch('backend.src.services.gemini.extractor.GeminiExtractor.select_best_untappd_candidate')
+@patch('backend.src.services.untappd.searcher.search_brewery_beer_candidates')
 @patch('backend.src.services.untappd.searcher.search_brewery')
 class TestGetUntappdUrl(unittest.IsolatedAsyncioTestCase):
 
-    async def test_returns_correct_match_via_brewery_search(self, mock_search_brewery, mock_search_beer):
+    async def test_returns_correct_match_via_brewery_search(self, mock_search_brewery, mock_search_candidates, mock_select_best):
         """When brewery URL is found and beer search returns a match."""
         mock_search_brewery.return_value = "https://untappd.com/MyBrewery"
-        mock_search_beer.return_value = "https://untappd.com/b/my-brewery-mybeer/456"
+        mock_search_candidates.return_value = [
+            {'url': "https://untappd.com/b/my-brewery-mybeer/456", 'beer_name': "MyBeer", 'score': 100}
+        ]
+        mock_select_best.side_effect = lambda product_name, brewery, beer_name, candidates: candidates[0] if candidates else None
 
         result = await get_untappd_url("MyBrewery", "MyBeer")
 
         self.assertTrue(result['success'])
         self.assertEqual(result['url'], "https://untappd.com/b/my-brewery-mybeer/456")
 
-    async def test_returns_no_results_failure(self, mock_search_brewery, mock_search_beer):
+    async def test_returns_no_results_failure(self, mock_search_brewery, mock_search_candidates, mock_select_best):
         mock_search_brewery.return_value = None
-        mock_search_beer.return_value = None
+        mock_search_candidates.return_value = []
+        mock_select_best.return_value = None
 
         result = await get_untappd_url("NonExistentBrewery", "NonExistentBeer")
 
         self.assertFalse(result['success'])
 
-    async def test_prefers_exact_match_over_variant(self, mock_search_brewery, mock_search_beer):
+    async def test_prefers_exact_match_over_variant(self, mock_search_brewery, mock_search_candidates, mock_select_best):
         """When brewery search + scoring gives the exact match over the variant."""
         mock_search_brewery.return_value = "https://untappd.com/BreaksideBrewery"
-        # The scoring-based search_brewery_beer should return the exact match
-        mock_search_beer.return_value = "https://untappd.com/b/breakside-wrb/222"
+        mock_search_candidates.return_value = [
+            {'url': "https://untappd.com/b/breakside-wrb/222", 'beer_name': "What Rough Beast", 'score': 100}
+        ]
+        mock_select_best.side_effect = lambda product_name, brewery, beer_name, candidates: candidates[0] if candidates else None
 
         result = await get_untappd_url("Breakside Brewery", "What Rough Beast")
 
@@ -294,10 +301,11 @@ class TestGetUntappdUrl(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['url'], "https://untappd.com/b/breakside-wrb/222")
 
     @patch('ddgs.DDGS')
-    async def test_blocks_variant_when_no_exact_available(self, mock_ddgs_cls, mock_search_brewery, mock_search_beer):
-        """When brewery search finds the brewery but beer search returns None (variant blocked)."""
+    async def test_blocks_variant_when_no_exact_available(self, mock_ddgs_cls, mock_search_brewery, mock_search_candidates, mock_select_best):
+        """When brewery search finds the brewery but candidates search returns [] (variant blocked)."""
         mock_search_brewery.return_value = "https://untappd.com/BreaksideBrewery"
-        mock_search_beer.return_value = None  # Scoring blocked the variant
+        mock_search_candidates.return_value = []  # Scoring blocked the variant
+        mock_select_best.return_value = None
         # Mock DDG to return no results
         mock_ddgs_instance = MagicMock()
         mock_ddgs_instance.__enter__ = MagicMock(return_value=mock_ddgs_instance)

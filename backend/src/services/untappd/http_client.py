@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional, Dict, Callable, List
 import httpx
 from bs4 import BeautifulSoup, Tag
-from ...core.types import UntappdBeerDetails, UntappdBreweryDetails
+from ...core.types import UntappdBeerDetails, UntappdBreweryDetails, UntappdSearchCandidate
 from .text_utils import normalize_for_comparison
 from .validators import clean_brewery_name
 
@@ -45,16 +45,17 @@ async def close_async_client() -> None:
         _async_client = None
 
 
-async def search_brewery_beer(
+async def search_brewery_beer_candidates(
     brewery_url: str,
     query: str,
     validate_beer_fn: Optional[Callable] = None,
     validate_beer: Optional[str] = None,
     score_beer_fn: Optional[Callable] = None,
     validate_brewery: Optional[str] = None,
-) -> Optional[str]:
+    max_candidates: int = 10,
+) -> List[UntappdSearchCandidate]:
     if not brewery_url or not query:
-        return None
+        return []
 
     encoded_query: str = urllib.parse.quote(query)
     base_url: str = brewery_url.rstrip('/')
@@ -80,7 +81,7 @@ async def search_brewery_beer(
                 elif resp.status_code in (429, 403, 503):
                     await asyncio.sleep(1 * (attempt + 1))
             except Exception as httpx_e:
-                logger.debug(f"httpx error on search_brewery_beer: {httpx_e}")
+                logger.debug(f"httpx error on search_brewery_beer_candidates: {httpx_e}")
                 await asyncio.sleep(1)
 
         if not html:
@@ -101,52 +102,89 @@ async def search_brewery_beer(
             soup: BeautifulSoup = BeautifulSoup(html, 'lxml')
             results: List[Tag] = soup.select('.beer-item')
 
-            if score_beer_fn and validate_beer:
-                candidates: List[tuple] = []
-                for res in results[:50]:
-                    name_tag: Optional[Tag] = res.select_one('.name a')
-                    if name_tag:
-                        href: Optional[str] = name_tag.get('href')
-                        if href and "/b/" in href:
-                            try:
-                                score = score_beer_fn(res, validate_beer, validate_brewery)
-                            except TypeError:
-                                score = score_beer_fn(res, validate_beer)
-                            if score > 0:
-                                full_url = f"https://untappd.com{href}"
-                                beer_text = name_tag.get_text(strip=True)
-                                candidates.append((score, full_url, beer_text))
+            candidates: List[UntappdSearchCandidate] = []
+            for res in results[:50]:
+                name_tag: Optional[Tag] = res.select_one('.name a')
+                if not name_tag:
+                    continue
+                href: Optional[str] = name_tag.get('href')
+                if not href or "/b/" not in href:
+                    continue
 
-                if candidates:
-                    candidates.sort(key=lambda x: x[0], reverse=True)
-                    best_score, best_url, best_name = candidates[0]
-                    logger.info(
-                        f"  [Scoring] Best match: '{best_name}' (score={best_score}) "
-                        f"from {len(candidates)} candidates"
-                    )
-                    if len(candidates) > 1:
-                        for s, u, n in candidates[1:]:
-                            logger.debug(f"  [Scoring]   Also matched: '{n}' (score={s})")
-                    return best_url
-                return None
+                full_url = f"https://untappd.com{href}"
+                beer_text = name_tag.get_text(strip=True)
 
-            for res in results[:25]:
-                name_tag_legacy: Optional[Tag] = res.select_one('.name a')
-                if name_tag_legacy:
-                    href_legacy: Optional[str] = name_tag_legacy.get('href')
-                    if href_legacy and "/b/" in href_legacy:
-                        if validate_beer and validate_beer_fn:
-                            try:
-                                valid = validate_beer_fn(res, validate_beer, validate_brewery)
-                            except TypeError:
-                                valid = validate_beer_fn(res, validate_beer)
-                            if not valid:
-                                continue
-                        return f"https://untappd.com{href_legacy}"
+                brewery_tag = res.select_one('.name .brewery a') or res.select_one('.name .brewery') or res.select_one('.brewery a') or res.select_one('.brewery')
+                brewery_text = brewery_tag.get_text(strip=True) if brewery_tag else ""
+
+                style_tag = res.select_one('.style')
+                style_text = style_tag.get_text(strip=True) if style_tag else ""
+
+                score = 0.0
+                if score_beer_fn and validate_beer:
+                    try:
+                        score = float(score_beer_fn(res, validate_beer, validate_brewery))
+                    except TypeError:
+                        score = float(score_beer_fn(res, validate_beer))
+                    if score <= 0:
+                        continue
+                elif validate_beer and validate_beer_fn:
+                    try:
+                        valid = validate_beer_fn(res, validate_beer, validate_brewery)
+                    except TypeError:
+                        valid = validate_beer_fn(res, validate_beer)
+                    if not valid:
+                        continue
+                    score = 1.0
+
+                candidates.append({
+                    'url': full_url,
+                    'beer_name': beer_text,
+                    'brewery_name': brewery_text,
+                    'style': style_text,
+                    'score': score,
+                    'source': 'untappd_brewery'
+                })
+
+            if candidates:
+                candidates.sort(key=lambda x: x.get('score', 0.0), reverse=True)
+                logger.info(
+                    f"  [Candidates] Found {len(candidates)} candidates within brewery for '{query}'"
+                )
+                return candidates[:max_candidates]
+
     except Exception as e:
         logger.error(f"Brewery beer search error for '{query}' at {brewery_url}: {e}")
 
+    return []
+
+
+async def search_brewery_beer(
+    brewery_url: str,
+    query: str,
+    validate_beer_fn: Optional[Callable] = None,
+    validate_beer: Optional[str] = None,
+    score_beer_fn: Optional[Callable] = None,
+    validate_brewery: Optional[str] = None,
+) -> Optional[str]:
+    candidates = await search_brewery_beer_candidates(
+        brewery_url=brewery_url,
+        query=query,
+        validate_beer_fn=validate_beer_fn,
+        validate_beer=validate_beer,
+        score_beer_fn=score_beer_fn,
+        validate_brewery=validate_brewery,
+        max_candidates=1
+    )
+    if candidates:
+        best = candidates[0]
+        logger.info(
+            f"  [Scoring] Best match: '{best.get('beer_name')}' (score={best.get('score', 0)}) "
+            f"from candidates"
+        )
+        return best.get('url')
     return None
+
 
 
 async def scrape_beer_details(url: str) -> UntappdBeerDetails:

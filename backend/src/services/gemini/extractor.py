@@ -440,6 +440,84 @@ class GeminiExtractor:
 
         return None
 
+    async def select_best_untappd_candidate(
+        self,
+        product_name: str,
+        brewery: str,
+        beer_name: str,
+        candidates: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Selects the best matching Untappd candidate from a Top-N search candidate list using LLM reasoning.
+        Returns the chosen candidate dict (with 'selection_reason' added), or None if no candidate matches accurately.
+        """
+        if not self.client or not candidates:
+            return None
+
+        candidates_str_list = []
+        for idx, c in enumerate(candidates):
+            b_name = c.get('beer_name', 'Unknown Beer')
+            br_name = c.get('brewery_name', 'Unknown Brewery')
+            st_name = c.get('style', '')
+            url = c.get('url', '')
+            candidates_str_list.append(f"[{idx}] Beer: \"{b_name}\" | Brewery: \"{br_name}\" | Style: \"{st_name}\" | URL: {url}")
+        candidates_text = "\n".join(candidates_str_list)
+
+        prompt: str = f"""
+        We searched Untappd for a craft beer but got multiple candidate results.
+        Please choose the single best matching candidate from the list below, or return -1 if none of them accurately match the target product.
+
+        Target Product Info:
+        - Product Title: "{product_name}"
+        - Expected Brewery: "{brewery}"
+        - Expected Beer Name: "{beer_name}"
+
+        Candidate Results from Untappd:
+{candidates_text}
+
+        Rules:
+        1. **Strict Variant Matching**: If the target product specifies a specific variant or edition (e.g., DDH, Double Dry Hopped, Barrel Aged / BA, TIPA, Hazy, Specific Vintage Year like 2023 or 2024), the selected candidate MUST exactly match that variant or vintage. Do not pick the regular version or a different vintage year if the specific one is requested. If the requested exact variant/vintage is NOT in the candidate list, return -1 (no match).
+        2. **Collab Matching**: If the target is a collaboration beer (e.g., A x B), candidate names might list the breweries in a different order (e.g., B / A) or include both names. This is a valid match.
+        3. **Japanese to English Mapping**: The target product info may be in Japanese or Katakana. Match them correctly to their English/Romanized equivalents on Untappd.
+        4. **No Match Option**: If none of the candidates accurately represent the target product, you MUST output selected_index as -1. Do not guess or force a wrong match.
+
+        Output JSON only:
+        {{
+            "selected_index": 0,
+            "reason": "Clear brief explanation for why this candidate was selected or why none matched."
+        }}
+        """
+
+        try:
+            schema = None
+            if self._supports_response_schema(self.model_id):
+                from google.genai import types
+                schema = types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "selected_index": types.Schema(type=types.Type.INTEGER),
+                        "reason": types.Schema(type=types.Type.STRING)
+                    },
+                    required=["selected_index", "reason"],
+                )
+            data: Optional[Dict[str, Any]] = await self._generate_content(prompt, schema=schema)
+            if data and isinstance(data, dict):
+                idx = int(data.get("selected_index", -1))
+                reason = str(data.get("reason", ""))
+                logger.info(f"  🤖 [LLM Selection] Selected index: {idx} | Reason: {reason}")
+                if 0 <= idx < len(candidates):
+                    chosen = dict(candidates[idx])
+                    chosen['selection_reason'] = reason
+                    return chosen
+                else:
+                    logger.info("  🤖 [LLM Selection] LLM judged NO MATCH (-1) among candidates.")
+                    return None
+        except Exception as e:
+            logger.error(f"[Gemini] select_best_untappd_candidate failed: {e}")
+
+        return None
+
 # Usage Example:
 # extractor = GeminiExtractor()
 # info = await extractor.extract_info("West Coast IPA / Green Cheek Beer Co.")
+
