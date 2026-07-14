@@ -137,22 +137,39 @@ async def _get_untappd_url_single(
     primary_brewery_search = re.split(COLLAB_SPLIT_PATTERN, brewery_name)[0] if brewery_name else ""
     shop_names = {'choseiya', 'ちょうせいや', 'arome', 'アローム', 'beervolta', 'beer volta', 'maruho', 'maruho saketen', 'マルホ酒店', '151l', '一期一会～る', 'antenna america', 'アンテナアメリカ'}
 
-    if not u_brewery_url and primary_brewery_search and primary_brewery_search.strip().lower() not in shop_names:
-        aliases_to_try = [primary_brewery_search]
-        if primary_brewery_search in BREWERY_ALIASES:
-            aliases_to_try.extend(BREWERY_ALIASES[primary_brewery_search])
-        for b_query in aliases_to_try:
-            logger.info(f"Brewery URL missing. Searching for brewery: '{b_query}'")
-            u_brewery_url = await search_brewery(b_query)
-            if u_brewery_url:
-                logger.info(f" Brewery found: {u_brewery_url}")
-                break
+    candidate_brewery_urls: List[str] = [u_brewery_url] if u_brewery_url else []
+
+    if not candidate_brewery_urls and primary_brewery_search and primary_brewery_search.strip().lower() not in shop_names:
+        try:
+            from backend.src.services.store.brewery_manager import BreweryManager
+            bm = BreweryManager()
+            bm_found = bm.find_breweries_in_text(primary_brewery_search) or bm.find_breweries_in_text(brewery_name)
+            if bm_found:
+                for bf in bm_found:
+                    if bf.get("untappd_url") and bf.get("untappd_url") not in candidate_brewery_urls:
+                        candidate_brewery_urls.append(bf.get("untappd_url"))
+                        logger.info(f"  [BreweryManager] Found candidate brewery URL in cache: {bf.get('untappd_url')}")
+        except Exception as e:
+            logger.debug(f"BreweryManager check failed: {e}")
+
+        if not candidate_brewery_urls:
+            aliases_to_try = [primary_brewery_search]
+            if primary_brewery_search in BREWERY_ALIASES:
+                aliases_to_try.extend(BREWERY_ALIASES[primary_brewery_search])
+            for b_query in aliases_to_try:
+                logger.info(f"Brewery URL missing. Searching for brewery: '{b_query}'")
+                b_found_url = await search_brewery(b_query)
+                if b_found_url and b_found_url not in candidate_brewery_urls:
+                    logger.info(f" Brewery found: {b_found_url}")
+                    candidate_brewery_urls.append(b_found_url)
+                    break
 
     # --- Stage 2: Search WITHIN Brewery ---
-    if u_brewery_url:
-        logger.info(f"Searching for '{target_beer_name}' within brewery: {u_brewery_url}")
-        found_url: Optional[str] = await search_brewery_beer(
-            u_brewery_url, 
+    found_url: Optional[str] = None
+    for cand_b_url in candidate_brewery_urls:
+        logger.info(f"Searching for '{target_beer_name}' within brewery: {cand_b_url}")
+        found_url = await search_brewery_beer(
+            cand_b_url, 
             target_beer_name, 
             validate_beer_fn=validate_beer_match,
             validate_beer=target_beer_name,
@@ -160,9 +177,9 @@ async def _get_untappd_url_single(
             validate_brewery=brewery_name,
         )
         if not found_url and beer_name_jp and beer_name_jp != target_beer_name:
-            logger.info(f"🔄 [JP-fallback] Searching for Japanese name '{beer_name_jp}' within brewery: {u_brewery_url}")
+            logger.info(f"🔄 [JP-fallback] Searching for Japanese name '{beer_name_jp}' within brewery: {cand_b_url}")
             found_url = await search_brewery_beer(
-                u_brewery_url,
+                cand_b_url,
                 beer_name_jp,
                 validate_beer_fn=validate_beer_match,
                 validate_beer=beer_name_jp,
@@ -184,9 +201,9 @@ async def _get_untappd_url_single(
                     if w_clean not in tokens and w_clean != target_beer_name and w_clean != beer_name_jp:
                         tokens.append(w_clean)
             for token in tokens[:4]:
-                logger.info(f"🔄 [Token-fallback] Searching for token '{token}' within brewery: {u_brewery_url}")
+                logger.info(f"🔄 [Token-fallback] Searching for token '{token}' within brewery: {cand_b_url}")
                 found_url = await search_brewery_beer(
-                    u_brewery_url,
+                    cand_b_url,
                     token,
                     validate_beer_fn=validate_beer_match,
                     validate_beer=target_beer_name,
@@ -204,6 +221,7 @@ async def _get_untappd_url_single(
                 'failure_reason': None,
                 'error_message': None
             }
+    if candidate_brewery_urls:
         logger.info(" Brewery-specific search returned no verified matches.")
 
     # --- Stage 3: Fallback to DuckDuckGo ---
