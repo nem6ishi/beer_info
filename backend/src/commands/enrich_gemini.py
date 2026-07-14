@@ -87,6 +87,8 @@ class GeminiEnricher:
             if self.pending_payloads:
                 self._save_gemini_data_batch(self.pending_payloads)
                 self.pending_payloads.clear()
+                if not self.offline and self.supabase:
+                    refresh_materialized_view(self.supabase, logger)
 
         # Save any remaining payloads that haven't been committed
         if self.pending_payloads:

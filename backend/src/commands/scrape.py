@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Set, Any, Union
 
-from ..core.db import get_supabase_client, async_execute
+from ..core.db import get_supabase_client, async_execute, refresh_materialized_view
 from ..core.types import ScrapedProduct
 from ..scrapers import beervolta, chouseiya, ichigo_ichie, arome, maruho, antenna_america
 
@@ -131,6 +131,10 @@ async def run_and_save_store(
                 logger.info(f"  💾 {display_name}: Upserted batch {i // batch_size + 1} ({len(batch)} items)")
             except Exception as e:
                 logger.error(f"  ❌ {display_name}: Error upserting batch: {e}")
+        try:
+            refresh_materialized_view(supabase, logger)
+        except Exception as e:
+            logger.warning(f"  ⚠️ {display_name}: Error refreshing view: {e}")
 
     return new_count, updated_count, len(beers_to_upsert)
 

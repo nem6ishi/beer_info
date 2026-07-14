@@ -154,9 +154,11 @@ class UntappdEnricher:
                     if result.get('scraped_payload') and result['scraped_payload'].get('url'):
                         batch_scraped.append(result['scraped_payload'])
 
-            # Commit batch
+            # Commit batch and refresh live materialized view immediately
             if batch_untappd or batch_gemini or batch_scraped:
                 self._commit_updates_batch(batch_untappd, batch_gemini, batch_scraped)
+                if not self.offline and self.supabase:
+                    refresh_materialized_view(self.supabase, logger)
 
             self.total_processed += len(beers_to_process)
             if self.total_processed >= limit:
