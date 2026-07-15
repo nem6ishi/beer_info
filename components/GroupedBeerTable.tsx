@@ -133,19 +133,23 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug, stoc
                             </div>
                         );
 
+                        const isBeer = group.product_type === 'beer';
+                        const originalItemName = cheapestItem?.name || group.original_name || group.beer_name;
+
                         return (
                             <BeerTableRow
                                 key={group.untappd_url || group.beer_name}
                                 idKey={group.untappd_url || group.beer_name}
                                 imageSrc={displayImage}
                                 imageFallbackSrc={fallbackImage}
-                                altText={group.beer_name}
-                                breweryName={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_name : null}
-                                beerName={group.beer_name}
-                                breweryLogo={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_logo : null}
-                                breweryLocation={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_location : null}
-                                breweryType={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_type : null}
-                                fallbackName={group.beer_name}
+                                altText={originalItemName}
+                                breweryName={(group.untappd_url && !group.untappd_url.includes('/search') && isBeer) ? group.brewery_name : null}
+                                beerName={(group.untappd_url && !group.untappd_url.includes('/search') && isBeer) ? group.beer_name : originalItemName}
+                                breweryLogo={(group.untappd_url && !group.untappd_url.includes('/search') && isBeer) ? group.brewery_logo : null}
+                                breweryLocation={(group.untappd_url && !group.untappd_url.includes('/search') && isBeer) ? group.brewery_location : null}
+                                breweryType={(group.untappd_url && !group.untappd_url.includes('/search') && isBeer) ? group.brewery_type : null}
+                                fallbackName={originalItemName}
+
 
 
                                 styleText={group.style}

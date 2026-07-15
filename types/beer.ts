@@ -106,11 +106,13 @@ export interface GroupedBeer {
   untappd_updated_at: string | null;
   is_set: boolean | null;
   product_type: string | null;
+  original_name?: string | null;
   is_sale?: boolean | null;
   sale_tag?: string | null;
   expiry_notice?: string | null;
   items: {
     shop: string;
+    name?: string;
     price: number | string | null;
     price_value: number | null;
     url: string;
@@ -122,6 +124,7 @@ export interface GroupedBeer {
     sale_tag?: string | null;
     expiry_notice?: string | null;
   }[];
+
   min_price: number;
   max_price: number;
   newest_seen: string;
