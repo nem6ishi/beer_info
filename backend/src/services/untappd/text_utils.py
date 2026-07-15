@@ -19,14 +19,18 @@ _ABBREVIATION_MAP: Dict[str, str] = {
     'sdh': 'single dry hopped',
     'ba ': 'barrel aged ',
     'bba ': 'bourbon barrel aged ',
+    'lr ': 'limited release ',
+    'lr': 'limited release',
 }
 
 
 def expand_abbreviations(text: str) -> str:
-    """Expands common beer abbreviations (DDH, TDH, etc.) for better matching."""
+    """Expands common beer abbreviations (DDH, TDH, LR, etc.) for better matching."""
     if not text:
         return text
     result = text
+    # Expand numeric combinations like LR39 -> Limited Release 39
+    result = re.sub(r'\bLR\s*([0-9]+)\b', r'Limited Release \1', result, flags=re.IGNORECASE)
     for abbr, expanded in _ABBREVIATION_MAP.items():
         # Case-insensitive replacement of whole-word abbreviations
         result = re.sub(r'\b' + re.escape(abbr.strip()) + r'\b', expanded.strip(), result, flags=re.IGNORECASE)

@@ -207,16 +207,32 @@ async def _get_untappd_url_single(
             for text in [target_beer_name, beer_name_jp]:
                 if not text:
                     continue
+                # 英数字の複合語 (LR39等) から数字を取り出してトークンに追加
+                num_matches = re.findall(r'\b(?:LR|No\.?|Batch|#|Vol\.?)?\s*([0-9]{1,4})\b', text, re.IGNORECASE)
+                for nm in num_matches:
+                    if nm not in tokens:
+                        tokens.append(nm)
+                # LR の略称展開
+                if re.search(r'\bLR\s*([0-9]+)\b', text, re.IGNORECASE):
+                    m_num = re.search(r'\bLR\s*([0-9]+)\b', text, re.IGNORECASE).group(1)
+                    exp_token = f"Limited Release {m_num}"
+                    if exp_token not in tokens:
+                        tokens.append(exp_token)
+
                 words = re.split(r'[\s/—–\-([（）\])]+', text)
                 for w in reversed(words):
                     w_clean = w.strip()
-                    if len(w_clean) < 2 or (w_clean.isascii() and len(w_clean) < 3):
+                    if len(w_clean) < 2 or (w_clean.isascii() and not w_clean.isdigit() and len(w_clean) < 3):
                         continue
                     if w_clean.lower() in {'ipa', 'dipa', 'tipa', 'neipa', 'ale', 'stout', 'lager', 'pilsner', 'sour', 'porter', 'saison', 'gose', 'hazy', 'double', 'triple', 'single', 'imperial', 'session', 'fruited', 'wild', 'beer', 'cider', 'mead', '330ml', '350ml', '500ml', '750ml'}:
                         continue
+                    # LR39 などの複合語からの数字分離も確実に追加
+                    num_sub = re.findall(r'[0-9]+', w_clean)
+                    if num_sub and num_sub[0] not in tokens and len(num_sub[0]) >= 1:
+                        tokens.append(num_sub[0])
                     if w_clean not in tokens and w_clean != target_beer_name and w_clean != beer_name_jp:
                         tokens.append(w_clean)
-            for token in tokens[:4]:
+            for token in tokens[:6]:
                 logger.info(f"🔄 [Token-fallback] Searching for token '{token}' within brewery: {cand_b_url}")
                 cands_token = await search_brewery_beer_candidates(
                     cand_b_url,
