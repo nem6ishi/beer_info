@@ -141,11 +141,13 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug, stoc
                                 imageFallbackSrc={fallbackImage}
                                 altText={group.beer_name}
                                 breweryName={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_name : null}
-                                beerName={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.beer_name : (cheapestItem?.shop ? cheapestItem.shop : group.beer_name)}
+                                beerName={group.beer_name}
                                 breweryLogo={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_logo : null}
                                 breweryLocation={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_location : null}
                                 breweryType={(group.untappd_url && !group.untappd_url.includes('/search') && group.product_type === 'beer') ? group.brewery_type : null}
-                                fallbackName={cheapestItem?.shop ? cheapestItem.shop : group.beer_name}
+                                fallbackName={group.beer_name}
+
+
                                 styleText={group.style}
                                 abv={group.abv}
                                 ibu={group.ibu}

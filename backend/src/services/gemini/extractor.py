@@ -214,12 +214,13 @@ class GeminiExtractor:
         - **Format**: In "【A/B】", A is Beer Name and B is Brewery Name.
         {shop_guidance}
         - **Collab**: If multiple breweries are involved (×, &, /), include all (e.g., "A x B").
-        - **Clean**: Remove "Sold Out", "入荷", "ml缶", "【クール便】", "【限定品】" etc.
-        - **Product Type**: "beer" (single/pack), "set" (variety), "glass", "other".
+        - **Clean**: Remo        - **Product Type**: "beer" (single can/bottle only), "set" (multi-can/bottle sets like "4 Cans Set", "4本セット", variety packs, tasting sets), "glass", "other".
+        - **is_set**: MUST be `true` if the product contains multiple cans/bottles (e.g. "4 Cans Set", "4本セット", "飲み比べ", "アソート").
         - **brewery_name_jp**: Preserve the original Japanese brewery name as-is (e.g., "ヨロッコ", "家守堂").
         - **brewery_name_en**: Use the brewery's OFFICIAL English/romanized name if known (e.g., "Yorocco Beer" for ヨロッコ, "Yamorido" for 家守堂). For Japanese-only breweries, use phonetic romanization (NOT semantic translation). WRONG: "Root + Branch Brewing" for ヨロッコ. RIGHT: "Yorocco Beer".
         - **beer_name_core**: The essential/searchable part of the beer name. Remove edition qualifiers ("Nth Anniversary", "Special Edition", "Limited", "Reserve") and beer style suffixes (IPA, Stout, NE IPA, etc.). Example: "The Realm's Remedy 11th Anniversary IPA" → "The Realm's Remedy". "Casimiroa NE IPA" → "Casimiroa".
-        - **search_hint**: A short, optimized Untappd search query (max ~4 words). Format: "[beer_name_core] [brewery_name_en]". If the brewery is Japanese and the official English name is uncertain, use the Japanese brewery name instead. Example: "Chakabuki Yamorido", "ROOTS ROCK Yorocco".
+        - **search_hint**: A short, optimized Untappd search query (max ~4 words). Format: "[beer_name_core] [brewery_name_en]". If the beer name is in Japanese (e.g. 金鬼, 其の十, 鬼伝説), ALWAYS include its romanized/phonetic reading (e.g. "Kin-oni", "Sono 10", "Oni Densetsu") in `search_hint` and `beer_name_en` so Untappd can find it!
+        - **Spelling Accuracy**: Be exact with brewery names (e.g. "Tamamura Honten", NOT "Tamamuro"; "Wakasaimo Honpo", NOT "Wakasaimo").
  
         Output JSON:
         {{
@@ -231,9 +232,9 @@ class GeminiExtractor:
         }}
  
         Examples:
-        {examples if examples else '''1. "Beer Name / Brewery" -> {{"brewery_name_en": "Brewery", "beer_name_en": "Beer Name", "beer_name_core": "Beer Name", "search_hint": "Beer Name Brewery", "product_type": "beer"}}
-2. "【カシミロア/バテレ】(VERTERE Casimiroa NE IPA)" -> {{"brewery_name_jp": "バテレ", "brewery_name_en": "VERTERE", "beer_name_en": "Casimiroa NE IPA", "beer_name_core": "Casimiroa", "search_hint": "Casimiroa VERTERE", "product_type": "beer"}}
-3. "【ROOTS ROCK/ヨロッコ】" -> {{"brewery_name_jp": "ヨロッコ", "brewery_name_en": "Yorocco Beer", "beer_name_en": "ROOTS ROCK", "beer_name_core": "ROOTS ROCK", "search_hint": "ROOTS ROCK Yorocco", "product_type": "beer"}}'''}
+        {examples if examples else '''1. "Beer Name / Brewery" -> {{"brewery_name_en": "Brewery", "beer_name_en": "Beer Name", "beer_name_core": "Beer Name", "search_hint": "Beer Name Brewery", "product_type": "beer", "is_set": false}}
+2. "【カシミロア/バテレ】(VERTERE Casimiroa NE IPA)" -> {{"brewery_name_jp": "バテレ", "brewery_name_en": "VERTERE", "beer_name_en": "Casimiroa NE IPA", "beer_name_core": "Casimiroa", "search_hint": "Casimiroa VERTERE", "product_type": "beer", "is_set": false}}
+3. "テスト : 4本セット | TEST: 4 Cans Set《7/16-17入荷予定》" -> {{"brewery_name_jp": null, "brewery_name_en": null, "beer_name_en": "TEST", "beer_name_core": "TEST", "search_hint": "TEST", "product_type": "set", "is_set": true}}'''}
         """
 
     def _clean_product_title(self, title: str, shop: Optional[str]) -> str:
@@ -242,28 +243,38 @@ class GeminiExtractor:
         if not title:
             return ""
         
-        # ちょうせいやは【ビール名/ブルワリー名】の形式のためスキップ
-        if shop != "ちょうせいや":
-            # 【】で囲まれた特定の注意事項（予定、ご注文、本以上、入荷、クール便、限定、予約、空輸など）を削除
-            pattern = r'【[^】]*(?:予定|ご注文|本以上|入荷|クール便|限定|予約|空輸|おひとり様|必須|同時購入|推し)[^】]*】'
-            title = re.sub(pattern, '', title)
+        # 【】や《》で囲まれた特定の注意事項（予定、ご注文、本以上、入荷、クール便、限定、予約、空輸、おひとり様、必須、同時購入、推しなど）を削除
+        pattern = r'[【《\[<][^】》\]>]*(?:予定|ご注文|本以上|入荷|クール便|限定|予約|空輸|おひとり様|必須|同時購入|推し)[^】》\]>]*[】》\]>]'
+        title = re.sub(pattern, '', title)
         
         return title.strip()
+
+    def _apply_set_override(self, res: GeminiExtraction, original_title: str) -> GeminiExtraction:
+        """Deterministic override: If title explicitly mentions set keywords, enforce set status."""
+        import re
+        set_pattern = re.compile(r'(\d+本(?:パック|セット|アソート|飲み比べ)|\d+\s*Cans?\s*(?:Set|Pack)|\d+\s*Bottles?\s*(?:Set|Pack)|飲み比べ|アソート|お試しセット|本セット|缶セット|Variety\s*Pack)', re.IGNORECASE)
+        if set_pattern.search(original_title):
+            if not res["is_set"] or res["product_type"] != "set":
+                logger.info(f"  🔧 Enforcing SET classification due to explicit keywords in title: '{original_title}'")
+                res["is_set"] = True
+                res["product_type"] = "set"
+        return res
+
 
     async def extract_info(self, product_name: str, known_brewery: Optional[str] = None, shop: Optional[str] = None) -> GeminiExtraction:
         """Main entry point for extracting beer information."""
         # 1. Tier 1: Product Title Exact Match Cache
         tier1_res = await self.cache_resolver.resolve_tier1_exact_match(product_name)
         if tier1_res:
-            return tier1_res
+            return self._apply_set_override(tier1_res, product_name)
 
         # 2. Tier 2: Dictionary Match Cache
         tier2_res = await self.cache_resolver.resolve_tier2_dictionary_match(product_name, shop)
         if tier2_res:
-            return tier2_res
+            return self._apply_set_override(tier2_res, product_name)
 
         if not self.client or self.daily_request_count >= self.global_daily_limit:
-            return self._empty_result()
+            return self._apply_set_override(self._empty_result(), product_name)
 
         clean_name = self._clean_product_title(product_name, shop)
         logger.info(f"[Gemini] Extracting: {clean_name} (Original: {product_name}, Known: {known_brewery}, Shop: {shop})")
@@ -311,11 +322,12 @@ class GeminiExtractor:
                     "is_set": data.get("is_set", False),
                     "raw_response": data.get("raw_response")
                 }
-                return res
+                return self._apply_set_override(res, product_name)
         except Exception as e:
             logger.error(f"[Gemini] Extraction failed: {e}")
 
-        return self._empty_result()
+        return self._apply_set_override(self._empty_result(), product_name)
+
 
     def _empty_result(self) -> GeminiExtraction:
         """Returns a default empty result structure."""
