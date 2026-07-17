@@ -297,5 +297,87 @@
     "Minami Shinshu Beer": [
         "Minamishinshu Beer",
         "南信州ビール"
+    ],
+    "Johana Beer": [
+        "Johana Beer Co.",
+        "Johana",
+        "Shirakawa Beer",
+        "城端麦酒"
+    ],
+    "Shirakawa Beer": [
+        "Johana Beer"
+    ],
+    "Bia Herun": [
+        "Beer Hearn",
+        "Shimane Beer Co."
+    ],
+    "Kyufuku Brewing": [
+        "Kyufuku Brewing Honjima",
+        "Kyufuku",
+        "Kufuku",
+        "久福",
+        "047福",
+        "045福"
+    ],
+    "Kufuku": [
+        "Kyufuku Brewing Honjima",
+        "Kyufuku Brewing"
+    ],
+    "Hop Kotan": [
+        "Hop Kotan Brewing",
+        "Hoppu Kotan",
+        "Hoppukotan",
+        "Kofukotan",
+        "Kofukotan Beer",
+        "忽布古丹",
+        "忽布古丹醸造"
+    ],
+    "Kofukotan": [
+        "Hop Kotan Brewing",
+        "Hop Kotan"
+    ],
+    "Hoppukotan": [
+        "Hop Kotan Brewing",
+        "Hop Kotan"
+    ],
+    "Locobeer": [
+        "Lokovia",
+        "ロコビア"
+    ],
+    "Lokovia": [
+        "Locobeer"
+    ],
+    "Minamiaizu Mountain Brewing": [
+        "Min'aizu Mountain",
+        "南会津マウンテン"
+    ],
+    "Min'aizu Mountain": [
+        "Minamiaizu Mountain Brewing"
+    ],
+    "Evil Twin Brewing": [
+        "Evil Twin Brewing NYC",
+        "Evil Twin NYC",
+        "Evil Twin NY",
+        "Evil Twin"
+    ],
+    "Evil Twin NYC": [
+        "Evil Twin Brewing",
+        "Evil Twin Brewing NYC"
+    ],
+    "Evil Twin NY": [
+        "Evil Twin Brewing",
+        "Evil Twin Brewing NYC"
+    ],
+    "Falo Brewing": [
+        "Falo",
+        "ファロ",
+        "Faló"
+    ],
+    "Falo": [
+        "Falo Brewing"
+    ],
+    "North Island": [
+        "North Island Beer",
+        "North Island Brewing"
     ]
 }
