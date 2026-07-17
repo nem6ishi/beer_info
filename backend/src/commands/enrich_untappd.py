@@ -470,6 +470,7 @@ class UntappdEnricher:
         beer_name_jp: Optional[str] = beer.get('beer_name_jp')
         search_hint: Optional[str] = beer.get('search_hint')
         beer_name_core: Optional[str] = beer.get('beer_name_core')
+        original_title: Optional[str] = beer.get('name')
 
         logger.info(f"  🔍 Searching Untappd for: {brewery} - {beer_name}")
         search_result: UntappdSearchResult = await get_untappd_url(
@@ -477,7 +478,8 @@ class UntappdEnricher:
             beer_name_jp=beer_name_jp,
             brewery_url=brewery_url_hint,
             search_hint=search_hint,
-            beer_name_core=beer_name_core
+            beer_name_core=beer_name_core,
+            original_title=original_title,
         )
 
         # 3. Two-pass retry & inference when no_results
@@ -522,7 +524,8 @@ class UntappdEnricher:
                         inf_result: UntappdSearchResult = await get_untappd_url(
                             brewery_name=eb_name,
                             beer_name=eb_beer,
-                            search_hint=f"{eb_name} {eb_beer}"
+                            search_hint=f"{eb_name} {eb_beer}",
+                            original_title=original_title,
                         )
                         if inf_result.get('success') and inf_result.get('url'):
                             logger.info(f"  🎉 [Phase A] Found via inferred English names: {inf_result.get('url')}")
@@ -548,7 +551,8 @@ class UntappdEnricher:
                         brewery_name=brewery,
                         beer_name=beer_name,
                         search_hint=alt_query,
-                        beer_name_core=beer_name_core
+                        beer_name_core=beer_name_core,
+                        original_title=original_title,
                     )
                     if retry_result.get('success'):
                         logger.info(f"  ✅ [Phase B] Found: {retry_result.get('url')}")

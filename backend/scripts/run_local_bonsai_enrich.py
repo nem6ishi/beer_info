@@ -223,7 +223,8 @@ async def main():
             beer_name_jp=bonsai_data.get('beer_name_jp'),
             brewery_url=l_url_hint,
             search_hint=bonsai_data.get('search_hint'),
-            beer_name_core=bonsai_data.get('beer_name_core')
+            beer_name_core=bonsai_data.get('beer_name_core'),
+            original_title=title
         )
 
         found_url = None

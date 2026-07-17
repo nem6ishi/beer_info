@@ -54,6 +54,7 @@ async def get_untappd_url(
     brewery_url: Optional[str] = None,
     search_hint: Optional[str] = None,
     beer_name_core: Optional[str] = None,
+    original_title: Optional[str] = None,
 ) -> UntappdSearchResult:
     """
     Searches for an Untappd beer page with a multi-stage strategy.
@@ -68,7 +69,8 @@ async def get_untappd_url(
         beer_name_jp=beer_name_jp,
         brewery_url=brewery_url,
         search_hint=search_hint,
-        beer_name_core=beer_name_core
+        beer_name_core=beer_name_core,
+        original_title=original_title,
     )
     
     if result.get('success'):
@@ -102,7 +104,8 @@ async def get_untappd_url(
             beer_name_jp=beer_name_jp,
             brewery_url=brewery_url,
             search_hint=no_year_search_hint,
-            beer_name_core=no_year_beer_name_core
+            beer_name_core=no_year_beer_name_core,
+            original_title=original_title,
         )
         if retry_result.get('success'):
             logger.info("✅ [Year-fallback] Found match without year!")
@@ -118,6 +121,7 @@ async def _get_untappd_url_single(
     brewery_url: Optional[str] = None,
     search_hint: Optional[str] = None,
     beer_name_core: Optional[str] = None,
+    original_title: Optional[str] = None,
 ) -> UntappdSearchResult:
     """
     Core search logic for a single pass.
@@ -358,8 +362,9 @@ async def _get_untappd_url_single(
             from backend.src.services.gemini.extractor import GeminiExtractor
             extractor = GeminiExtractor()
             if extractor.client:
+                actual_product_name = original_title or target_beer_name
                 best_match = await extractor.select_best_untappd_candidate(
-                    product_name=target_beer_name,
+                    product_name=actual_product_name,
                     brewery=brewery_name,
                     beer_name=target_beer_name,
                     candidates=all_candidates

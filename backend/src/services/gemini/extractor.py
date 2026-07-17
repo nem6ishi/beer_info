@@ -480,7 +480,7 @@ class GeminiExtractor:
         Please choose the single best matching candidate from the list below, or return -1 if none of them accurately match the target product.
 
         Target Product Info:
-        - Product Title: "{product_name}"
+        - Product Title (Original Shop Product Name): "{product_name}"
         - Expected Brewery: "{brewery}"
         - Expected Beer Name: "{beer_name}"
 
@@ -488,8 +488,8 @@ class GeminiExtractor:
 {candidates_text}
 
         Rules:
-        1. **Strict Variant Matching**: If the target product specifies a specific variant or edition (e.g., DDH, Double Dry Hopped, Barrel Aged / BA, TIPA, Hazy, Specific Vintage Year like 2023 or 2024), the selected candidate MUST exactly match that variant or vintage. Do not pick the regular version or a different vintage year if the specific one is requested. If the requested exact variant/vintage is NOT in the candidate list, return -1 (no match).
-        2. **Collab Matching**: If the target is a collaboration beer (e.g., A x B), candidate names might list the breweries in a different order (e.g., B / A) or include both names. This is a valid match.
+        1. **Strict Variant & Title Matching**: Pay very close attention to "Product Title (Original Shop Product Name)" above, which contains the raw shop listing title. If it specifies a specific variant, hop, adjunct, or edition (e.g., DDH, Double Dry Hopped, Barrel Aged / BA, TIPA, Hazy, w/ lemon or fruit, batch number, Specific Vintage Year like 2023 or 2024), the selected candidate MUST exactly match that variant or vintage. Do not pick the regular version or a different vintage year if the specific one is requested. If the requested exact variant/vintage is NOT in the candidate list, return -1 (no match).
+        2. **Collab Matching**: If the target is a collaboration beer (e.g., A x B or mentioned in Product Title), candidate names might list the breweries in a different order (e.g., B / A) or include both names. This is a valid match.
         3. **Japanese to English Mapping**: The target product info may be in Japanese or Katakana. Match them correctly to their English/Romanized equivalents on Untappd.
         4. **No Match Option**: If none of the candidates accurately represent the target product, you MUST output selected_index as -1. Do not guess or force a wrong match.
 
