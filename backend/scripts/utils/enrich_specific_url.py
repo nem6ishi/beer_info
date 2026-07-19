@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core.db import get_supabase_client
-from src.services.gemini.extractor import GeminiExtractor
+from src.services.llm.gemini_extractor import GeminiExtractor
 from src.services.store.brewery_manager import BreweryManager
 from src.services.untappd.searcher import get_untappd_url
 

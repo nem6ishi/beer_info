@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 
 from mlx_lm import load, stream_generate
 from backend.src.core.db import get_supabase_client, refresh_materialized_view
-from backend.src.services.gemini.extractor import GeminiExtractor
+from backend.src.services.llm import get_llm_extractor
 from backend.src.services.untappd.searcher import get_untappd_url
 from backend.scripts.verify_local_gemma4 import BreweryManager, resolve_brewery_hint
 
@@ -105,11 +105,12 @@ async def main():
     parser.add_argument("--batch-size", type=int, default=100, help="Number of items to process in this run")
     parser.add_argument("--offset", type=int, default=0, help="Offset for target items")
     parser.add_argument("--target", choices=["missing_gemini", "missing_untappd", "all_missing"], default="all_missing", help="Target criteria")
+    parser.add_argument("--shop", type=str, default=None, help="Specific shop to filter by (will fetch from scraped_beers)")
     args = parser.parse_args()
 
     load_dotenv()
     logger.info("🌿 Starting Local Bonsai 27B Enrichment Pipeline...")
-    logger.info(f"⚙️ Target: {args.target} | Batch Size: {args.batch_size} | Offset: {args.offset}")
+    logger.info(f"⚙️ Target: {args.target} | Batch Size: {args.batch_size} | Offset: {args.offset} | Shop: {args.shop}")
 
     supabase = get_supabase_client()
     if not supabase:
@@ -118,38 +119,75 @@ async def main():
 
     # 1. ターゲットの取得
     logger.info("🔍 DBから未Enrich対象アイテムを取得中...")
-    
-    # 1. ターゲットの取得: AIでビール(product_type='beer')と判定済みだが untappd_url が null のアイテムを最優先取得
-    logger.info("🔍 DBから「AIでビールと判定済みだが未紐付け」のアイテムを取得中...")
-    res = supabase.table('gemini_data').select('url, product_type, untappd_url, brewery_name_en, beer_name_en, search_hint') \
-                  .eq('product_type', 'beer').is_('untappd_url', 'null') \
-                  .limit(args.batch_size).offset(args.offset).execute()
-    
-    target_urls = [r['url'] for r in (res.data or [])]
-    
-    # URL から scraped_beers の商品名(name)やショップ(shop)をバルク取得
-    scraped_map = {}
-    if target_urls:
-        for i in range(0, len(target_urls), 200):
-            chunk = target_urls[i:i+200]
-            s_res = supabase.table('scraped_beers').select('url, name, shop').in_('url', chunk).execute()
-            for sr in (s_res.data or []):
-                scraped_map[sr['url']] = sr
-
     target_items = []
-    for r in (res.data or []):
-        url = r['url']
-        s_info = scraped_map.get(url, {})
-        target_items.append({
-            'url': url,
-            'title': s_info.get('name') or r.get('beer_name_en') or 'Unknown Title',
-            'shop': s_info.get('shop') or 'Unknown Shop',
-            'brewery_hint': r.get('brewery_name_en'),
-            'untappd_url': None,
-            'product_type': 'beer'
-        })
+    skipped_items = 0
 
-    logger.info(f"🎯 対象アイテム取得完了: 合計 {len(target_items)} 件")
+    import re
+    set_pattern = re.compile(r'(\d+本(?:パック|セット|アソート|飲み比べ)|\d+\s*Cans?\s*(?:Set|Pack)|\d+\s*Bottles?\s*(?:Set|Pack)|飲み比べ|アソート|お試しセット|本セット|缶セット|Variety\s*Pack)', re.IGNORECASE)
+    glass_pattern = re.compile(r'(グラス|Glass|Tシャツ|パーカー|アパレル|キャップ|グラスセット)', re.IGNORECASE)
+
+    if args.shop:
+        logger.info(f"🔍 DBから「{args.shop}」の未紐付けアイテムを取得中...")
+        res = supabase.table('scraped_beers').select('url, name, shop').eq('shop', args.shop).is_('untappd_url', 'null').limit(args.batch_size).offset(args.offset).execute()
+        
+        for r in (res.data or []):
+            url = r['url']
+            title = r['name'] or 'Unknown Title'
+            
+            # 事前フィルターによる高速化 (スキップ)
+            is_set = bool(set_pattern.search(title))
+            is_glass = bool(glass_pattern.search(title))
+            
+            if is_set or is_glass:
+                ptype = 'set' if is_set else 'glass'
+                logger.info(f"  ⏭️ [事前スキップ] {ptype.upper()}として検知: {title}")
+                # gemini_data に直接保存
+                supabase.table('gemini_data').upsert({
+                    'url': url,
+                    'brewery_name_jp': None, 'brewery_name_en': None,
+                    'beer_name_jp': None, 'beer_name_en': None, 'beer_name_core': None,
+                    'search_hint': None,
+                    'product_type': ptype,
+                    'is_set': is_set
+                }).execute()
+                # scraped_beers 側にもマーク
+                supabase.table('scraped_beers').update({'untappd_url': 'skipped'}).eq('url', url).execute()
+                skipped_items += 1
+                continue
+
+            target_items.append({
+                'url': url,
+                'title': title,
+                'shop': r['shop'] or 'Unknown Shop',
+                'brewery_hint': None,
+                'untappd_url': None,
+                'product_type': 'beer'
+            })
+    else:
+        logger.info("🔍 DBから「AIでビールと判定済みだが未紐付け」のアイテムを取得中...")
+        res = supabase.table('gemini_data').select('url, product_type, untappd_url, brewery_name_en, beer_name_en, search_hint').eq('product_type', 'beer').is_('untappd_url', 'null').limit(args.batch_size).offset(args.offset).execute()
+        target_urls = [r['url'] for r in (res.data or [])]
+        scraped_map = {}
+        if target_urls:
+            for i in range(0, len(target_urls), 200):
+                chunk = target_urls[i:i+200]
+                s_res = supabase.table('scraped_beers').select('url, name, shop').in_('url', chunk).execute()
+                for sr in (s_res.data or []):
+                    scraped_map[sr['url']] = sr
+
+        for r in (res.data or []):
+            url = r['url']
+            s_info = scraped_map.get(url, {})
+            target_items.append({
+                'url': url,
+                'title': s_info.get('name') or r.get('beer_name_en') or 'Unknown Title',
+                'shop': s_info.get('shop') or 'Unknown Shop',
+                'brewery_hint': r.get('brewery_name_en'),
+                'untappd_url': None,
+                'product_type': 'beer'
+            })
+
+    logger.info(f"🎯 対象アイテム取得完了: 合計 {len(target_items)} 件 (事前スキップ: {skipped_items} 件)")
     if not target_items:
         logger.info("✨ 処理対象がありません！完了です。")
         return

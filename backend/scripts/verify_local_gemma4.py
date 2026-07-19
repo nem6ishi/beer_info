@@ -45,14 +45,14 @@ except Exception:
     pass
 
 from mlx_lm import load, generate
-from backend.src.services.gemini.extractor import GeminiExtractor
+from backend.src.services.llm.gemini_extractor import GeminiExtractor
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 # モデル設定
-LOCAL_MODEL_NAME = "mlx-community/gemma-4-12B-it-4bit"
+LOCAL_MODEL_NAME = "./models/gemma-4-26b-a4b-it-2bit"
 API_MODEL_NAME = os.getenv("GEMINI_MODEL_ID", "gemma-4-31b-it")
 
 # 評価用テストサンプル (難易度・バリエーション別 8件)
@@ -66,10 +66,10 @@ TEST_SAMPLES = [
     },
     {
         "id": 2,
-        "title": "【ROOTS ROCK/ヨロッコ】(VERTERE Casimiroa NE IPA)",
-        "shop": "BEER VOLTA",
-        "brewery_hint": None,
-        "desc": "コラボ / 複数ブルワリー表記"
+        "title": "Societe Best Friends Forever (Fremont collab) (473ml) / ベストフレンドフォエバー",
+        "shop": "Antenna America",
+        "brewery_hint": "Societe Brewing Company",
+        "desc": "実在コラボ / 複数ブルワリー表記"
     },
     {
         "id": 3,
@@ -161,6 +161,28 @@ def safe_parse_json(text: str, source: str) -> Optional[Dict[str, Any]]:
 
 from mlx_lm import stream_generate
 from backend.src.services.untappd.searcher import get_untappd_url
+from backend.src.services.store.brewery_manager import BreweryManager
+
+
+def resolve_brewery_hint(bm: BreweryManager, data: dict) -> Tuple[str, Optional[str]]:
+    if not bm or not data:
+        return "", None
+    b_name = data.get('brewery_name_en') or data.get('brewery_name_jp') or ""
+    b_url = None
+    if b_name:
+        b_info = bm.brewery_index.get(b_name.lower())
+        if not b_info:
+            found = bm.find_breweries_in_text(b_name)
+            if found:
+                b_info = found[0]
+        if not b_info and data.get('beer_name_jp'):
+            found = bm.find_breweries_in_text(data['beer_name_jp'])
+            if found:
+                b_info = found[0]
+        if b_info:
+            b_name = b_info.get('name_en') or b_name
+            b_url = b_info.get('untappd_url')
+    return b_name, b_url
 
 
 def generate_json_fast(model, tokenizer, prompt: str, max_tokens: int = 300) -> str:
@@ -239,10 +261,13 @@ async def extract_with_cloud_api(client: genai.Client, model_id: str, prompt: st
             response_schema=schema,
             max_output_tokens=1500,
         )
-        response = await client.aio.models.generate_content(
-            model=model_id,
-            contents=prompt,
-            config=config,
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model_id,
+                contents=prompt,
+                config=config,
+            ),
+            timeout=25.0,
         )
         elapsed = time.time() - start_time
         if response.text:
@@ -264,6 +289,12 @@ async def main():
         sys.exit(1)
     cloud_client = genai.Client(api_key=api_key)
     extractor = GeminiExtractor()
+    try:
+        bm = BreweryManager()
+        logger.info("🏢 BreweryManager ロード完了")
+    except Exception as e:
+        bm = None
+        logger.warning(f"⚠️ BreweryManager ロードエラー: {e}")
     
     print(f"\n🚀 ローカル MLX モデル [{LOCAL_MODEL_NAME}] をロードしています...", flush=True)
     load_start = time.time()
@@ -301,10 +332,12 @@ async def main():
         cloud_match_name = "N/A"
         if cloud_data and cloud_data.get('product_type') == 'beer':
             print("  🔍 [Enrich/Cloud API] 抽出情報から Untappd アイテムを検索中...", flush=True)
+            c_brewery, c_url_hint = resolve_brewery_hint(bm, cloud_data)
             c_res = await get_untappd_url(
-                brewery_name=cloud_data.get('brewery_name_en') or cloud_data.get('brewery_name_jp') or "",
+                brewery_name=c_brewery or cloud_data.get('brewery_name_en') or cloud_data.get('brewery_name_jp') or "",
                 beer_name=cloud_data.get('beer_name_en') or cloud_data.get('beer_name_jp') or "",
                 beer_name_jp=cloud_data.get('beer_name_jp'),
+                brewery_url=c_url_hint,
                 search_hint=cloud_data.get('search_hint'),
                 beer_name_core=cloud_data.get('beer_name_core')
             )
@@ -319,10 +352,12 @@ async def main():
         local_match_name = "N/A"
         if local_data and local_data.get('product_type') == 'beer':
             print("  🔍 [Enrich/Local MLX] 抽出情報から Untappd アイテムを検索中...", flush=True)
+            l_brewery, l_url_hint = resolve_brewery_hint(bm, local_data)
             l_res = await get_untappd_url(
-                brewery_name=local_data.get('brewery_name_en') or local_data.get('brewery_name_jp') or "",
+                brewery_name=l_brewery or local_data.get('brewery_name_en') or local_data.get('brewery_name_jp') or "",
                 beer_name=local_data.get('beer_name_en') or local_data.get('beer_name_jp') or "",
                 beer_name_jp=local_data.get('beer_name_jp'),
+                brewery_url=l_url_hint,
                 search_hint=local_data.get('search_hint'),
                 beer_name_core=local_data.get('beer_name_core')
             )

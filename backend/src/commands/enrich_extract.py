@@ -1,6 +1,6 @@
 """
-Gemini-only enrichment command.
-Extracts brewery and beer names using Gemini API.
+LLM-based enrichment command.
+Extracts brewery and beer names using a specified LLM provider (Gemini, Local MLX, etc).
 """
 import asyncio
 import logging
@@ -9,14 +9,14 @@ from typing import Dict, Any, Optional, List, cast, Tuple
 
 from ..core.db import get_supabase_client, refresh_materialized_view, sync_execute
 from ..core.types import GeminiExtraction
-from ..services.gemini.extractor import GeminiExtractor
+from ..services.llm import BaseExtractor, get_llm_extractor
 from ..services.store.brewery_manager import BreweryManager
 from .failure_tracker import record_enrichment_failure
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-class GeminiEnricher:
-    """Encapsulates the Gemini enrichment process and its state."""
+class LLMEnricher:
+    """Encapsulates the LLM extraction process and its state."""
 
     def __init__(
         self,
@@ -24,6 +24,8 @@ class GeminiEnricher:
         force_reprocess: bool = False,
         shop_filter: Optional[str] = None,
         keyword_filter: Optional[str] = None,
+        llm_provider: str = "gemini",
+        llm_model_id: Optional[str] = None,
     ):
         self.offline = offline
         self.force_reprocess = force_reprocess
@@ -31,7 +33,7 @@ class GeminiEnricher:
         self.keyword_filter = keyword_filter
         
         self.supabase: Any = get_supabase_client()
-        self.extractor: GeminiExtractor = GeminiExtractor()
+        self.extractor: BaseExtractor = get_llm_extractor(provider=llm_provider, model_id=llm_model_id)
         self.brewery_manager: BreweryManager = BreweryManager()
 
         self.stats: Dict[str, int] = {"processed": 0, "enriched": 0, "errors": 0}
@@ -40,14 +42,13 @@ class GeminiEnricher:
     async def run(self, limit: int = 50) -> None:
         """Runs the enrichment pipeline up to the specified limit."""
         logger.info("=" * 70)
-        logger.info("🤖 Gemini Enrichment (Supabase)")
+        logger.info(f"🤖 LLM Extraction ({self.extractor.__class__.__name__})")
         if self.offline:
-            logger.info("📴 OFFLINE MODE: Skipping API calls.")
+            logger.info("📴 OFFLINE MODE: Skipping LLM calls.")
         logger.info("=" * 70)
 
-        if not self.offline and not self.extractor.client:
-            logger.error("\n❌ Error: Gemini API key not configured")
-            return
+        if not self.offline and not getattr(self.extractor, 'client', True) and getattr(self.extractor, 'model', True) is None:
+            logger.warning("\n⚠️ Warning: No valid LLM client found, might fail depending on provider")
         
         logger.info(f"📚 Loaded {len(self.brewery_manager.breweries)} known breweries as hints")
         
@@ -142,13 +143,13 @@ class GeminiEnricher:
         try:
             if need_gemini:
                 if self.offline:
-                    logger.info("  ⏭️ Gemini enrichment needed but skipped in offline mode.")
+                    logger.info("  ⏭️ LLM extraction needed but skipped in offline mode.")
                     return 'skipped', None
                 
                 # Extract
-                enriched_info: Optional[GeminiExtraction] = await self._extract_gemini(beer)
+                enriched_info: Optional[GeminiExtraction] = await self._extract_llm(beer)
                 if not enriched_info:
-                    record_enrichment_failure(self.supabase, url, 'gemini_no_info', error_message="Gemini returned no valid info.")
+                    record_enrichment_failure(self.supabase, url, 'gemini_no_info', error_message="LLM returned no valid info.")
                     return 'error', None
                 
                 # Self-Healing Dictionary Feedback Loop
@@ -174,7 +175,7 @@ class GeminiEnricher:
                 return 'enriched', payload
                 
             else:
-                logger.info(f"  ⏩ Gemini data already exists. Skipping extraction. (Brewery: {beer.get('brewery_name_en')})")
+                logger.info(f"  ⏩ Extracted data already exists. Skipping extraction. (Brewery: {beer.get('brewery_name_en')})")
                 return 'already_exists', None
 
         except Exception as e:
@@ -182,8 +183,8 @@ class GeminiEnricher:
             record_enrichment_failure(self.supabase, url, 'gemini_error', error_message=str(e))
             return 'error', None
 
-    async def _extract_gemini(self, beer: Dict[str, Any]) -> Optional[GeminiExtraction]:
-        """Helper to get hints and call Gemini."""
+    async def _extract_llm(self, beer: Dict[str, Any]) -> Optional[GeminiExtraction]:
+        """Helper to get hints and call LLM."""
         known_brewery: Optional[str] = None
         beer_name: str = beer.get('name') or ""
         matches: List[Dict[str, Any]] = self.brewery_manager.find_breweries_in_text(beer_name)
@@ -192,7 +193,7 @@ class GeminiEnricher:
             known_brewery = ", ".join([b['name_en'] for b in matches])
             logger.info(f"  🏭 Known brewery hints: {known_brewery}")
         
-        logger.info("  🤖 Calling Gemini API...")
+        logger.info("  🤖 Calling LLM Extractor...")
         return await self.extractor.extract_info(beer_name, known_brewery=known_brewery, shop=beer.get('shop'))
 
     def _save_gemini_data_batch(self, payloads: List[Dict[str, Any]]) -> None:
@@ -237,26 +238,30 @@ class GeminiEnricher:
         """Prints a summary of the enrichment run."""
         logger.info(f"\n{'='*70}\n📈 Final Statistics\n{'='*70}")
         logger.info(f"  Total processed: {self.stats['processed']}")
-        logger.info(f"  Gemini enriched: {self.stats['enriched']}")
+        logger.info(f"  LLM extracted: {self.stats['enriched']}")
         logger.info(f"  Errors: {self.stats['errors']}")
         logger.info(f"\n  Completed at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"{'='*70}\n✨ Gemini enrichment completed!\n{'='*70}")
+        logger.info(f"{'='*70}\n✨ LLM extraction completed!\n{'='*70}")
 
 
-async def enrich_gemini(
+async def enrich_extract(
     limit: int = 50, 
     shop_filter: Optional[str] = None, 
     keyword_filter: Optional[str] = None, 
     offline: bool = False, 
-    force_reprocess: bool = False
+    force_reprocess: bool = False,
+    llm_provider: str = "gemini",
+    llm_model_id: Optional[str] = None
 ) -> None:
     """
-    Entry point: Enrich beers with Gemini extraction only.
+    Entry point: Extract beers using the specified LLM.
     """
-    enricher = GeminiEnricher(
+    enricher = LLMEnricher(
         offline=offline,
         force_reprocess=force_reprocess,
         shop_filter=shop_filter,
-        keyword_filter=keyword_filter
+        keyword_filter=keyword_filter,
+        llm_provider=llm_provider,
+        llm_model_id=llm_model_id
     )
     await enricher.run(limit=limit)

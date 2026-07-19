@@ -260,7 +260,7 @@ class TestAbbreviationExpansion(unittest.IsolatedAsyncioTestCase):
         b = normalize_for_comparison("Double Dry Hopped Caligula", expand_abbr=True)
         self.assertEqual(a, b)
 
-@patch('backend.src.services.gemini.extractor.GeminiExtractor.select_best_untappd_candidate')
+@patch('backend.src.services.llm.gemini_extractor.GeminiExtractor.select_best_untappd_candidate')
 @patch('backend.src.services.untappd.searcher.search_brewery_beer_candidates')
 @patch('backend.src.services.untappd.searcher.search_brewery')
 class TestGetUntappdUrl(unittest.IsolatedAsyncioTestCase):

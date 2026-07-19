@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types as genai_types
 from mlx_lm import load, stream_generate
-from backend.src.services.gemini.extractor import GeminiExtractor
+from backend.src.services.llm.gemini_extractor import GeminiExtractor
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(line_buffering=True)

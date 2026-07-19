@@ -15,7 +15,7 @@ from backend.src.core.db import get_supabase_client, refresh_materialized_view
 from backend.src.core.types import UntappdBeerDetails, UntappdSearchResult
 from backend.src.services.untappd.searcher import get_untappd_url, scrape_beer_details, search_brewery_beer
 from backend.src.services.untappd.validators import validate_beer_match, score_beer_match
-from backend.src.services.gemini.extractor import GeminiExtractor
+from backend.src.services.llm import BaseExtractor, get_llm_extractor
 from backend.src.services.store.brewery_manager import BreweryManager
 from backend.src.commands.failure_tracker import record_enrichment_failure, resolve_search_failure
 from backend.src.core.utils import map_details_to_payload
@@ -39,7 +39,9 @@ class UntappdEnricher:
         shop_filter: Optional[str] = None,
         name_filter: Optional[str] = None,
         offline: bool = False,
-        force: bool = False
+        force: bool = False,
+        llm_provider: str = 'gemini',
+        llm_model_id: Optional[str] = None
     ):
         self.mode = mode
         self.shop_filter = shop_filter
@@ -49,7 +51,7 @@ class UntappdEnricher:
         self.supabase: Any = get_supabase_client()
         
         self.brewery_manager: Optional[BreweryManager] = None
-        self.extractor: Optional[GeminiExtractor] = None
+        self.extractor: Optional[BaseExtractor] = None
         
         if self.mode == 'missing':
             try:
@@ -59,10 +61,10 @@ class UntappdEnricher:
                 logger.warning(f"  ⚠️  BreweryManager unavailable: {e}")
 
             try:
-                self.extractor = GeminiExtractor()
-                logger.info(f"  🤖 GeminiExtractor loaded (for Two-pass retry)")
+                self.extractor = get_llm_extractor(provider=llm_provider, model_id=llm_model_id)
+                logger.info(f"  🤖 LLM Extractor loaded ({self.extractor.__class__.__name__} for Two-pass retry)")
             except Exception as e:
-                logger.warning(f"  ⚠️  GeminiExtractor unavailable: {e}")
+                logger.warning(f"  ⚠️  LLM Extractor unavailable: {e}")
 
         self.gemini_cache: Dict[str, str] = {}
         self.untappd_cache: Dict[str, Dict[str, Any]] = {}
@@ -484,8 +486,8 @@ class UntappdEnricher:
 
         # 3. Two-pass retry & inference when no_results
         if not search_result.get('success') and search_result.get('failure_reason') == 'no_results' and self.extractor:
-            # Phase A: Gemini structured English translation & slug inference + self-healing learning loop
-            logger.info(f"  🤖 [Phase A] Asking Gemini to infer English brewery & slug for self-healing loop...")
+            # Phase A: LLM structured English translation & slug inference + self-healing learning loop
+            logger.info(f"  🤖 [Phase A] Asking LLM to infer English brewery & slug for self-healing loop...")
             try:
                 full_name: str = beer.get('name', '')
                 inferred = await self.extractor.infer_untappd_brewery_info(
@@ -534,10 +536,10 @@ class UntappdEnricher:
                             return inf_result.get('url')
                         await asyncio.sleep(1)
             except Exception as inf_e:
-                logger.warning(f"  ⚠️ [Phase A] Gemini inference failed: {inf_e}")
+                logger.warning(f"  ⚠️ [Phase A] LLM inference failed: {inf_e}")
 
             # Phase B: Two-pass retry queries
-            logger.info(f"  🔄 [Phase B] Asking Gemini for alternative queries...")
+            logger.info(f"  🔄 [Phase B] Asking LLM for alternative queries...")
             try:
                 full_name: str = beer.get('name', '')
                 alt_queries: List[str] = await self.extractor.suggest_search_queries(
@@ -559,7 +561,7 @@ class UntappdEnricher:
                         return retry_result.get('url')
                     await asyncio.sleep(1)
             except Exception as e:
-                logger.warning(f"  ⚠️ [Phase B] Gemini retry failed: {e}")
+                logger.warning(f"  ⚠️ [Phase B] LLM retry failed: {e}")
 
         # Record failure
         if not search_result.get('success'):
@@ -653,6 +655,8 @@ async def enrich_untappd(
     name_filter: Optional[str] = None,
     offline: bool = False,
     force: bool = False,
+    llm_provider: str = 'gemini',
+    llm_model_id: Optional[str] = None
 ) -> Set[str]:
     """
     Entry point: Enrich beers with Untappd data.
@@ -662,6 +666,8 @@ async def enrich_untappd(
         shop_filter=shop_filter,
         name_filter=name_filter,
         offline=offline,
-        force=force
+        force=force,
+        llm_provider=llm_provider,
+        llm_model_id=llm_model_id
     )
     return await enricher.run(limit=limit)

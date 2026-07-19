@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from backend.src.services.gemini.extractor import GeminiExtractor
+from backend.src.services.llm.gemini_extractor import GeminiExtractor
 
 @pytest.mark.asyncio
 async def test_extractor_initialization():

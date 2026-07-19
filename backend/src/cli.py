@@ -25,14 +25,18 @@ def main() -> None:
     enrich_parser.add_argument("--limit", type=int, help="Limit number of items to enrich per step", default=50)
     enrich_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
     enrich_parser.add_argument("--keyword", type=str, help="Filter enrichment by partial name match", default=None)
+    enrich_parser.add_argument("--llm", type=str, choices=["gemini", "local_mlx"], default="gemini", help="LLM provider to use")
+    enrich_parser.add_argument("--llm-model", type=str, default=None, help="Specific LLM model ID to use")
 
-    # Enrich Gemini only
-    enrich_gemini_parser = subparsers.add_parser("enrich-gemini", help="Run Gemini enrichment only")
-    enrich_gemini_parser.add_argument("--limit", type=int, help="Limit number of items to enrich", default=50)
-    enrich_gemini_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
-    enrich_gemini_parser.add_argument("--keyword", type=str, help="Filter enrichment by partial name match", default=None)
-    enrich_gemini_parser.add_argument("--offline", action="store_true", help="Offline mode")
-    enrich_gemini_parser.add_argument("--force", action="store_true", help="Force re-process")
+    # Enrich Extract only (formerly enrich-gemini)
+    enrich_extract_parser = subparsers.add_parser("enrich-extract", help="Run LLM extraction only")
+    enrich_extract_parser.add_argument("--limit", type=int, help="Limit number of items to enrich", default=50)
+    enrich_extract_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
+    enrich_extract_parser.add_argument("--keyword", type=str, help="Filter enrichment by partial name match", default=None)
+    enrich_extract_parser.add_argument("--llm", type=str, choices=["gemini", "local_mlx"], default="gemini", help="LLM provider to use")
+    enrich_extract_parser.add_argument("--llm-model", type=str, default=None, help="Specific LLM model ID to use")
+    enrich_extract_parser.add_argument("--offline", action="store_true", help="Offline mode")
+    enrich_extract_parser.add_argument("--force", action="store_true", help="Force re-process")
 
     # Enrich Untappd only
     enrich_untappd_parser = subparsers.add_parser("enrich-untappd", help="Run Untappd enrichment only")
@@ -40,6 +44,8 @@ def main() -> None:
     enrich_untappd_parser.add_argument("--mode", choices=['missing', 'refresh', 'retry-failures'], default='missing', help="Enrichment mode")
     enrich_untappd_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
     enrich_untappd_parser.add_argument("--name_filter", type=str, help="Filter enrichment by partial name match", default=None)
+    enrich_untappd_parser.add_argument("--llm", type=str, choices=["gemini", "local_mlx"], default="gemini", help="LLM provider for retry inference")
+    enrich_untappd_parser.add_argument("--llm-model", type=str, default=None, help="Specific LLM model ID to use")
     enrich_untappd_parser.add_argument("--force", action="store_true", help="Force re-process / ignore backoff")
 
     # Enrich Breweries only
@@ -75,18 +81,18 @@ def main() -> None:
         asyncio.run(update_stock_status(limit=args.limit, shop_filter=args.shop, sort_rating=args.sort_rating))
 
     elif args.command == "enrich":
-        from .commands.enrich_gemini import enrich_gemini
+        from .commands.enrich_extract import enrich_extract
         from .commands.enrich_untappd import enrich_untappd
         from .commands.enrich_breweries import enrich_breweries
 
         async def run_pipeline() -> None:
             logger.info("🚀 Starting Full Enrichment Pipeline...")
             
-            logger.info("\n--- Step 1: Gemini Enrichment ---")
-            await enrich_gemini(limit=args.limit, shop_filter=args.shop, keyword_filter=args.keyword)
+            logger.info(f"\n--- Step 1: LLM Extraction ({args.llm}) ---")
+            await enrich_extract(limit=args.limit, shop_filter=args.shop, keyword_filter=args.keyword, llm_provider=args.llm, llm_model_id=args.llm_model)
             
             logger.info("\n--- Step 2: Untappd Enrichment ---")
-            found_brewery_urls: Optional[Set[str]] = await enrich_untappd(limit=args.limit, mode='missing', shop_filter=args.shop, name_filter=args.keyword)
+            found_brewery_urls: Optional[Set[str]] = await enrich_untappd(limit=args.limit, mode='missing', shop_filter=args.shop, name_filter=args.keyword, llm_provider=args.llm, llm_model_id=args.llm_model)
             
             if found_brewery_urls:
                 logger.info(f"\n--- Step 3: Brewery Enrichment (Targeting {len(found_brewery_urls)} breweries) ---")
@@ -97,13 +103,13 @@ def main() -> None:
 
         asyncio.run(run_pipeline())
         
-    elif args.command == "enrich-gemini":
-        from .commands.enrich_gemini import enrich_gemini
-        asyncio.run(enrich_gemini(limit=args.limit, shop_filter=args.shop, keyword_filter=args.keyword, offline=args.offline, force_reprocess=args.force))
+    elif args.command == "enrich-extract":
+        from .commands.enrich_extract import enrich_extract
+        asyncio.run(enrich_extract(limit=args.limit, shop_filter=args.shop, keyword_filter=args.keyword, offline=args.offline, force_reprocess=args.force, llm_provider=args.llm, llm_model_id=args.llm_model))
         
     elif args.command == "enrich-untappd":
         from .commands.enrich_untappd import enrich_untappd
-        asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode, shop_filter=args.shop, name_filter=args.name_filter, force=args.force))
+        asyncio.run(enrich_untappd(limit=args.limit, mode=args.mode, shop_filter=args.shop, name_filter=args.name_filter, force=args.force, llm_provider=args.llm, llm_model_id=args.llm_model))
     
     elif args.command == "enrich-breweries":
         from .commands.enrich_breweries import enrich_breweries

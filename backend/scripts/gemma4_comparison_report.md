@@ -1,15 +1,15 @@
 # Gemma 4 12B (Local MLX) vs Gemma 4 31B (Cloud API) 抽出＆Enrich結果比較レポート
 
-- **測定日時**: 2026-07-14 23:15:31
-- **ローカルモデル**: `mlx-community/gemma-4-12B-it-4bit` (初回ロード時間: 4.05秒)
+- **測定日時**: 2026-07-15 00:29:28
+- **ローカルモデル**: `mlx-community/gemma-4-12B-it-4bit` (初回ロード時間: 4.07秒)
 - **クラウドモデル**: `gemma-4-31b-it`
-- **平均処理速度**: Cloud `5.57秒/件` vs Local `31.12秒/件`
+- **平均処理速度**: Cloud `4.36秒/件` vs Local `34.22秒/件`
 
 ## 個別詳細テーブル
 
 ### #1. 標準バイリンガル表記
 - **タイトル**: 「`うちゅうブルーイング / Uchu Brewing マーズ / MARS`」 (ショップ: `BEER VOLTA`)
-- **処理時間**: Cloud `8.42秒` vs Local `28.87秒`
+- **処理時間**: Cloud `7.46秒` vs Local `31.20秒`
 
 | 項目 | Cloud API (31B) | Local MLX (12B 4-bit) | 判定 |
 | :--- | :--- | :--- | :--- |
@@ -24,14 +24,14 @@
 
 ### #2. コラボ / 複数ブルワリー表記
 - **タイトル**: 「`【ROOTS ROCK/ヨロッコ】(VERTERE Casimiroa NE IPA)`」 (ショップ: `BEER VOLTA`)
-- **処理時間**: Cloud `4.31秒` vs Local `31.12秒`
+- **処理時間**: Cloud `4.24秒` vs Local `33.13秒`
 
 | 項目 | Cloud API (31B) | Local MLX (12B 4-bit) | 判定 |
 | :--- | :--- | :--- | :--- |
 | 英語ブルワリー名 (`brewery_name_en`) | `Yorocco Beer` | `ROOTS ROCK` | ⚠️ 差異 |
 | 和名ブルワリー名 (`brewery_name_jp`) | `ヨロッコ` | `ヨロッコ` | ⭕ 一致 |
-| ビールコア名 (`beer_name_core`) | `Casimiroa` | `VERTERE Casimiroa` | ⚠️ 差異 |
-| 検索ヒント (`search_hint`) | `Casimiroa Yorocco Beer` | `VERTERE Casimiroa ROOTS ROCK` | ⚠️ 差異 |
+| ビールコア名 (`beer_name_core`) | `ROOTS ROCK` | `VERTERE Casimiroa` | ⚠️ 差異 |
+| 検索ヒント (`search_hint`) | `ROOTS ROCK Yorocco Beer` | `VERTERE Casimiroa ROOTS ROCK` | ⚠️ 差異 |
 | 商品区分 (beer等) (`product_type`) | `beer` | `beer` | ⭕ 一致 |
 | セット商品 (bool) (`is_set`) | `False` | `False` | ⭕ 一致 |
 | **🍺 Untappd URL** | [https://untappd.com/b/yorocco-beer-ginger-saison/5206483](https://untappd.com/b/yorocco-beer-ginger-saison/5206483) | `NotFound (no_results)` | **⚠️ 差異** |
@@ -39,7 +39,7 @@
 
 ### #3. カタカナ＆長文英語ビール名
 - **タイトル**: 「`ジャイガンティック サンシャインスーパースター / Gigantic Sunshine Superstar`」 (ショップ: `BEER VOLTA`)
-- **処理時間**: Cloud `5.67秒` vs Local `31.01秒`
+- **処理時間**: Cloud `3.75秒` vs Local `32.53秒`
 
 | 項目 | Cloud API (31B) | Local MLX (12B 4-bit) | 判定 |
 | :--- | :--- | :--- | :--- |
@@ -54,36 +54,37 @@
 
 ### #4. ノイズ多数・購入制限＆クール便表記
 - **タイトル**: 「`【おひとり様2本限定・クール便必須】鬼伝説 金鬼ペールエール 330ml缶`」 (ショップ: `ちょうせいや`)
-- **処理時間**: Cloud `7.93秒` vs Local `31.59秒`
+- **処理時間**: Cloud `4.29秒` vs Local `31.96秒`
 
 | 項目 | Cloud API (31B) | Local MLX (12B 4-bit) | 判定 |
 | :--- | :--- | :--- | :--- |
-| 英語ブルワリー名 (`brewery_name_en`) | `Wakasaimo Honpo` | `Wakasaimo` | ⚠️ 差異 |
+| 英語ブルワリー名 (`brewery_name_en`) | `Wakasaimo Honpo` | `Wakasaimo Honpo` | ⭕ 一致 |
 | 和名ブルワリー名 (`brewery_name_jp`) | `わかさいも本舗` | `わかさいも本舗` | ⭕ 一致 |
-| ビールコア名 (`beer_name_core`) | `金鬼` | `鬼伝説 金鬼` | ⚠️ 差異 |
-| 検索ヒント (`search_hint`) | `Kinki Wakasaimo Honpo` | `鬼伝説 金鬼 わかさいも本舗` | ⚠️ 差異 |
+| ビールコア名 (`beer_name_core`) | `Kin-oni` | `Kin-oni` | ⭕ 一致 |
+| 検索ヒント (`search_hint`) | `Kin-oni Wakasaimo Honpo` | `Kin-oni Wakasaimo Honpo` | ⭕ 一致 |
 | 商品区分 (beer等) (`product_type`) | `beer` | `beer` | ⭕ 一致 |
 | セット商品 (bool) (`is_set`) | `False` | `False` | ⭕ 一致 |
-| **🍺 Untappd URL** | `NotFound (no_results)` | `NotFound (no_results)` | **❌** |
+| **🍺 Untappd URL** | [https://untappd.com/b/hokkaido-noboribetsu-oni-densetsu-brewery-oni-densetsu-kin-oni-pale-ale/56434](https://untappd.com/b/hokkaido-noboribetsu-oni-densetsu-brewery-oni-densetsu-kin-oni-pale-ale/56434) | [https://untappd.com/b/hokkaido-noboribetsu-oni-densetsu-brewery-oni-densetsu-kin-oni-pale-ale/56434](https://untappd.com/b/hokkaido-noboribetsu-oni-densetsu-brewery-oni-densetsu-kin-oni-pale-ale/56434) | **⭕ 一致** |
+| *(マッチアイテム)* | `Found` | `Found` | -
 
 ### #5. 限定品・数字ネーミング
 - **タイトル**: 「`【限定商品】志賀高原ビール / 其の十 / No.10 - 330ml`」 (ショップ: `BEER VOLTA`)
-- **処理時間**: Cloud `4.95秒` vs Local `29.67秒`
+- **処理時間**: Cloud `3.63秒` vs Local `31.76秒`
 
 | 項目 | Cloud API (31B) | Local MLX (12B 4-bit) | 判定 |
 | :--- | :--- | :--- | :--- |
-| 英語ブルワリー名 (`brewery_name_en`) | `Tamamura Honten` | `Tamamuro` | ⚠️ 差異 |
+| 英語ブルワリー名 (`brewery_name_en`) | `Tamamura Honten` | `Tamamura Honten` | ⭕ 一致 |
 | 和名ブルワリー名 (`brewery_name_jp`) | `玉村本店` | `玉村本店` | ⭕ 一致 |
-| ビールコア名 (`beer_name_core`) | `No.10` | `No.10` | ⭕ 一致 |
-| 検索ヒント (`search_hint`) | `No.10 Tamamura Honten` | `No.10 Tamamuro` | ⚠️ 差異 |
+| ビールコア名 (`beer_name_core`) | `Sono 10` | `Sono 10` | ⭕ 一致 |
+| 検索ヒント (`search_hint`) | `Sono 10 Tamamura Honten` | `Sono 10 Tamamura Honten` | ⭕ 一致 |
 | 商品区分 (beer等) (`product_type`) | `beer` | `beer` | ⭕ 一致 |
 | セット商品 (bool) (`is_set`) | `False` | `False` | ⭕ 一致 |
-| **🍺 Untappd URL** | [https://untappd.com/b/tamamura-honten-co-shiga-kogen-sono-10-no-10-anniversary-ipa/850141](https://untappd.com/b/tamamura-honten-co-shiga-kogen-sono-10-no-10-anniversary-ipa/850141) | `NotFound (no_results)` | **⚠️ 差異** |
-| *(マッチアイテム)* | `Found` | `N/A` | -
+| **🍺 Untappd URL** | [https://untappd.com/b/tamamura-honten-co-shiga-kogen-sono-10-no-10-anniversary-ipa/850141](https://untappd.com/b/tamamura-honten-co-shiga-kogen-sono-10-no-10-anniversary-ipa/850141) | [https://untappd.com/b/tamamura-honten-co-shiga-kogen-sono-10-no-10-anniversary-ipa/850141](https://untappd.com/b/tamamura-honten-co-shiga-kogen-sono-10-no-10-anniversary-ipa/850141) | **⭕ 一致** |
+| *(マッチアイテム)* | `Found` | `Found` | -
 
 ### #6. 略称(WCB) ＋ 英語ビールタイトル
 - **タイトル**: 「`WCB / West Coast Brewing Starwatcher IPA`」 (ショップ: `Antenna America`)
-- **処理時間**: Cloud `3.22秒` vs Local `31.33秒`
+- **処理時間**: Cloud `3.21秒` vs Local `43.14秒`
 
 | 項目 | Cloud API (31B) | Local MLX (12B 4-bit) | 判定 |
 | :--- | :--- | :--- | :--- |
@@ -93,12 +94,11 @@
 | 検索ヒント (`search_hint`) | `Starwatcher West Coast Brewing` | `Starwatcher West Coast Brewing` | ⭕ 一致 |
 | 商品区分 (beer等) (`product_type`) | `beer` | `beer` | ⭕ 一致 |
 | セット商品 (bool) (`is_set`) | `False` | `False` | ⭕ 一致 |
-| **🍺 Untappd URL** | [https://untappd.com/b/west-coast-brewing-starwatcher/3314985](https://untappd.com/b/west-coast-brewing-starwatcher/3314985) | [https://untappd.com/b/west-coast-brewing-starwatcher/3314985](https://untappd.com/b/west-coast-brewing-starwatcher/3314985) | **⭕ 一致** |
-| *(マッチアイテム)* | `Found` | `Found` | -
+| **🍺 Untappd URL** | `NotFound (no_results)` | `NotFound (no_results)` | **❌** |
 
 ### #7. セット商品判定 (is_set=True)
 - **タイトル**: 「`ヨロッコビール / 逗子＆鎌倉４本セット`」 (ショップ: `MARUHO`)
-- **処理時間**: Cloud `5.37秒` vs Local `33.97秒`
+- **処理時間**: Cloud `3.89秒` vs Local `36.19秒`
 
 | 項目 | Cloud API (31B) | Local MLX (12B 4-bit) | 判定 |
 | :--- | :--- | :--- | :--- |
@@ -112,7 +112,7 @@
 
 ### #8. 完全英語タイトル ＋ スタイル括弧表記
 - **タイトル**: 「`Finback Brewery / Whale Watching (TIPA)`」 (ショップ: `Antenna America`)
-- **処理時間**: Cloud `4.67秒` vs Local `31.39秒`
+- **処理時間**: Cloud `4.45秒` vs Local `33.84秒`
 
 | 項目 | Cloud API (31B) | Local MLX (12B 4-bit) | 判定 |
 | :--- | :--- | :--- | :--- |
