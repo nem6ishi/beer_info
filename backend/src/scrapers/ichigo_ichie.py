@@ -47,17 +47,10 @@ def parse_page_content(content: Optional[bytes], selector: str = 'li.productlist
         return []
 
     # Decode content
-    decoded_html: Optional[str] = None
-    encodings: List[str] = ['euc-jp', 'shift_jis', 'utf-8']
-    for enc in encodings:
-        try:
-            decoded_html = content.decode(enc)
-            break
-        except UnicodeDecodeError:
-            continue
-    
-    if not decoded_html:
-        decoded_html = content.decode('utf-8', errors='replace')
+    # 意図: 一期一会～る のサイトは Shift-JIS や UTF-8 ではなく EUC-JP でエンコードされている。
+    # 一部の商品名に不正なバイト列（機種依存文字など）が含まれると decode エラーでスクレイピング全体が停止してしまうため、
+    # errors='replace' を指定して不正な文字は代替文字()に置き換えて処理を続行させる。
+    decoded_html: str = content.decode('euc-jp', errors='replace')
 
     soup: BeautifulSoup = BeautifulSoup(decoded_html, 'lxml')
     items: List[Tag] = soup.select(selector)

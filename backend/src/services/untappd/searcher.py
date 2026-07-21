@@ -55,6 +55,8 @@ async def get_untappd_url(
     search_hint: Optional[str] = None,
     beer_name_core: Optional[str] = None,
     original_title: Optional[str] = None,
+    skip_llm: bool = False,
+    return_candidates: bool = False,
 ) -> UntappdSearchResult:
     """
     Searches for an Untappd beer page with a multi-stage strategy.
@@ -71,12 +73,16 @@ async def get_untappd_url(
         search_hint=search_hint,
         beer_name_core=beer_name_core,
         original_title=original_title,
+        skip_llm=skip_llm,
+        return_candidates=return_candidates,
     )
     
     if result.get('success'):
         return result
         
     # 2. 失敗した場合、西暦（20XX）が含まれているかチェックしてフォールバック
+    # 意図: ビール名に「2024」などのビンテージ年が含まれていると、Untappd上では年なしで
+    # 登録されていることが多くヒットしないため、年を削除して再検索を行う（フォールバック）
     has_year = False
     for text in [beer_name_core, beer_name, search_hint]:
         if text and re.search(r'\b20\d{2}\b', text):
@@ -106,6 +112,8 @@ async def get_untappd_url(
             search_hint=no_year_search_hint,
             beer_name_core=no_year_beer_name_core,
             original_title=original_title,
+            skip_llm=skip_llm,
+            return_candidates=return_candidates,
         )
         if retry_result.get('success'):
             logger.info("✅ [Year-fallback] Found match without year!")
@@ -122,6 +130,8 @@ async def _get_untappd_url_single(
     search_hint: Optional[str] = None,
     beer_name_core: Optional[str] = None,
     original_title: Optional[str] = None,
+    skip_llm: bool = False,
+    return_candidates: bool = False,
 ) -> UntappdSearchResult:
     """
     Core search logic for a single pass.
@@ -138,35 +148,46 @@ async def _get_untappd_url_single(
     u_brewery_url: Optional[str] = brewery_url
 
     # --- Stage 1: Identify Brewery URL if not provided ---
-    primary_brewery_search = re.split(COLLAB_SPLIT_PATTERN, brewery_name)[0] if brewery_name else ""
+    # 意図: コラボビール (A x B) の場合、Aのブルワリーで検索してもUntappdでは
+    # Bのブルワリーに紐付いている場合があるため、複数のブルワリー名を分割し、
+    # それぞれのブルワリーURLの候補リストを作成する
+    raw_breweries = re.split(COLLAB_SPLIT_PATTERN, brewery_name) if brewery_name else []
+    primary_breweries = [b.strip() for b in raw_breweries if b.strip()]
+    primary_brewery_search = primary_breweries[0] if primary_breweries else ""
     shop_names = {'choseiya', 'ちょうせいや', 'arome', 'アローム', 'beervolta', 'beer volta', 'maruho', 'maruho saketen', 'マルホ酒店', '151l', '一期一会～る', 'antenna america', 'アンテナアメリカ'}
 
     candidate_brewery_urls: List[str] = [u_brewery_url] if u_brewery_url else []
 
-    if not candidate_brewery_urls and primary_brewery_search and primary_brewery_search.strip().lower() not in shop_names:
+    if not candidate_brewery_urls and primary_breweries:
         try:
             from backend.src.services.store.brewery_manager import BreweryManager
             bm = BreweryManager()
-            bm_found = bm.find_breweries_in_text(primary_brewery_search) or bm.find_breweries_in_text(brewery_name)
-            if bm_found:
-                for bf in bm_found:
-                    if bf.get("untappd_url") and bf.get("untappd_url") not in candidate_brewery_urls:
-                        candidate_brewery_urls.append(bf.get("untappd_url"))
-                        logger.info(f"  [BreweryManager] Found candidate brewery URL in cache: {bf.get('untappd_url')}")
+            for p_brew in primary_breweries:
+                if p_brew.lower() in shop_names:
+                    continue
+                bm_found = bm.find_breweries_in_text(p_brew) or bm.find_breweries_in_text(brewery_name)
+                if bm_found:
+                    for bf in bm_found:
+                        if bf.get("untappd_url") and bf.get("untappd_url") not in candidate_brewery_urls:
+                            candidate_brewery_urls.append(bf.get("untappd_url"))
+                            logger.info(f"  [BreweryManager] Found candidate brewery URL in cache for '{p_brew}': {bf.get('untappd_url')}")
         except Exception as e:
             logger.debug(f"BreweryManager check failed: {e}")
 
         if not candidate_brewery_urls:
-            aliases_to_try = [primary_brewery_search]
-            if primary_brewery_search in BREWERY_ALIASES:
-                aliases_to_try.extend(BREWERY_ALIASES[primary_brewery_search])
-            for b_query in aliases_to_try:
-                logger.info(f"Brewery URL missing. Searching for brewery: '{b_query}'")
-                b_found_url = await search_brewery(b_query)
-                if b_found_url and b_found_url not in candidate_brewery_urls:
-                    logger.info(f" Brewery found: {b_found_url}")
-                    candidate_brewery_urls.append(b_found_url)
-                    break
+            for p_brew in primary_breweries:
+                if p_brew.lower() in shop_names:
+                    continue
+                aliases_to_try = [p_brew]
+                if p_brew in BREWERY_ALIASES:
+                    aliases_to_try.extend(BREWERY_ALIASES[p_brew])
+                for b_query in aliases_to_try:
+                    logger.info(f"Brewery URL missing. Searching for brewery: '{b_query}'")
+                    b_found_url = await search_brewery(b_query)
+                    if b_found_url and b_found_url not in candidate_brewery_urls:
+                        logger.info(f" Brewery found: {b_found_url}")
+                        candidate_brewery_urls.append(b_found_url)
+                        break
 
     # --- Stage 2: Search WITHIN Brewery ---
     all_candidates: List[UntappdSearchCandidate] = []
@@ -259,6 +280,9 @@ async def _get_untappd_url_single(
         logger.info(" Brewery-specific search returned no candidate matches.")
 
     # --- Stage 3: Fallback / Supplement via DuckDuckGo ---
+    # 意図: Untappdのサイト内検索（Stage 2）は検索精度が悪いため、
+    # 有力な候補（score >= 90）が見つからなかった場合は、DuckDuckGoのウェブ検索を
+    # 用いて Untappd のビールページを直接探しに行く
     has_high_confidence_candidate = any(c.get('score', 0) >= 90 for c in all_candidates)
     if not all_candidates or (len(all_candidates) < 3 and not has_high_confidence_candidate):
         query: str
@@ -353,14 +377,29 @@ async def _get_untappd_url_single(
                     else:
                         raise inner_e
         except Exception as e:
+            # DuckDuckGo が失敗しても、検索処理全体をクラッシュさせずに
+            # 次の処理（Stage 4）へ進むようにエラーをキャッチして進める
             logger.error(f"Error during DuckDuckGo search: {e}")
 
     # --- Stage 4: LLM Candidate Selection ---
     if all_candidates:
+        if return_candidates or skip_llm:
+            logger.info(f"  ⏭️ [LLM Selection] Bypassing Cloud API and returning {len(all_candidates)} candidates.")
+            return {
+                'url': all_candidates[0]['url'] if len(all_candidates) == 1 else None,
+                'success': True if len(all_candidates) == 1 else False,
+                'failure_reason': None,
+                'error_message': None,
+                'candidates': all_candidates,
+                'selected_index': 0 if len(all_candidates) == 1 else -1,
+                'brewery_url': all_candidates[0].get('brewery_url') if all_candidates else None,
+                'selection_reason': 'Bypassed LLM selection'
+            }
+
         logger.info(f"  [LLM Selection] Evaluating {len(all_candidates)} collected candidates...")
         try:
-            from backend.src.services.gemini.extractor import GeminiExtractor
-            extractor = GeminiExtractor()
+            from backend.src.services.llm import get_llm_extractor
+            extractor = get_llm_extractor()
             if extractor.client:
                 actual_product_name = original_title or target_beer_name
                 best_match = await extractor.select_best_untappd_candidate(
@@ -378,7 +417,8 @@ async def _get_untappd_url_single(
                         'error_message': None,
                         'candidates': all_candidates,
                         'selected_index': all_candidates.index(best_match) if best_match in all_candidates else 0,
-                        'selection_reason': best_match.get('selection_reason'),
+                        'brewery_url': best_match.get('brewery_url'),
+                        'selection_reason': best_match.get('selection_reason')
                     }
                 else:
                     logger.info("  ⏭️ [LLM Selection] LLM rejected all candidates as none matched accurately.")

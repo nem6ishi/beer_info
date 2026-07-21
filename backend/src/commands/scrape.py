@@ -183,7 +183,7 @@ async def scrape_to_supabase(
     existing_urls: Set[str] = set(existing_data.keys())
     logger.info(f"  Loaded {len(existing_data)} existing beers (Complete)")
     
-    timeout_sec: int = int(os.getenv("SCRAPER_TIMEOUT", "420"))
+    timeout_sec: int = int(os.getenv("SCRAPER_TIMEOUT", "1800"))
     base_time: datetime = datetime.now(timezone.utc)
 
     # Run scrapers and save independently per store

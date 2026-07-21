@@ -7,8 +7,8 @@ from typing import Optional, Dict, Any, List, Tuple
 from dotenv import load_dotenv
 
 from .base import BaseExtractor
+from .prompt_builder import PromptBuilder
 from ...core.types import GeminiExtraction
-from .gemini_extractor import GeminiExtractor  # For reusing common prompt building for now
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -18,8 +18,7 @@ class LocalMlxExtractor(BaseExtractor):
         self.model_id = model_id or os.getenv("LOCAL_LLM_MODEL_ID", "prism-ml/Ternary-Bonsai-27B-mlx-2bit")
         self.model = None
         self.tokenizer = None
-        # Reusing GeminiExtractor's prompt building and rule loading for compatibility
-        self._prompt_helper = GeminiExtractor()
+        self.prompt_builder = PromptBuilder()
 
     def _load_model(self):
         if self.model is None or self.tokenizer is None:
@@ -109,15 +108,12 @@ class LocalMlxExtractor(BaseExtractor):
             return None, time.perf_counter() - start_time
 
     async def extract_info(self, product_name: str, known_brewery: Optional[str] = None, shop: Optional[str] = None) -> GeminiExtraction:
-        clean_name = self._prompt_helper._clean_product_title(product_name, shop)
-        hint: str = f"Note: The brewery exists and is likely: '{known_brewery}'" if known_brewery else ""
-        guidance, examples = self._prompt_helper._get_shop_guidance(shop)
-        prompt: str = self._prompt_helper._build_prompt(clean_name, hint, guidance, examples)
+        prompt: str = self.prompt_builder.build_extract_prompt(product_name, known_brewery, shop)
 
         data, elapsed = await self._generate_local(prompt)
         
         if not data:
-            return self._prompt_helper._apply_set_override(self._prompt_helper._empty_result(), product_name)
+            return self.prompt_builder.apply_set_override(self.prompt_builder.empty_result(), product_name)
 
         res: GeminiExtraction = {
             "brewery_name_jp": data.get("brewery_name_jp"),
@@ -130,41 +126,17 @@ class LocalMlxExtractor(BaseExtractor):
             "is_set": data.get("is_set", False),
             "raw_response": json.dumps(data, ensure_ascii=False)
         }
-        return self._prompt_helper._apply_set_override(res, product_name)
+        return self.prompt_builder.apply_set_override(res, product_name)
 
     async def suggest_search_queries(self, product_name: str, brewery: str, beer_name: str) -> List[str]:
-        prompt: str = f"""
-        An Untappd search for a craft beer has failed. Suggest 3 short, alternative search queries to find it.
-        Product Title: "{product_name}"
-        Brewery: "{brewery}"
-        Beer Name: "{beer_name}"
-        Rules:
-        - Each query should be short (2-5 words)
-        - Try different combinations: core beer name, brewery abbreviation, key unique words
-        Output JSON only:
-        {{"queries": ["query1", "query2", "query3"]}}
-        """
+        prompt: str = self.prompt_builder.build_suggest_search_queries_prompt(product_name, brewery, beer_name)
         data, _ = await self._generate_local(prompt)
         if data and isinstance(data.get("queries"), list):
             return [str(q) for q in data["queries"] if str(q).strip()][:5]
         return []
 
     async def infer_untappd_brewery_info(self, product_name: str, brewery: str, beer_name: str) -> Optional[Dict[str, str]]:
-        prompt: str = f"""
-        An Untappd search for a craft beer failed because the Japanese/Katakana text does not match Untappd's English database.
-        Please infer the exact official English brewery name, its likely URL slug on Untappd (e.g. 'finback-brewery' or 'ise-kado-brewery'), and the official English beer name.
-        Product Title: "{product_name}"
-        Brewery Text: "{brewery}"
-        Beer Name Text: "{beer_name}"
-        Rules:
-        - Convert Katakana names to their official English names.
-        Output JSON only:
-        {{
-            "english_brewery_name": "...",
-            "brewery_slug": "...",
-            "english_beer_name": "..."
-        }}
-        """
+        prompt: str = self.prompt_builder.build_infer_untappd_brewery_info_prompt(product_name, brewery, beer_name)
         data, _ = await self._generate_local(prompt)
         if data and data.get("english_brewery_name"):
             return {
@@ -175,25 +147,8 @@ class LocalMlxExtractor(BaseExtractor):
         return None
 
     async def select_best_untappd_candidate(self, product_name: str, brewery: str, beer_name: str, candidates: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        # Omitted for brevity, but implement basic proxy to local LLM similar to GeminiExtractor
         if not candidates: return None
-        candidates_str_list = []
-        for idx, c in enumerate(candidates):
-            candidates_str_list.append(f"[{idx}] Beer: '{c.get('beer_name')}' | Brewery: '{c.get('brewery_name')}'")
-        candidates_text = "\\n".join(candidates_str_list)
-
-        prompt: str = f"""
-        We searched Untappd for a craft beer but got multiple candidate results.
-        Please choose the single best matching candidate from the list below, or return -1 if none match.
-        Target Product: "{product_name}" (Brewery: "{brewery}", Beer: "{beer_name}")
-        Candidates:
-{candidates_text}
-        Output JSON only:
-        {{
-            "selected_index": 0,
-            "reason": "..."
-        }}
-        """
+        prompt: str = self.prompt_builder.build_select_best_candidate_prompt(product_name, brewery, beer_name, candidates)
         data, _ = await self._generate_local(prompt)
         if data:
             idx = int(data.get("selected_index", -1))

@@ -81,7 +81,7 @@ export default function BeerInfoCell({ brewery, beer, logo, location, type, fall
     const computedIsSale = isSale !== undefined && isSale !== null ? isSale : (!!computedSaleTag || !!computedExpiry || /OFF|SALE|セール|特価|訳あり|賞味期限/i.test(rawTitle));
 
     // Use beer name if available, otherwise use fallback (original product name)
-    const rawDisplayName = beer || fallbackName || 'Beer name not available';
+    const rawDisplayName = beer || fallbackName || '';
     const displayName = rawDisplayName.replace(/^([0-9.]+%\s*OFF|SALE!*|セール|最終特価|特価|アウトレット|訳あり|決算セール|在庫整理|お試しセット)\s*/i, '').trim() || rawDisplayName;
     const recent = isRecent(firstSeen);
 

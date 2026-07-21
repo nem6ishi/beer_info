@@ -5,6 +5,16 @@ Modes:
 - missing: Finds Untappd URLs for beers that don't have one.
 - refresh: Updates details (rating, ABV, etc.) for beers that already have a URL.
 """
+"""
+Enrichment Phase 2: Untappd Search & Linking
+
+This module runs after Phase 1 (LLM Extraction). It takes the structured English names
+(e.g., brewery_name_en, beer_name_en, search_hint) from the `gemini_data` table and 
+performs automated searches on the Untappd API/website to find the matching beer.
+
+It handles collaboration splits, API rate limits, and fallback search strategies.
+The resulting Untappd URL and IDs are saved to the `untappd_data` table.
+"""
 import asyncio
 import logging
 import re

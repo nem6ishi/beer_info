@@ -50,7 +50,7 @@ def _is_safe_substring_match(str_a: str, str_b: str, expected_brewery: Optional[
     shorter, longer = (str_a, str_b) if len(str_a) <= len(str_b) else (str_b, str_a)
     if not (shorter in longer):
         return False
-    if len(shorter) < 4:
+    if len(shorter) < 3:
         return False
     ratio = SequenceMatcher(None, shorter, longer).ratio()
     if ratio >= 0.78:

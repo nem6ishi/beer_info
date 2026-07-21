@@ -2,6 +2,17 @@
 LLM-based enrichment command.
 Extracts brewery and beer names using a specified LLM provider (Gemini, Local MLX, etc).
 """
+"""
+Enrichment Phase 1: LLM Extraction
+
+This module is responsible for fetching raw beer strings from the database (scraped_beers)
+and using an LLM (Gemini or Local MLX) to extract structured data such as:
+- brewery_name_en (English Brewery Name)
+- beer_name_en (English Beer Name)
+- search_hint (Optimized string for searching Untappd)
+
+The extracted results are saved to the `gemini_data` table for the next phase.
+"""
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -26,9 +37,11 @@ class LLMEnricher:
         keyword_filter: Optional[str] = None,
         llm_provider: str = "gemini",
         llm_model_id: Optional[str] = None,
+        retry_unlinked: bool = False,
     ):
         self.offline = offline
         self.force_reprocess = force_reprocess
+        self.retry_unlinked = retry_unlinked
         self.shop_filter = shop_filter
         self.keyword_filter = keyword_filter
         
@@ -118,6 +131,8 @@ class LLMEnricher:
         """Applies common filters to a query."""
         if self.offline:
             query = query.not_.is_('brewery_name_en', 'null').is_('untappd_url', 'null')
+        elif self.retry_unlinked:
+            query = query.is_('untappd_url', 'null')
         elif not self.force_reprocess:
             query = query.or_(
                 'brewery_name_en.is.null,'
@@ -135,7 +150,8 @@ class LLMEnricher:
         """Processes a single beer item: Extract and prepare payload."""
         has_names: bool = bool(beer.get('brewery_name_en') and beer.get('beer_name_en'))
         has_hint: bool = bool(beer.get('search_hint'))
-        need_gemini: bool = self.force_reprocess or not has_names or not has_hint
+        is_unlinked: bool = not bool(beer.get('untappd_url'))
+        need_gemini: bool = self.force_reprocess or (self.retry_unlinked and is_unlinked) or not has_names or not has_hint
         
         url: str = beer.get('url', '')
         if not url: return 'skipped', None
@@ -250,6 +266,7 @@ async def enrich_extract(
     keyword_filter: Optional[str] = None, 
     offline: bool = False, 
     force_reprocess: bool = False,
+    retry_unlinked: bool = False,
     llm_provider: str = "gemini",
     llm_model_id: Optional[str] = None
 ) -> None:
@@ -262,6 +279,7 @@ async def enrich_extract(
         shop_filter=shop_filter,
         keyword_filter=keyword_filter,
         llm_provider=llm_provider,
-        llm_model_id=llm_model_id
+        llm_model_id=llm_model_id,
+        retry_unlinked=retry_unlinked
     )
     await enricher.run(limit=limit)

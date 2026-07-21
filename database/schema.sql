@@ -202,6 +202,7 @@ SELECT
     COUNT(*) as total_items,
     jsonb_agg(jsonb_build_object(
         'shop', shop,
+        'name', name,
         'price', price,
         'price_value', price_value,
         'url', url,

@@ -91,17 +91,23 @@ This is the cloud-deployed version of the Craft Beer Watch Japan service, using:
 We use a central CLI for all management tasks.
 
 ```bash
-# Scrape to Supabase
-uv run cli.py scrape --limit 100 --new
+# 1. Scrape to Supabase (fetch from all shops)
+uv run python cli.py scrape --limit 100 --new
 
-# Enrich with Gemini (extract info)
-uv run cli.py enrich gemini --limit 50 --offline
+# 2. Extract Beer Info via LLM (Gemini / Local MLX)
+uv run python cli.py enrich-extract --limit 50
 
-# Enrich with Untappd (for items with extracted info)
-uv run cli.py enrich untappd --limit 50 --mode missing
+# 3. Enrich with Untappd (search based on extracted info)
+uv run python cli.py enrich-untappd --limit 50 --mode missing
 
-# Enrich Breweries (update brewery details from Untappd)
-uv run cli.py enrich breweries --limit 50
+# 4. Enrich Breweries (update brewery details from Untappd)
+uv run python cli.py enrich-breweries --limit 50
+
+# [Bonus] Run full enrichment pipeline (Extract -> Untappd -> Breweries)
+uv run python cli.py enrich --limit 50
+
+# [Bonus] Clean corrupted data safely (defaults to dry-run)
+uv run python cli.py clean --table scraped_beers --column name --pattern '%%'
 ```
 
 ### Project Structure

@@ -1,4 +1,12 @@
 {
+    "ベアレン": [
+        "Baeren Bier",
+        "Baeren"
+    ],
+    "Bären": [
+        "Baeren Bier",
+        "Baeren"
+    ],
     "鬼伝説": [
         "Wakasaimo"
     ],
@@ -207,7 +215,9 @@
         "VERTERE"
     ],
     "Falo Brewing": [
-        "Falò Brewing"
+        "Falo",
+        "ファロ",
+        "Faló"
     ],
     "Faló Brewing": [
         "Falò Brewing"
@@ -234,6 +244,11 @@
     ],
     "Hop Kotan": [
         "Hop Kotan Brewing",
+        "Hoppu Kotan",
+        "Hoppukotan",
+        "Kofukotan",
+        "Kofukotan Beer",
+        "忽布古丹",
         "忽布古丹醸造"
     ],
     "HopKotan": [
@@ -323,15 +338,6 @@
         "Kyufuku Brewing Honjima",
         "Kyufuku Brewing"
     ],
-    "Hop Kotan": [
-        "Hop Kotan Brewing",
-        "Hoppu Kotan",
-        "Hoppukotan",
-        "Kofukotan",
-        "Kofukotan Beer",
-        "忽布古丹",
-        "忽布古丹醸造"
-    ],
     "Kofukotan": [
         "Hop Kotan Brewing",
         "Hop Kotan"
@@ -368,16 +374,17 @@
         "Evil Twin Brewing",
         "Evil Twin Brewing NYC"
     ],
-    "Falo Brewing": [
-        "Falo",
-        "ファロ",
-        "Faló"
-    ],
     "Falo": [
         "Falo Brewing"
     ],
     "North Island": [
         "North Island Beer",
         "North Island Brewing"
+    ],
+    "Drie Fonteinen": [
+        "Brouwerij 3 Fonteinen"
+    ],
+    "3 Fonteinen": [
+        "Brouwerij 3 Fonteinen"
     ]
 }

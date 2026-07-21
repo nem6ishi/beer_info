@@ -1,3 +1,14 @@
+"""
+Main CLI Entry Point for Craft Beer Alert Japan.
+
+This script provides various commands to manage the data pipeline:
+- scrape: Fetch latest beer data from e-commerce sites.
+- enrich-extract: Use LLMs (Gemini/MLX) to extract brewery and beer names in English.
+- enrich-untappd: Search Untappd based on the extracted English names.
+- enrich-breweries: Update brewery information (location, type, etc.) from Untappd.
+- clean: Safely remove corrupted data from the database.
+- ...and more.
+"""
 import asyncio
 import argparse
 import sys
@@ -28,8 +39,9 @@ def main() -> None:
     enrich_parser.add_argument("--llm", type=str, choices=["gemini", "local_mlx"], default="gemini", help="LLM provider to use")
     enrich_parser.add_argument("--llm-model", type=str, default=None, help="Specific LLM model ID to use")
 
-    # Enrich Extract only (formerly enrich-gemini)
-    enrich_extract_parser = subparsers.add_parser("enrich-extract", help="Run LLM extraction only")
+    # Enrich Extract only (Phase 1 of Enrichment)
+    # Uses LLMs to parse Japanese/English raw names and extract structured data
+    enrich_extract_parser = subparsers.add_parser("enrich-extract", help="Run LLM extraction to get structured English names")
     enrich_extract_parser.add_argument("--limit", type=int, help="Limit number of items to enrich", default=50)
     enrich_extract_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
     enrich_extract_parser.add_argument("--keyword", type=str, help="Filter enrichment by partial name match", default=None)
@@ -37,9 +49,11 @@ def main() -> None:
     enrich_extract_parser.add_argument("--llm-model", type=str, default=None, help="Specific LLM model ID to use")
     enrich_extract_parser.add_argument("--offline", action="store_true", help="Offline mode")
     enrich_extract_parser.add_argument("--force", action="store_true", help="Force re-process")
+    enrich_extract_parser.add_argument("--retry-unlinked", action="store_true", help="Force re-process only for items with missing untappd_url")
 
-    # Enrich Untappd only
-    enrich_untappd_parser = subparsers.add_parser("enrich-untappd", help="Run Untappd enrichment only")
+    # Enrich Untappd only (Phase 2 of Enrichment)
+    # Uses the extracted English names to search Untappd and link IDs
+    enrich_untappd_parser = subparsers.add_parser("enrich-untappd", help="Search Untappd using extracted English names")
     enrich_untappd_parser.add_argument("--limit", type=int, help="Limit number of items to enrich", default=50)
     enrich_untappd_parser.add_argument("--mode", choices=['missing', 'refresh', 'retry-failures'], default='missing', help="Enrichment mode")
     enrich_untappd_parser.add_argument("--shop", type=str, help="Filter enrichment by shop name", default=None)
@@ -69,6 +83,13 @@ def main() -> None:
 
     # Clear command
     subparsers.add_parser("clear", help="Clear all data from the database")
+
+    # Clean command
+    clean_parser = subparsers.add_parser("clean", help="Safely delete corrupted records")
+    clean_parser.add_argument("--table", type=str, required=True, help="Table name to clean from")
+    clean_parser.add_argument("--column", type=str, required=True, help="Column name to match")
+    clean_parser.add_argument("--pattern", type=str, required=True, help="LIKE pattern to match")
+    clean_parser.add_argument("--execute", action="store_true", help="Actually execute the deletion (defaults to dry-run)")
 
     args: argparse.Namespace = parser.parse_args()
 
@@ -105,7 +126,7 @@ def main() -> None:
         
     elif args.command == "enrich-extract":
         from .commands.enrich_extract import enrich_extract
-        asyncio.run(enrich_extract(limit=args.limit, shop_filter=args.shop, keyword_filter=args.keyword, offline=args.offline, force_reprocess=args.force, llm_provider=args.llm, llm_model_id=args.llm_model))
+        asyncio.run(enrich_extract(limit=args.limit, shop_filter=args.shop, keyword_filter=args.keyword, offline=args.offline, force_reprocess=args.force, retry_unlinked=getattr(args, 'retry_unlinked', False), llm_provider=args.llm, llm_model_id=args.llm_model))
         
     elif args.command == "enrich-untappd":
         from .commands.enrich_untappd import enrich_untappd
@@ -121,6 +142,10 @@ def main() -> None:
             sync_from_supabase()
         except ImportError:
             logger.error("Sync script not found.")
+            
+    elif args.command == "clean":
+        from .commands.clean_data import clean_data
+        asyncio.run(clean_data(table=args.table, column=args.column, pattern=args.pattern, dry_run=not args.execute))
             
     elif args.command == "check-variants":
         from .commands.check_variants import check_variants

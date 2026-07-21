@@ -11,6 +11,7 @@ from ...core.types import GeminiExtraction
 from ...core.db import get_supabase_client
 from .cache_resolver import LocalCacheResolver
 from .base import BaseExtractor
+from .prompt_builder import PromptBuilder
 
 load_dotenv()
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class GeminiExtractor(BaseExtractor):
     client: Optional[genai.Client]
-    shop_rules: Dict[str, Any]
+    prompt_builder: PromptBuilder
     last_request_time: float
     daily_request_count: int
     model_id: str
@@ -34,10 +35,7 @@ class GeminiExtractor(BaseExtractor):
         else:
             self.client = genai.Client(api_key=api_key)
         
-        # Load shop rules from external JSON
-        self.shop_rules = self._load_shop_rules()
-        
-        # Initialize Cache Resolver
+        self.prompt_builder = PromptBuilder()
         self.cache_resolver = LocalCacheResolver()
         
         # Rate Limiting Configuration
@@ -55,17 +53,9 @@ class GeminiExtractor(BaseExtractor):
         return model_id.lower().startswith("gemini-")
 
 
-    def _load_shop_rules(self) -> Dict[str, Any]:
-        """Loads shop-specific rules from JSON file."""
-        try:
-            json_path: str = os.path.join(os.path.dirname(__file__), "shop_rules.json")
-            if os.path.exists(json_path):
-                with open(json_path, "r", encoding="utf-8") as f:
-                    return cast(Dict[str, Any], json.load(f))
-            logger.warning(f"Shop rules file not found: {json_path}")
-        except Exception as e:
-            logger.error(f"Failed to load shop rules: {e}")
-        return {}
+    def _supports_response_schema(self, model_id: str) -> bool:
+        """Returns True if the model supports response_schema (e.g. Gemini models)."""
+        return model_id.lower().startswith("gemini-")
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=4, max=20))
     async def _generate_content(self, prompt: str, schema: Optional[Any] = None) -> Optional[Dict[str, Any]]:
@@ -109,6 +99,9 @@ class GeminiExtractor(BaseExtractor):
             )
         except Exception as e:
             error_msg: str = str(e).lower()
+            # 意図: 無料枠のGemini APIはレートリミット(429)やリソース枯渇(unavailable)が起きやすいため、
+            # エラーを検知したら、別のモデル（fallback_model_id）に切り替えて即座にリトライを行う。
+            # fallback_model_id はレートリミットの枠が別であるため成功しやすい。
             if getattr(e, 'code', None) == 429 or "exhausted" in error_msg or "quota" in error_msg or "unavailable" in error_msg:
                 if self.model_id != self.fallback_model_id:
                     logger.warning(f"  [Gemini] {self.model_id} limit reached or unavailable. Falling back to {self.fallback_model_id}")
@@ -154,6 +147,9 @@ class GeminiExtractor(BaseExtractor):
         """Parses JSON from response text, cleaning markdown blocks and normalizing schema fields."""
         try:
             content: str = text.strip()
+            # 意図: LLM（特にGemini以外のローカルモデル等）は system prompt で JSON出力 を指定しても、
+            # ```json ... ``` のようなマークダウンブロックで囲って返してくることがあるため、
+            # json.loads がパースエラーを起こさないように前後のマークダウン記法をサニタイズ（除去）する。
             if sanitize:
                 if content.startswith("```json"):
                     content = content[7:]
@@ -184,105 +180,25 @@ class GeminiExtractor(BaseExtractor):
             logger.error(f"  [Gemini] Failed to parse JSON: {e}")
             return None
 
-    def _get_shop_guidance(self, shop: Optional[str]) -> Tuple[str, str]:
-        """Provides specific formatting rules and examples based on the shop."""
-        guidance: str = ""
-        examples: str = ""
-
-        if shop and self.shop_rules:
-            target: Optional[Dict[str, Any]] = self.shop_rules.get(shop)
-            if not target:
-                shop_lower = shop.lower()
-                for k, v in self.shop_rules.items():
-                    if k.lower() == shop_lower:
-                        target = v
-                        break
-            if target:
-                guidance = target.get("rule", "")
-                examples = target.get("examples", "")
-
-        return guidance, examples
-
-    def _build_prompt(self, product_name: str, brewery_hint: str, shop_guidance: str, examples: str) -> str:
-        """Constructs the full extraction prompt."""
-        return f"""
-        Extract brewery and beer names from the product title.
-        Identify product type: "beer", "set", "glass", or "other".
-        Product Title: "{product_name}"
-        {brewery_hint}
- 
-        Rules:
-        - **Format**: In "【A/B】", A is Beer Name and B is Brewery Name.
-        {shop_guidance}
-        - **Collab**: If multiple breweries are involved (×, &, /), include all (e.g., "A x B").
-        - **Clean**: Remo        - **Product Type**: "beer" (single can/bottle only), "set" (multi-can/bottle sets like "4 Cans Set", "4本セット", variety packs, tasting sets), "glass", "other".
-        - **is_set**: MUST be `true` if the product contains multiple cans/bottles (e.g. "4 Cans Set", "4本セット", "飲み比べ", "アソート").
-        - **brewery_name_jp**: Preserve the original Japanese brewery name as-is (e.g., "ヨロッコ", "家守堂").
-        - **brewery_name_en**: Use the brewery's OFFICIAL English/romanized name if known (e.g., "Yorocco Beer" for ヨロッコ, "Yamorido" for 家守堂). For Japanese-only breweries, use phonetic romanization (NOT semantic translation). WRONG: "Root + Branch Brewing" for ヨロッコ. RIGHT: "Yorocco Beer".
-        - **beer_name_core**: The essential/searchable part of the beer name. Remove edition qualifiers ("Nth Anniversary", "Special Edition", "Limited", "Reserve") and beer style suffixes (IPA, Stout, NE IPA, etc.). Example: "The Realm's Remedy 11th Anniversary IPA" → "The Realm's Remedy". "Casimiroa NE IPA" → "Casimiroa".
-        - **search_hint**: A short, optimized Untappd search query (max ~4 words). Format: "[beer_name_core] [brewery_name_en]". If the beer name is in Japanese (e.g. 金鬼, 其の十, 鬼伝説), ALWAYS include its romanized/phonetic reading (e.g. "Kin-oni", "Sono 10", "Oni Densetsu") in `search_hint` and `beer_name_en` so Untappd can find it!
-        - **Spelling Accuracy**: Be exact with brewery names (e.g. "Tamamura Honten", NOT "Tamamuro"; "Wakasaimo Honpo", NOT "Wakasaimo").
- 
-        Output JSON:
-        {{
-          "brewery_name_jp": "...", "brewery_name_en": "...",
-          "beer_name_jp": "...", "beer_name_en": "...",
-          "beer_name_core": "...",
-          "search_hint": "...",
-          "product_type": "...", "is_set": boolean
-        }}
- 
-        Examples:
-        {examples if examples else '''1. "Beer Name / Brewery" -> {{"brewery_name_en": "Brewery", "beer_name_en": "Beer Name", "beer_name_core": "Beer Name", "search_hint": "Beer Name Brewery", "product_type": "beer", "is_set": false}}
-2. "【カシミロア/バテレ】(VERTERE Casimiroa NE IPA)" -> {{"brewery_name_jp": "バテレ", "brewery_name_en": "VERTERE", "beer_name_en": "Casimiroa NE IPA", "beer_name_core": "Casimiroa", "search_hint": "Casimiroa VERTERE", "product_type": "beer", "is_set": false}}
-3. "テスト : 4本セット | TEST: 4 Cans Set《7/16-17入荷予定》" -> {{"brewery_name_jp": null, "brewery_name_en": null, "beer_name_en": "TEST", "beer_name_core": "TEST", "search_hint": "TEST", "product_type": "set", "is_set": true}}'''}
-        """
-
-    def _clean_product_title(self, title: str, shop: Optional[str]) -> str:
-        """Removes common shop-specific noise from the title before sending to Gemini."""
-        import re
-        if not title:
-            return ""
-        
-        # 【】や《》で囲まれた特定の注意事項（予定、ご注文、本以上、入荷、クール便、限定、予約、空輸、おひとり様、必須、同時購入、推しなど）を削除
-        pattern = r'[【《\[<][^】》\]>]*(?:予定|ご注文|本以上|入荷|クール便|限定|予約|空輸|おひとり様|必須|同時購入|推し)[^】》\]>]*[】》\]>]'
-        title = re.sub(pattern, '', title)
-        
-        return title.strip()
-
-    def _apply_set_override(self, res: GeminiExtraction, original_title: str) -> GeminiExtraction:
-        """Deterministic override: If title explicitly mentions set keywords, enforce set status."""
-        import re
-        set_pattern = re.compile(r'(\d+本(?:パック|セット|アソート|飲み比べ)|\d+\s*Cans?\s*(?:Set|Pack)|\d+\s*Bottles?\s*(?:Set|Pack)|飲み比べ|アソート|お試しセット|本セット|缶セット|Variety\s*Pack)', re.IGNORECASE)
-        if set_pattern.search(original_title):
-            if not res["is_set"] or res["product_type"] != "set":
-                logger.info(f"  🔧 Enforcing SET classification due to explicit keywords in title: '{original_title}'")
-                res["is_set"] = True
-                res["product_type"] = "set"
-        return res
-
-
     async def extract_info(self, product_name: str, known_brewery: Optional[str] = None, shop: Optional[str] = None) -> GeminiExtraction:
         """Main entry point for extracting beer information."""
         # 1. Tier 1: Product Title Exact Match Cache
         tier1_res = await self.cache_resolver.resolve_tier1_exact_match(product_name)
         if tier1_res:
-            return self._apply_set_override(tier1_res, product_name)
+            return self.prompt_builder.apply_set_override(tier1_res, product_name)
 
         # 2. Tier 2: Dictionary Match Cache
         tier2_res = await self.cache_resolver.resolve_tier2_dictionary_match(product_name, shop)
         if tier2_res:
-            return self._apply_set_override(tier2_res, product_name)
+            return self.prompt_builder.apply_set_override(tier2_res, product_name)
 
         if not self.client or self.daily_request_count >= self.global_daily_limit:
-            return self._apply_set_override(self._empty_result(), product_name)
+            return self.prompt_builder.apply_set_override(self.prompt_builder.empty_result(), product_name)
 
-        clean_name = self._clean_product_title(product_name, shop)
+        clean_name = self.prompt_builder.clean_product_title(product_name, shop)
         logger.info(f"[Gemini] Extracting: {clean_name} (Original: {product_name}, Known: {known_brewery}, Shop: {shop})")
 
-        hint: str = f"\nNote: The brewery exists and is likely: \"{known_brewery}\"" if known_brewery else ""
-        guidance, examples = self._get_shop_guidance(shop)
-        prompt: str = self._build_prompt(clean_name, hint, guidance, examples)
+        prompt: str = self.prompt_builder.build_extract_prompt(product_name, known_brewery, shop)
 
         logger.debug(f"[Gemini] Full Prompt:\n{'-'*40}\n{prompt}\n{'-'*40}")
 
@@ -323,26 +239,11 @@ class GeminiExtractor(BaseExtractor):
                     "is_set": data.get("is_set", False),
                     "raw_response": data.get("raw_response")
                 }
-                return self._apply_set_override(res, product_name)
+                return self.prompt_builder.apply_set_override(res, product_name)
         except Exception as e:
             logger.error(f"[Gemini] Extraction failed: {e}")
 
-        return self._apply_set_override(self._empty_result(), product_name)
-
-
-    def _empty_result(self) -> GeminiExtraction:
-        """Returns a default empty result structure."""
-        return {
-            "brewery_name_jp": None,
-            "brewery_name_en": None,
-            "beer_name_jp": None,
-            "beer_name_en": None,
-            "beer_name_core": None,
-            "search_hint": None,
-            "product_type": "beer",
-            "is_set": False,
-            "raw_response": None
-        }
+        return self.prompt_builder.apply_set_override(self.prompt_builder.empty_result(), product_name)
 
     async def suggest_search_queries(self, product_name: str, brewery: str, beer_name: str) -> List[str]:
         """
@@ -352,23 +253,7 @@ class GeminiExtractor(BaseExtractor):
         if not self.client:
             return []
 
-        prompt: str = f"""
-        An Untappd search for a craft beer has failed. Suggest 3 short, alternative search queries to find it.
- 
-        Product Title: "{product_name}"
-        Brewery: "{brewery}"
-        Beer Name: "{beer_name}"
- 
-        Rules:
-        - Each query should be short (2-5 words)
-        - Try different combinations: core beer name, brewery abbreviation, key unique words
-        - Remove edition qualifiers (Anniversary, Edition, Limited, etc.)
-        - Remove beer style suffixes (IPA, Stout, Pale Ale, etc.) if the name has other unique words
-        - The goal is to find the beer on Untappd.com
- 
-        Output JSON only:
-        {{"queries": ["query1", "query2", "query3"]}}
-        """
+        prompt: str = self.prompt_builder.build_suggest_search_queries_prompt(product_name, brewery, beer_name)
 
         try:
             schema = None
@@ -402,26 +287,7 @@ class GeminiExtractor(BaseExtractor):
         if not self.client:
             return None
 
-        prompt: str = f"""
-        An Untappd search for a craft beer failed because the Japanese/Katakana text does not match Untappd's English database.
-        Please infer the exact official English brewery name, its likely URL slug on Untappd (e.g. 'finback-brewery' or 'ise-kado-brewery'), and the official English beer name.
-
-        Product Title: "{product_name}"
-        Brewery Text: "{brewery}"
-        Beer Name Text: "{beer_name}"
-
-        Rules:
-        - Convert Katakana names to their official English names (e.g. 'フィンバック' -> 'Finback Brewery', 'アザーハーフ' -> 'Other Half Brewing Co.', '箕面ビール' -> 'Minoh Beer').
-        - 'brewery_slug' must be lowercase with hyphens, matching standard Untappd slug conventions (e.g. 'other-half-brewing-co', 'minoh-beer').
-        - 'english_beer_name' should remove Japanese edition tags and style suffixes if redundant, giving the clean core English name on Untappd.
-
-        Output JSON only:
-        {{
-            "english_brewery_name": "...",
-            "brewery_slug": "...",
-            "english_beer_name": "..."
-        }}
-        """
+        prompt: str = self.prompt_builder.build_infer_untappd_brewery_info_prompt(product_name, brewery, beer_name)
 
         try:
             schema = None
@@ -467,39 +333,7 @@ class GeminiExtractor(BaseExtractor):
         if not self.client or not candidates:
             return None
 
-        candidates_str_list = []
-        for idx, c in enumerate(candidates):
-            b_name = c.get('beer_name', 'Unknown Beer')
-            br_name = c.get('brewery_name', 'Unknown Brewery')
-            st_name = c.get('style', '')
-            url = c.get('url', '')
-            candidates_str_list.append(f"[{idx}] Beer: \"{b_name}\" | Brewery: \"{br_name}\" | Style: \"{st_name}\" | URL: {url}")
-        candidates_text = "\n".join(candidates_str_list)
-
-        prompt: str = f"""
-        We searched Untappd for a craft beer but got multiple candidate results.
-        Please choose the single best matching candidate from the list below, or return -1 if none of them accurately match the target product.
-
-        Target Product Info:
-        - Product Title (Original Shop Product Name): "{product_name}"
-        - Expected Brewery: "{brewery}"
-        - Expected Beer Name: "{beer_name}"
-
-        Candidate Results from Untappd:
-{candidates_text}
-
-        Rules:
-        1. **Strict Variant & Title Matching**: Pay very close attention to "Product Title (Original Shop Product Name)" above, which contains the raw shop listing title. If it specifies a specific variant, hop, adjunct, or edition (e.g., DDH, Double Dry Hopped, Barrel Aged / BA, TIPA, Hazy, w/ lemon or fruit, batch number, Specific Vintage Year like 2023 or 2024), the selected candidate MUST exactly match that variant or vintage. Do not pick the regular version or a different vintage year if the specific one is requested. If the requested exact variant/vintage is NOT in the candidate list, return -1 (no match).
-        2. **Collab Matching**: If the target is a collaboration beer (e.g., A x B or mentioned in Product Title), candidate names might list the breweries in a different order (e.g., B / A) or include both names. This is a valid match.
-        3. **Japanese to English Mapping**: The target product info may be in Japanese or Katakana. Match them correctly to their English/Romanized equivalents on Untappd.
-        4. **No Match Option**: If none of the candidates accurately represent the target product, you MUST output selected_index as -1. Do not guess or force a wrong match.
-
-        Output JSON only:
-        {{
-            "selected_index": 0,
-            "reason": "Clear brief explanation for why this candidate was selected or why none matched."
-        }}
-        """
+        prompt: str = self.prompt_builder.build_select_best_candidate_prompt(product_name, brewery, beer_name, candidates)
 
         try:
             schema = None

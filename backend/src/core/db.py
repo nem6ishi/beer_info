@@ -28,7 +28,10 @@ def sync_execute(query_builder: Any) -> Any:
 async def async_execute(query_builder: Any) -> Any:
     """
     Supabase クエリビルダーを asyncio.to_thread かつリトライ付きで非同期実行する。
-    イベントループのブロッキングを防ぎます。
+    意図: Python用 Supabase クライアントは現状同期通信(httpx同期呼び出し)であるため、
+    そのまま await なしで呼ぶと asyncio のイベントループをブロックしてしまい、
+    並行して動いている他の非同期処理（スクレイピングなど）が止まってしまう。
+    これを防ぐため、to_thread を使って別スレッドで通信を行わせる工夫。
     """
     return await asyncio.to_thread(sync_execute, query_builder)
 

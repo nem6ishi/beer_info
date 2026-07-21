@@ -55,6 +55,7 @@ const BeerImage: React.FC<BeerImageProps> = ({
                 sizes="(max-width: 768px) 80px, 90px"
                 onLoad={() => setIsLoaded(true)}
                 onError={() => {
+                    if (imgSrc === defaultPlaceholder) return;
                     if (!hasError) {
                         setHasError(true);
                         if (fallbackSrc && imgSrc !== fallbackSrc) {
@@ -66,7 +67,7 @@ const BeerImage: React.FC<BeerImageProps> = ({
                         setImgSrc(defaultPlaceholder);
                     }
                 }}
-                unoptimized={imgSrc.startsWith('http') && !imgSrc.includes('googleusercontent') && !imgSrc.includes('akamaized')} // Partially bypass proxy for problematic ones if needed, but for now let's hope remotePatterns works
+                unoptimized={true} // Bypassing Next.js image optimization entirely for stability
                 style={{ 
                     objectFit: 'contain',
                     opacity: isLoaded ? 1 : 0,
