@@ -144,7 +144,8 @@ export default function BeerFilters({
                         options={availableBreweries.map(b => ({
                             label: b.name,
                             value: b.name,
-                            flag: b.flag
+                            flag: b.flag,
+                            searchStr: b.searchStr
                         }))}
                         selectedValues={brewery_filter ? brewery_filter.split(',') : []}
                         onChange={(vals) => onMultiSelectChange('brewery_filter', vals)}

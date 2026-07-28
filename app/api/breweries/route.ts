@@ -40,28 +40,35 @@ export async function GET(request: Request) {
     try {
         const { data, error } = await supabase
             .from('beer_info_view')
-            .select('untappd_brewery_name, brewery_location')
+            .select('untappd_brewery_name, brewery_location, brewery_name_jp, brewery_name_en')
             .not('untappd_brewery_name', 'is', null)
             .neq('untappd_brewery_name', '')
 
         if (error) throw error
 
-        const breweryMap = new Map<string, { name: string; location: string | null }>();
+        const breweryMap = new Map<string, { name: string; location: string | null; searchTerms: Set<string> }>();
 
         data.forEach(item => {
             const name = item.untappd_brewery_name;
-            if (!breweryMap.has(name) || (!breweryMap.get(name)!.location && item.brewery_location)) {
+            if (!breweryMap.has(name)) {
                 breweryMap.set(name, {
                     name: name,
-                    location: item.brewery_location
+                    location: item.brewery_location,
+                    searchTerms: new Set()
                 });
+            } else if (!breweryMap.get(name)!.location && item.brewery_location) {
+                breweryMap.get(name)!.location = item.brewery_location;
             }
+            const mapItem = breweryMap.get(name)!;
+            if (item.brewery_name_jp) mapItem.searchTerms.add(item.brewery_name_jp);
+            if (item.brewery_name_en) mapItem.searchTerms.add(item.brewery_name_en);
         });
 
         const breweries = Array.from(breweryMap.values())
             .map(b => ({
                 name: b.name,
-                flag: getFlag(b.location)
+                flag: getFlag(b.location),
+                searchStr: Array.from(b.searchTerms).join(' ')
             }))
             .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 

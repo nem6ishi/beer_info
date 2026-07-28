@@ -36,7 +36,10 @@ export default function MultiSelectDropdown({ options, selectedValues, onChange,
 
     // Filter and sort options: selected items first, then alphabetically
     const filteredAndSortedOptions = (searchable
-        ? options.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase()))
+        ? options.filter(opt => {
+            const term = searchTerm.toLowerCase();
+            return opt.label.toLowerCase().includes(term) || (opt.searchStr && opt.searchStr.toLowerCase().includes(term));
+        })
         : options
     ).sort((a, b) => {
         const aSelected = selectedValues.includes(a.value)

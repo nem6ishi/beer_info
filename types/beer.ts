@@ -56,12 +56,14 @@ export interface SelectOption {
   label: string;
   flag?: string;
   count?: number;
+  searchStr?: string;
 }
 
 /** Brewery option returned by /api/breweries. */
 export interface BreweryOption {
   name: string;
   flag?: string;
+  searchStr?: string;
 }
 
 /** Style option returned by /api/styles. */
