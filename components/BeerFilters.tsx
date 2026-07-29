@@ -131,7 +131,7 @@ export default function BeerFilters({
                             .map(([name, count]): SelectOption => ({ value: name, label: `${name} (${count})`, count }))
                             .sort((a, b) => (b.count ?? 0) - (a.count ?? 0) || a.value.localeCompare(b.value))
                         }
-                        selectedValues={shop ? shop.split(',') : []}
+                        selectedValues={shop ? shop.split('|') : []}
                         onChange={(vals) => onMultiSelectChange('shop', vals)}
                         placeholder="Select Stores"
                     />
@@ -147,7 +147,7 @@ export default function BeerFilters({
                             flag: b.flag,
                             searchStr: b.searchStr
                         }))}
-                        selectedValues={brewery_filter ? brewery_filter.split(',') : []}
+                        selectedValues={brewery_filter ? brewery_filter.split('|') : []}
                         onChange={(vals) => onMultiSelectChange('brewery_filter', vals)}
                         placeholder="Select Breweries"
                         searchable={true}
@@ -161,7 +161,7 @@ export default function BeerFilters({
                             value: typeof s === 'string' ? s : s.style,
                             label: typeof s === 'string' ? s : `${s.style} (${s.count})`
                         }))}
-                        selectedValues={style_filter ? style_filter.split(',') : []}
+                        selectedValues={style_filter ? style_filter.split('|') : []}
                         onChange={(vals) => onMultiSelectChange('style_filter', vals)}
                         placeholder="Select Styles"
                         searchable={true}

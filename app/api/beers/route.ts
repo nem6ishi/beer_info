@@ -58,17 +58,17 @@ export async function GET(request: Request) {
             if (min_rating) q = q.gte('untappd_rating', min_rating)
             
             if (shop) {
-                const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+                const shops = shop.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean)
                 if (shops.length > 0) q = q.in('shop', shops)
             }
 
             if (style_filter) {
-                const styles = style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+                const styles = style_filter.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean)
                 if (styles.length > 0) q = q.in('untappd_style', styles)
             }
 
             if (brewery_filter) {
-                const breweries = brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean)
+                const breweries = brewery_filter.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean)
                 if (breweries.length > 0) q = q.in('untappd_brewery_name', breweries)
             }
 
@@ -114,8 +114,8 @@ export async function GET(request: Request) {
         }
 
         const fetchShopCounts = async () => {
-            const styles = style_filter ? style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean) : null;
-            const breweries = brewery_filter ? brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean) : null;
+            const styles = style_filter ? style_filter.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean) : null;
+            const breweries = brewery_filter ? brewery_filter.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean) : null;
 
             return supabase.rpc('get_filtered_shop_counts', {
                 search_query: search || null,

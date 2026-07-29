@@ -73,8 +73,8 @@ export function useBeerFilters() {
     }, [updateURL]);
     
     const handleMultiSelectChange = useCallback((key: string, value: string[]) => {
-        setTempFilters(prev => ({ ...prev, [key]: value.join(',') }));
-        updateURL({ [key]: value.join(','), page: '1' });
+        setTempFilters(prev => ({ ...prev, [key]: value.join('|') }));
+        updateURL({ [key]: value.join('|'), page: '1' });
     }, [updateURL]);
 
     const resetFilters = useCallback(() => {

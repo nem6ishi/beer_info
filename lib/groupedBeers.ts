@@ -58,17 +58,17 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
         if (min_rating) q = q.gte('rating', min_rating);
 
         if (style_filter) {
-            const styles = style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean);
+            const styles = style_filter.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean);
             if (styles.length > 0) q = q.in('style', styles);
         }
 
         if (brewery_filter) {
-            const breweries = brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean);
+            const breweries = brewery_filter.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean);
             if (breweries.length > 0) q = q.in('brewery_name', breweries);
         }
 
         if (shop) {
-            const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean);
+            const shops = shop.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean);
             if (shops.length > 0) {
                 if (shops.length === 1) {
                     const s = shops[0];
@@ -124,8 +124,8 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
     };
 
     const fetchShopCounts = async () => {
-        const styles = style_filter ? style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean) : null;
-        const breweries = brewery_filter ? brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean) : null;
+        const styles = style_filter ? style_filter.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean) : null;
+        const breweries = brewery_filter ? brewery_filter.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean) : null;
 
         return supabase.rpc('get_filtered_shop_counts', {
             search_query: search || null,
@@ -171,11 +171,11 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
                     if (max_ibu) q = q.lte('ibu', max_ibu);
                     if (min_rating) q = q.gte('rating', min_rating);
                     if (style_filter) {
-                        const styles = style_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean);
+                        const styles = style_filter.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean);
                         if (styles.length > 0) q = q.in('style', styles);
                     }
                     if (brewery_filter) {
-                        const breweries = brewery_filter.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean);
+                        const breweries = brewery_filter.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean);
                         if (breweries.length > 0) q = q.in('brewery_name', breweries);
                     }
                     if (product_type) {
@@ -213,7 +213,7 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
                 let allGroups = fallbackRes.data || [];
 
                 if (shop) {
-                    const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean);
+                    const shops = shop.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean);
                     if (shops.length > 0) {
                         allGroups = allGroups.filter(g => {
                             const items = (g.items as any[]) || [];
@@ -248,7 +248,7 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
         } else {
             let fetchedGroups = dataRes.data || [];
             if (shop) {
-                const shops = shop.normalize('NFC').split(',').map(s => s.trim()).filter(Boolean);
+                const shops = shop.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean);
                 if (shops.length > 1) {
                     fetchedGroups = fetchedGroups.filter(g => {
                         const items = (g.items as any[]) || [];
