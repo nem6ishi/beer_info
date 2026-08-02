@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase'
 import HomeClient from '../components/HomeClient'
 import { Suspense } from 'react'
+import { fetchAvailableBreweries } from '../lib/breweries'
 
 export const revalidate = 60
 
@@ -12,8 +13,8 @@ export default async function Page() {
     let q = supabase.from('beer_info_view').select('*', { count: 'exact' });
     q = q.eq('stock_status', 'In Stock').order('first_seen', { ascending: false });
 
-    // Fetch beers, shop counts, and available filters in parallel
-    const [ { data: beers, count, error: dataError }, countRes, filterRes ] = await Promise.all([
+    // Fetch beers, shop counts, available filters, and available breweries in parallel
+    const [ { data: beers, count, error: dataError }, countRes, filterRes, breweries ] = await Promise.all([
         q.range(offset, offset + limitNum - 1),
         supabase.rpc('get_filtered_shop_counts', {
             search_query: null,
@@ -28,7 +29,8 @@ export default async function Page() {
             p_product_type: null,
             p_untappd_status: null
         }),
-        supabase.rpc('get_available_filters').single()
+        supabase.rpc('get_available_filters').single(),
+        fetchAvailableBreweries()
     ]);
 
     if (dataError) console.error('Data error:', dataError);
@@ -43,12 +45,8 @@ export default async function Page() {
         });
     }
 
-    const typedFilterData = filterRes.data as { styles?: string[]; breweries?: { name_en?: string; name_jp?: string }[] } | null;
+    const typedFilterData = filterRes.data as { styles?: string[] } | null;
     const styles = typedFilterData?.styles || [];
-    const breweries = typedFilterData?.breweries?.map((b) => ({
-        name: b.name_en || b.name_jp || 'Unknown',
-        flag: ''
-    })) || [];
 
     const initialData = {
         beers: beers || [],
