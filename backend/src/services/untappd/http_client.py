@@ -52,7 +52,7 @@ async def search_brewery_beer_candidates(
     validate_beer: Optional[str] = None,
     score_beer_fn: Optional[Callable] = None,
     validate_brewery: Optional[str] = None,
-    max_candidates: int = 10,
+    max_candidates: int = 15,
 ) -> List[UntappdSearchCandidate]:
     if not brewery_url or not query:
         return []

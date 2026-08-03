@@ -195,6 +195,8 @@ async def _get_untappd_url_single(
 
     for cand_b_url in candidate_brewery_urls:
         logger.info(f"Searching for '{target_beer_name}' within brewery: {cand_b_url}")
+        # 意図: 同一ブルワリー内の限定バッチやビンテージ年・ホップ違いの同名ビールを取りこぼさないよう、
+        # ブルワリー内検索の候補取得上限を 15 件に拡張（LLMコンテキスト的にも15〜20件は安全かつ高精度）
         cands = await search_brewery_beer_candidates(
             cand_b_url, 
             target_beer_name, 
@@ -202,7 +204,7 @@ async def _get_untappd_url_single(
             validate_beer=target_beer_name,
             score_beer_fn=score_beer_match,
             validate_brewery=brewery_name,
-            max_candidates=10
+            max_candidates=15
         )
         for c in cands:
             u = c.get('url')
@@ -210,7 +212,7 @@ async def _get_untappd_url_single(
                 seen_urls.add(u)
                 all_candidates.append(c)
 
-        if len(all_candidates) < 3 and beer_name_jp and beer_name_jp != target_beer_name:
+        if len(all_candidates) < 5 and beer_name_jp and beer_name_jp != target_beer_name:
             logger.info(f"🔄 [JP-fallback] Searching for Japanese name '{beer_name_jp}' within brewery: {cand_b_url}")
             cands_jp = await search_brewery_beer_candidates(
                 cand_b_url,
@@ -219,7 +221,7 @@ async def _get_untappd_url_single(
                 validate_beer=beer_name_jp,
                 score_beer_fn=score_beer_match,
                 validate_brewery=brewery_name,
-                max_candidates=5
+                max_candidates=8
             )
             for c in cands_jp:
                 u = c.get('url')
@@ -227,7 +229,7 @@ async def _get_untappd_url_single(
                     seen_urls.add(u)
                     all_candidates.append(c)
 
-        if len(all_candidates) < 3:
+        if len(all_candidates) < 5:
             tokens = []
             for text in [target_beer_name, beer_name_jp]:
                 if not text:
@@ -266,14 +268,14 @@ async def _get_untappd_url_single(
                     validate_beer=target_beer_name,
                     score_beer_fn=score_beer_match,
                     validate_brewery=brewery_name,
-                    max_candidates=5
+                    max_candidates=8
                 )
                 for c in cands_token:
                     u = c.get('url')
                     if u and u not in seen_urls:
                         seen_urls.add(u)
                         all_candidates.append(c)
-                if len(all_candidates) >= 5:
+                if len(all_candidates) >= 10:
                     break
 
     if candidate_brewery_urls and not all_candidates:
@@ -339,7 +341,7 @@ async def _get_untappd_url_single(
                 try:
                     def _do_ddg_search():
                         with DDGS(timeout=10) as ddgs:
-                            res = ddgs.text(query, max_results=5)
+                            res = ddgs.text(query, max_results=10)
                             return list(res) if res else []
                             
                     results: Any = await asyncio.to_thread(_do_ddg_search)
@@ -368,8 +370,8 @@ async def _get_untappd_url_single(
                     break
                 except Exception as inner_e:
                     error_str = str(inner_e).lower()
-                    if "rate limit" in error_str or "202" in error_str or "timeout" in error_str or "ratelimit" in error_str:
-                        wait_time = 15 * (attempt + 1)
+                    if "rate limit" in error_str or "202" in error_str or "timeout" in error_str or "ratelimit" in error_str or "429" in error_str:
+                        wait_time = 30 * (attempt + 1)
                         logger.warning(f"  [DDG] Rate limit or timeout hit. Sleeping for {wait_time}s... (Attempt {attempt+1}/{max_retries})")
                         await asyncio.sleep(wait_time)
                         if attempt == max_retries - 1:
@@ -423,7 +425,7 @@ async def _get_untappd_url_single(
                 else:
                     logger.info("  ⏭️ [LLM Selection] LLM rejected all candidates as none matched accurately.")
                     top_cand = all_candidates[0]
-                    if top_cand.get('score', 0) >= 95 or top_cand.get('source') == 'duckduckgo':
+                    if top_cand.get('score', 0) >= 90 or top_cand.get('source') == 'duckduckgo':
                         logger.info(f"  [Scoring Safety Net] Selecting top candidate despite LLM reject: {top_cand.get('url')}")
                         return {
                             'url': top_cand.get('url'),
