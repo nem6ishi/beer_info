@@ -34,9 +34,9 @@ describe('useBeerFilters', () => {
             result.current.handleMultiSelectChange('style_filter', ['IPA', 'Stout']);
         });
 
-        expect(result.current.tempFilters.style_filter).toBe('IPA,Stout');
+        expect(result.current.tempFilters.style_filter).toBe('IPA|Stout');
         expect(pushMock).toHaveBeenCalled();
-        expect(pushMock.mock.calls[0][0]).toContain('style_filter=IPA%2CStout');
+        expect(pushMock.mock.calls[0][0]).toContain('style_filter=IPA%7CStout');
     });
 
     it('should sync filters from params', () => {

@@ -199,7 +199,7 @@ describe('getGroupedBeers filter behavior', () => {
             limit: 20,
             sort: 'newest',
             search: '',
-            shop: 'arome,beervolta',
+            shop: 'arome|beervolta',
             min_abv: null,
             max_abv: null,
             min_ibu: null,
