@@ -30,3 +30,24 @@ def test_validate_final_match_tipsy():
         expected_brewery="RIO BREWING"
     )
     assert good_match is True, "Final validation must accept Rio Brewing & Co. Tipsy"
+
+def test_validate_final_match_vintage_mismatch():
+    # Title has no vintage -> Untappd has 2023BY -> Should be BLOCKED
+    blocked = validate_final_match(
+        original_title="【ENGI!? Sake IPA/志賀高原】",
+        untappd_beer_name="Shiga Kogen Engi!? (2023BY)",
+        untappd_brewery_name="Tamamura Honten Co.",
+        untappd_style="Koji / Ginjo Beer",
+        expected_brewery="Tamamura Honten Co."
+    )
+    assert blocked is False, "Final validation must block 2023BY vintage when title has no vintage"
+
+    # Title explicitly has 2023BY -> Untappd has 2023BY -> Should be PASSED
+    passed = validate_final_match(
+        original_title="【ENGI!? Sake IPA 2023BY/志賀高原】",
+        untappd_beer_name="Shiga Kogen Engi!? (2023BY)",
+        untappd_brewery_name="Tamamura Honten Co.",
+        untappd_style="Koji / Ginjo Beer",
+        expected_brewery="Tamamura Honten Co."
+    )
+    assert passed is True, "Final validation must pass 2023BY vintage when title explicitly specifies 2023BY"

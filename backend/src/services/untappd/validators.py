@@ -371,6 +371,16 @@ def validate_final_match(
                 logger.warning(f"  [Final Validation] BLOCKED: Untappd style '{untappd_style}' conflicts with beer product '{original_title}'")
                 return False
 
+    # 4. Check Vintage / Year Mismatch (e.g. 2023BY in Untappd beer name when title has no vintage/year)
+    u_beer_lower = untappd_beer_name.lower()
+    orig_lower = original_title.lower()
+    year_match = re.search(r'\b(20\d{2}(?:by)?)\b', u_beer_lower)
+    if year_match:
+        year_str = year_match.group(1)
+        if year_str not in orig_lower and year_str.replace("by", "") not in orig_lower:
+            logger.warning(f"  [Final Validation] BLOCKED: Untappd beer '{untappd_beer_name}' specifies vintage '{year_str}' but original title '{original_title}' has no vintage.")
+            return False
+
     logger.info(f"  [Final Validation] PASSED for product '{original_title}' <-> Untappd '{untappd_brewery_name} - {untappd_beer_name}'")
     return True
 
