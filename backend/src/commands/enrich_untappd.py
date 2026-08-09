@@ -24,7 +24,7 @@ from typing import List, Optional, Dict, Any, Set
 from backend.src.core.db import get_supabase_client, refresh_materialized_view
 from backend.src.core.types import UntappdBeerDetails, UntappdSearchResult
 from backend.src.services.untappd.searcher import get_untappd_url, scrape_beer_details, search_brewery_beer
-from backend.src.services.untappd.validators import validate_beer_match, score_beer_match
+from backend.src.services.untappd.validators import validate_beer_match, score_beer_match, validate_final_match
 from backend.src.services.llm import BaseExtractor, get_llm_extractor
 from backend.src.services.store.brewery_manager import BreweryManager
 from backend.src.commands.failure_tracker import record_enrichment_failure, resolve_search_failure
@@ -124,10 +124,13 @@ class UntappdEnricher:
             batch_gemini = []
             batch_scraped = []
 
-            sem = asyncio.Semaphore(3)
+            # 検索エンジンのレートリミット（429 Too Many Requests等）を防ぐため、並列数を1に制限
+            sem = asyncio.Semaphore(1)
             
             async def _process_with_sem(i: int, beer: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 async with sem:
+                    # レートリミット回避のための待機時間
+                    await asyncio.sleep(3)
                     product_url_loop: Optional[str] = beer.get('url')
                     if not product_url_loop:
                         return None
@@ -613,6 +616,27 @@ class UntappdEnricher:
         logger.info(f"  🔄 Scraping beer details...")
         details: UntappdBeerDetails = await scrape_beer_details(untappd_url)
         if details:
+            # Final Verification Step
+            orig_title: str = beer.get('name', '')
+            if not validate_final_match(
+                original_title=orig_title,
+                untappd_beer_name=details.get('untappd_beer_name', ''),
+                untappd_brewery_name=details.get('untappd_brewery_name', ''),
+                untappd_style=details.get('untappd_style'),
+                expected_brewery=brewery,
+            ):
+                logger.warning(f"  ❌ Final verification failed for {untappd_url}. Discarding match for '{orig_title}'.")
+                if url:
+                    record_enrichment_failure(
+                        self.supabase,
+                        product_url=url,
+                        brewery_name=brewery,
+                        beer_name=beer_name,
+                        failure_reason='final_validation_mismatch',
+                        error_message=f"Final verification failed: {details.get('untappd_brewery_name')} - {details.get('untappd_beer_name')}"
+                    )
+                return {}
+
             payload: Dict[str, Any] = map_details_to_payload(details)
             payload['untappd_url'] = untappd_url
             logger.info(f"  ✅ Details scraped: {details.get('untappd_style', 'N/A')}")

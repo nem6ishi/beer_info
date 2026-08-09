@@ -57,7 +57,8 @@ def _is_safe_substring_match(str_a: str, str_b: str, expected_brewery: Optional[
         return True
     # If ratio < 0.78, check if the extra portion is purely style/variant/number/brewery noise
     remainder = longer.replace(shorter, "")
-    allowed_noise = ["barrel", "aged", "sour", "ale", "stout", "ipa", "collaborat", "batch", "edition", "series", "vol", "ver", "double", "triple", "imperial", "hazy", "neipa", "shigakogen", "tamamura", "honten"]
+    remainder = re.sub(r'\b20\d{2}\b', '', remainder)
+    allowed_noise = ["barrel", "aged", "sour", "ale", "stout", "ipa", "collaborat", "batch", "edition", "series", "vol", "ver", "double", "triple", "imperial", "hazy", "neipa", "shigakogen", "tamamura", "honten", "fresh", "hop", "wet", "dry", "anniversary", "year"]
     if any(n in remainder for n in allowed_noise):
         return True
     if expected_brewery:
@@ -287,9 +288,17 @@ def validate_brewery_match(result_element: Union[Tag, Dict[str, Any]], expected_
     cleaned_expected: str = clean_brewery_name(expected_brewery)
     cr_norm: str = normalize_for_comparison(cleaned_result)
     ce_norm: str = normalize_for_comparison(cleaned_expected)
-    if cr_norm and ce_norm and (cr_norm in ce_norm or ce_norm in cr_norm):
-        logger.info(f"  [Validation] Brewery MATCH (Cleaned): '{result_brewery}' matches '{expected_brewery}'")
-        return True
+    if cr_norm and ce_norm:
+        if cr_norm == ce_norm:
+            logger.info(f"  [Validation] Brewery MATCH (Cleaned Exact): '{result_brewery}' matches '{expected_brewery}'")
+            return True
+        # Check safe substring match or word boundary match to prevent "rio" matching "riococktail"
+        if len(ce_norm) >= 4 and (ce_norm in cr_norm or cr_norm in ce_norm):
+            # Verify word boundary for cleaned names
+            pattern = rf'\b{re.escape(cleaned_expected.lower())}\b'
+            if re.search(pattern, cleaned_result.lower()) or _is_safe_substring_match(cr_norm, ce_norm):
+                logger.info(f"  [Validation] Brewery MATCH (Cleaned Safe Substring): '{result_brewery}' matches '{expected_brewery}'")
+                return True
 
     # 3. Alias Check
     if expected_brewery in _BREWERY_ALIASES:
@@ -319,3 +328,49 @@ def validate_brewery_match(result_element: Union[Tag, Dict[str, Any]], expected_
 
     logger.info(f"  [Validation] Brewery FAIL: '{result_brewery}' != '{expected_brewery}'")
     return False
+
+
+def validate_final_match(
+    original_title: str,
+    untappd_beer_name: str,
+    untappd_brewery_name: str,
+    untappd_style: Optional[str] = None,
+    expected_brewery: Optional[str] = None,
+) -> bool:
+    """
+    Final verification step comparing the original shop product title against the 
+    scraped Untappd beer details (beer name, brewery name, style).
+    
+    Prevents erroneous matches where search queries matched unrelated items 
+    (e.g., 'RIO BREWING' matching 'Rio Cocktail').
+    """
+    if not original_title or not untappd_brewery_name:
+        return True
+
+    # 1. Check Brewery Match with Expected Brewery or Original Title
+    if expected_brewery:
+        if not validate_brewery_match({"brewery_name": untappd_brewery_name}, expected_brewery):
+            logger.warning(f"  [Final Validation] BLOCKED: Untappd brewery '{untappd_brewery_name}' fails validation against expected '{expected_brewery}' (Product: '{original_title}')")
+            return False
+
+    # 2. Check for severe brand clash between original title and Untappd brewery
+    orig_norm = normalize_for_comparison(original_title)
+    u_brew_clean_norm = normalize_for_comparison(clean_brewery_name(untappd_brewery_name))
+
+    # E.g., title has "rio brewing" but Untappd brewery is "rio cocktail"
+    if "rio brewing" in orig_norm and u_brew_clean_norm == "riococktail":
+        logger.warning(f"  [Final Validation] BLOCKED: Original title '{original_title}' specifies RIO BREWING but Untappd is '{untappd_brewery_name}'")
+        return False
+
+    # 3. Check Style Mismatch (e.g. Cocktail / RTD vs Beer)
+    if untappd_style:
+        style_lower = untappd_style.lower()
+        if any(bad_style in style_lower for bad_style in ["rtd", "cocktail", "hard seltzer"]):
+            orig_lower = original_title.lower()
+            if not any(w in orig_lower for w in ["cocktail", "rtd", "ハードセイツァー", "カクテル", "チューハイ"]):
+                logger.warning(f"  [Final Validation] BLOCKED: Untappd style '{untappd_style}' conflicts with beer product '{original_title}'")
+                return False
+
+    logger.info(f"  [Final Validation] PASSED for product '{original_title}' <-> Untappd '{untappd_brewery_name} - {untappd_beer_name}'")
+    return True
+
