@@ -51,3 +51,24 @@ def test_validate_final_match_vintage_mismatch():
         expected_brewery="Tamamura Honten Co."
     )
     assert passed is True, "Final validation must pass 2023BY vintage when title explicitly specifies 2023BY"
+
+def test_validate_final_match_real_ale_mismatch():
+    # Title has no Real Ale -> Untappd has Hansharo Real Soun -> Should be BLOCKED
+    blocked1 = validate_final_match(
+        original_title="【早雲/反射炉ビヤ】",
+        untappd_beer_name="Hansharo Real Soun",
+        untappd_brewery_name="Kuraya Narusawa | Hansharo Beer",
+        untappd_style="Traditional Ale",
+        expected_brewery="Hansharo Beer"
+    )
+    assert blocked1 is False, "Final validation must block Hansharo Real Soun when title does not specify Real Ale"
+
+    # Title specifies NITRO -> Untappd has Real Ale Ver. -> Should be BLOCKED
+    blocked2 = validate_final_match(
+        original_title="【頼朝(NITRO)/反射炉ビヤ】",
+        untappd_beer_name="Hansharo Yoritomo Real Ale Ver.",
+        untappd_brewery_name="Kuraya Narusawa | Hansharo Beer",
+        untappd_style="Porter - Other",
+        expected_brewery="Hansharo Beer"
+    )
+    assert blocked2 is False, "Final validation must block Real Ale Ver. for NITRO product"

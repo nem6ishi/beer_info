@@ -381,6 +381,12 @@ def validate_final_match(
             logger.warning(f"  [Final Validation] BLOCKED: Untappd beer '{untappd_beer_name}' specifies vintage '{year_str}' but original title '{original_title}' has no vintage.")
             return False
 
+    # 5. Check Real Ale / Cask / Nitro Conditioning Mismatch
+    if any(ra in u_beer_lower for ra in ["real ale", "real soun", "cask"]):
+        if not any(w in orig_lower for w in ["real", "リアルエール", "カスク", "cask"]):
+            logger.warning(f"  [Final Validation] BLOCKED: Untappd beer '{untappd_beer_name}' is Real Ale/Cask, but original title '{original_title}' does not specify Real Ale/Cask.")
+            return False
+
     logger.info(f"  [Final Validation] PASSED for product '{original_title}' <-> Untappd '{untappd_brewery_name} - {untappd_beer_name}'")
     return True
 
