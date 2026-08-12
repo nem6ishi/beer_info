@@ -90,7 +90,8 @@ async def run_and_save_store(
 
         # Assign increasing timestamp separated by store index and item index
         item_time: datetime = base_time + timedelta(seconds=store_index, microseconds=idx)
-        item_time_iso: str = new_item.get('first_seen') or item_time.isoformat()
+        scraped_first_seen: Optional[str] = new_item.get('first_seen')
+        item_time_iso: str = scraped_first_seen or item_time.isoformat()
 
         beer_data: Dict[str, Any] = {
             'url': url,
@@ -107,7 +108,10 @@ async def run_and_save_store(
             if new_only and not is_restock:
                 continue
 
-            if is_restock:
+            # If shop provides an explicit item creation/published date (first_seen), always prioritize it
+            if scraped_first_seen:
+                beer_data['first_seen'] = scraped_first_seen
+            elif is_restock:
                 beer_data['first_seen'] = item_time_iso
             else:
                 beer_data['first_seen'] = existing.get('first_seen')
