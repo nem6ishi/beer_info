@@ -50,8 +50,40 @@ export default function BeerFilters({
     onViewModeChange,
     onRefresh
 }: BeerFiltersProps) {
+    const sortedShops = Object.entries(shopCounts)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const totalBeerCount = Object.values(shopCounts).reduce((acc, count) => acc + count, 0);
+    const selectedShopList = shop ? shop.split('|') : [];
+
     return (
         <>
+            {/* Store Selection Bar */}
+            <div className="store-selector-container">
+                <span className="store-selector-label">Store:</span>
+                <div className="store-selector-buttons">
+                    <button
+                        type="button"
+                        className={`store-select-btn ${selectedShopList.length === 0 ? 'active' : ''}`}
+                        onClick={() => onMultiSelectChange('shop', [])}
+                    >
+                        全ストア{totalBeerCount > 0 ? ` (${totalBeerCount})` : ''}
+                    </button>
+                    {sortedShops.map(([shopName, count]) => {
+                        const isSelected = selectedShopList.length === 1 && selectedShopList[0] === shopName;
+                        return (
+                            <button
+                                key={shopName}
+                                type="button"
+                                className={`store-select-btn ${isSelected ? 'active' : ''}`}
+                                onClick={() => onMultiSelectChange('shop', [shopName])}
+                            >
+                                {shopName} ({count})
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
             <div className="controls-bar">
                 {/* View Toggle */}
                 <FilterSection label="View:">

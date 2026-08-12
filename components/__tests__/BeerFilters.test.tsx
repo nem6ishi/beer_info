@@ -77,12 +77,21 @@ describe('BeerFilters Unit Tests', () => {
         expect(handleToggle).toHaveBeenCalled();
     });
 
-    it('should trigger onSortChange when selecting a new sort option', () => {
-        const handleSortChange = vi.fn();
-        render(<BeerFilters {...defaultProps} onSortChange={handleSortChange} />);
+    it('should render store quick select buttons and handle clicks correctly', () => {
+        const handleMultiSelectChange = vi.fn();
+        render(<BeerFilters {...defaultProps} shopCounts={{ 'BeerVolta': 10, 'CraftBeerOnline': 5 }} onMultiSelectChange={handleMultiSelectChange} />);
 
-        const sortSelect = screen.getByDisplayValue('Newest');
-        fireEvent.change(sortSelect, { target: { value: 'price_asc' } });
-        expect(handleSortChange).toHaveBeenCalled();
+        // Check buttons are rendered
+        expect(screen.getByText('全ストア (15)')).toBeDefined();
+        expect(screen.getByText('BeerVolta (10)')).toBeDefined();
+        expect(screen.getByText('CraftBeerOnline (5)')).toBeDefined();
+
+        // Click individual store
+        fireEvent.click(screen.getByText('BeerVolta (10)'));
+        expect(handleMultiSelectChange).toHaveBeenCalledWith('shop', ['BeerVolta']);
+
+        // Click All Stores
+        fireEvent.click(screen.getByText('全ストア (15)'));
+        expect(handleMultiSelectChange).toHaveBeenCalledWith('shop', []);
     });
 });
