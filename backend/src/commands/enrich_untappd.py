@@ -280,6 +280,20 @@ class UntappdEnricher:
             logger.info(f"  🔧 Brewery identified as shop name ('{brewery}'). Attempting to infer true brewery from product name...")
             brewery = None
 
+        # Check title formatted like "[Brewery Name] Product Title / Katakana"
+        raw_title = beer.get('name', '')
+        if raw_title.startswith('['):
+            match_bracket = re.search(r'^\[(.*?)\]\s*(.*)$', raw_title)
+            if match_bracket:
+                b_candidate, title_rest = match_bracket.group(1).strip(), match_bracket.group(2).strip()
+                if b_candidate and b_candidate.lower() != 'witch craft market':
+                    brewery = b_candidate
+                    if '/' in title_rest:
+                        beer_name = title_rest.split('/')[0].strip()
+                    else:
+                        beer_name = title_rest
+                    logger.info(f"  🔧 Parsed from bracketed title: Brewery='{brewery}', Beer='{beer_name}'")
+
         if (not brewery or not beer_name) and ("【" in beer.get('name', '') and "】" in beer.get('name', '')):
             match: Optional[re.Match] = re.search(r'【(.*?)[/／](.*?)】', beer.get('name', ''))
             if match:
