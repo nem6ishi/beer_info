@@ -1,10 +1,13 @@
 import asyncio
 import os
+import logging
 import httpx
 from datetime import datetime, timezone
 from typing import List, Optional, Set, Any, Dict
 from dateutil import parser as date_parser
 from ..core.types import ScrapedProduct
+
+logger = logging.getLogger(__name__)
 
 # Threshold for consecutive sold-out / existing items before stopping
 SOLD_OUT_THRESHOLD: int = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '50'))
@@ -14,6 +17,15 @@ BASE_URL: str = "https://witchcraftmarket.com"
 HEADERS: Dict[str, str] = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/json",
+}
+
+# Non-brewery handles to filter out from collection-based brewery mapping
+STYLE_HANDLES: Set[str] = {
+    'craftbeer', 'ipa', 'hazy-ipa', 'lager', 'stout', 'sour', 'sour-ipa', 'pale-ale',
+    'pilsner', 'porter', 'saison', 'ipl', 'kolsch', 'red-ipa', 'session-ipa', 'sour-ale',
+    'smoothiesourale', 'mead', 'other', 'quick-order', 'juicy-fruits', 'hoppy-fruity',
+    'mlb観戦', 'light', 'molty', 'sparkring-wine', 'orange-wine', 'red-wine', 'rose-wine',
+    'ddhヘイジーダブルipa', 'style-other'
 }
 
 def format_price(raw_price: Optional[str]) -> str:
@@ -29,19 +41,74 @@ def is_beer_product(prod: Dict[str, Any]) -> bool:
     """Check if the product is actually a beer product (excluding standalone glassware, merch, etc.)."""
     title: str = str(prod.get("title", "")).lower()
     prod_type: str = str(prod.get("product_type", "")).lower()
-    tags: List[str] = [str(t).lower() for t in prod.get("tags", [])]
 
-    # Exclude standalone glassware or merchandise unless it's a beer set
     if "グラス" in title or "glass" in title or "ステッカー" in title or "tシャツ" in title:
-        # If product_type is clearly not beer, exclude it
         if "グッズ" in prod_type or "merch" in prod_type or "アクセサリ" in prod_type:
             return False
-        # If title is explicitly just a glass/merch
         if "コラボグラス" in title and "ビール" not in title and "セット" not in title:
             return False
 
-    # Default to true for items in the craftbeer collection unless explicitly non-beer
     return True
+
+async def fetch_with_retry(client: httpx.AsyncClient, url: str, max_retries: int = 3) -> Optional[httpx.Response]:
+    """Fetch URL with exponential backoff on 429 rate limit."""
+    for attempt in range(max_retries):
+        try:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                return resp
+            elif resp.status_code == 429:
+                wait_sec = (attempt + 1) * 2
+                print(f"[{SHOP_NAME}] Rate limited (429) on {url}. Waiting {wait_sec}s...")
+                await asyncio.sleep(wait_sec)
+            else:
+                print(f"[{SHOP_NAME}] HTTP {resp.status_code} fetching {url}")
+                return resp
+        except Exception as e:
+            print(f"[{SHOP_NAME}] Fetch exception for {url}: {e}")
+            await asyncio.sleep(1)
+    return None
+
+async def fetch_brewery_mapping(client: httpx.AsyncClient) -> Dict[str, str]:
+    """
+    Fetches all Shopify collections and maps product handles to their official Brewery Collection Title.
+    E.g. 'one-mind' -> 'AMAKUSA SONAR BEER'
+    """
+    mapping: Dict[str, str] = {}
+    try:
+        url = f"{BASE_URL}/collections.json?limit=250"
+        resp = await fetch_with_retry(client, url)
+        if not resp or resp.status_code != 200:
+            return mapping
+
+        collections = resp.json().get("collections", [])
+        brewery_cols = [c for c in collections if c.get("handle") not in STYLE_HANDLES]
+
+        sem = asyncio.Semaphore(3)  # Gentle concurrency limit
+
+        async def fetch_col(c: Dict[str, Any]) -> None:
+            c_handle = c.get("handle")
+            c_title = c.get("title")
+            if not c_handle or not c_title:
+                return
+
+            async with sem:
+                col_url = f"{BASE_URL}/collections/{c_handle}/products.json?limit=250"
+                col_res = await fetch_with_retry(client, col_url, max_retries=2)
+                if col_res and col_res.status_code == 200:
+                    prods = col_res.json().get("products", [])
+                    for p in prods:
+                        phandle = p.get("handle")
+                        if phandle and phandle not in mapping:
+                            mapping[phandle] = c_title
+
+        # Concurrently fetch all brewery collection products
+        await asyncio.gather(*[fetch_col(c) for c in brewery_cols])
+        print(f"[{SHOP_NAME}] Successfully mapped {len(mapping)} products to Brewery Collections.")
+    except Exception as e:
+        print(f"[{SHOP_NAME}] Warning: Failed to build brewery mapping: {e}")
+
+    return mapping
 
 async def scrape_witch_craft_market(
     limit: Optional[int] = None,
@@ -49,7 +116,8 @@ async def scrape_witch_craft_market(
     full_scrape: bool = False
 ) -> List[ScrapedProduct]:
     """
-    Scrapes product list from WITCH CRAFT MARKET using Shopify API (/collections/craftbeer/products.json).
+    Scrapes product list from WITCH CRAFT MARKET using Shopify API (/collections/craftbeer/products.json)
+    with automatic Brewery Collection mapping.
     Returns list of ScrapedProduct dictionaries.
     """
     all_products: List[ScrapedProduct] = []
@@ -60,6 +128,9 @@ async def scrape_witch_craft_market(
     print(f"[{SHOP_NAME}] Starting scrape (Shopify API)...")
 
     async with httpx.AsyncClient(headers=HEADERS, timeout=30.0, follow_redirects=True) as client:
+        # Build brewery mapping first
+        brewery_map: Dict[str, str] = await fetch_brewery_mapping(client)
+
         while True:
             if limit and len(all_products) >= limit:
                 break
@@ -67,9 +138,10 @@ async def scrape_witch_craft_market(
             api_url: str = f"{BASE_URL}/collections/craftbeer/products.json?limit=250&page={page}"
             try:
                 print(f"[{SHOP_NAME}] Fetching page {page}...")
-                response = await client.get(api_url)
-                if response.status_code != 200:
-                    print(f"[{SHOP_NAME}] Page {page} returned status {response.status_code}. Stopping.")
+                response = await fetch_with_retry(client, api_url)
+                if not response or response.status_code != 200:
+                    status = response.status_code if response else 'No Response'
+                    print(f"[{SHOP_NAME}] Page {page} returned status {status}. Stopping.")
                     break
 
                 data: Dict[str, Any] = response.json()
@@ -88,10 +160,19 @@ async def scrape_witch_craft_market(
                     if not is_beer_product(prod):
                         continue
 
-                    title: str = prod.get('title', 'Unknown')
+                    raw_title: str = prod.get('title', 'Unknown').strip()
                     handle: str = prod.get('handle', '')
                     if not handle:
                         continue
+
+                    # Determine brewery name from collection mapping
+                    brewery_name: Optional[str] = brewery_map.get(handle)
+
+                    # Build unified title e.g. "AMAKUSA SONAR BEER : ONE MIND/ ワンマインド"
+                    if brewery_name and not raw_title.lower().startswith(brewery_name.lower()) and ":" not in raw_title:
+                        title = f"{brewery_name} : {raw_title}"
+                    else:
+                        title = raw_title
 
                     product_url: str = f"{BASE_URL}/products/{handle}"
 
@@ -158,5 +239,5 @@ async def scrape_witch_craft_market(
 
 if __name__ == "__main__":
     import json
-    items: List[ScrapedProduct] = asyncio.run(scrape_witch_craft_market(limit=5))
+    items: List[ScrapedProduct] = asyncio.run(scrape_witch_craft_market(limit=10))
     print(json.dumps(items, indent=2, ensure_ascii=False))
