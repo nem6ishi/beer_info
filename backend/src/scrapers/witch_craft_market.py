@@ -2,11 +2,10 @@ import asyncio
 import os
 import logging
 import re
-import json
 import primp
-from pathlib import Path
+from bs4 import BeautifulSoup
 from datetime import datetime, timezone
-from typing import List, Optional, Set, Any, Dict, Tuple
+from typing import List, Optional, Set, Any, Dict
 from dateutil import parser as date_parser
 from ..core.types import ScrapedProduct
 
@@ -17,92 +16,126 @@ SOLD_OUT_THRESHOLD: int = int(os.getenv('SCRAPER_SOLD_OUT_THRESHOLD', '50'))
 SHOP_NAME: str = "WITCH CRAFT MARKET"
 BASE_URL: str = "https://witchcraftmarket.com"
 
-# Known title patterns for common breweries fallback
-BREWERY_TITLE_PATTERNS: List[Tuple[str, str]] = [
-    (r'^Stone\b', 'Stone Brewing'),
-    (r'^せとうち', 'SETOUCHI'),
-    (r'^Sierra Nevada\b', 'Sierra Nevada'),
-    (r'^Karl Strauss\b', 'Karl Strauss'),
-    (r'^Revision\b', 'Revision Brewing'),
-    (r'^Rogue\b', 'Rogue Ales'),
-    (r'^Pizza Port\b', 'Pizza Port'),
-    (r'^Modern Times\b', 'Modern Times'),
-    (r'^Mikkeller\b', 'Mikkeller'),
-    (r'^Heretic\b', 'Heretic Brewing'),
-    (r'^Belching Beaver\b', 'Belching Beaver'),
-    (r'^KCBC\b', 'KCBC'),
-    (r'^Knee Deep\b', 'Knee Deep Brewing'),
-    (r'^Lost Coast\b', 'Lost Coast Brewery'),
-    (r'^Offshoot\b', 'Offshoot Beer Co.'),
-    (r'^Omnipollo\b', 'Omnipollo'),
-    (r'^pFriem\b', 'pFriem Family Brewers'),
-    (r'^RaR Brewing\b', 'RaR Brewing'),
-    (r'^SingleCut\b', 'SingleCut Beersmiths'),
-    (r'^Smog City\b', 'Smog City Brewing'),
-    (r'^Societe\b', 'Societe Brewing'),
-    (r'^Surly\b', 'Surly Brewing'),
-    (r'^Topa Topa\b', 'Topa Topa Brewing'),
-    (r'^West Coast Brewing\b', 'West Coast Brewing'),
-    (r'^Y\.?\s*MARKET\b', 'Y. Market Brewing'),
-    (r'^AMAKUSA\b', 'AMAKUSA SONAR BEER'),
-    (r'WITCH OF OZU', 'WITCH OF OZU'),
-]
-
 def format_price(raw_price: Optional[str]) -> str:
-    """Formats raw price string (e.g., '1030' or '1,030') into Japanese Yen string (e.g., '1030円')."""
+    """Formats raw price string (e.g., '¥1,540' or '1540') into Japanese Yen string (e.g., '1540円')."""
     if not raw_price:
         return "Unknown"
-    cleaned: str = raw_price.split(".")[0].replace(",", "").strip()
+    cleaned = re.sub(r'[^\d]', '', raw_price)
     if cleaned.isdigit():
         return f"{cleaned}円"
     return raw_price
 
-def is_beer_product(prod: Dict[str, Any]) -> bool:
-    """Check if the product is actually a beer product (excluding standalone glassware, merch, etc.)."""
-    title: str = str(prod.get("title", "")).lower()
-    prod_type: str = str(prod.get("product_type", "")).lower()
+def is_beer_product(title: str, brand: str) -> bool:
+    """Check if the product is actually a beer product or relevant shop item."""
+    title_lower = title.lower()
 
-    if "グラス" in title or "glass" in title or "ステッカー" in title or "tシャツ" in title:
-        if "グッズ" in prod_type or "merch" in prod_type or "アクセサリ" in prod_type:
-            return False
-        if "コラボグラス" in title and "ビール" not in title and "セット" not in title:
+    if "グラス" in title_lower or "glass" in title_lower or "ステッカー" in title_lower or "tシャツ" in title_lower:
+        if "コラボグラス" in title_lower and "ビール" not in title_lower and "セット" not in title_lower:
             return False
 
     return True
 
-def load_static_brewery_map() -> Dict[str, str]:
-    """Load pre-indexed brewery handle mapping from JSON file."""
-    map_file: Path = Path(__file__).parent / "wcm_brewery_map.json"
-    if map_file.exists():
-        try:
-            with open(map_file, encoding="utf-8") as f:
-                data = json.load(f)
-                print(f"[{SHOP_NAME}] Loaded {len(data)} static brewery mappings from wcm_brewery_map.json")
-                return data
-        except Exception as e:
-            print(f"[{SHOP_NAME}] Warning: Could not load wcm_brewery_map.json: {e}")
-    return {}
-
-def fetch_with_primp(client: primp.Client, url: str, max_retries: int = 5) -> Optional[primp.Response]:
-    """Fetch URL using primp with Chrome TLS impersonation and exponential backoff."""
+def fetch_html_with_primp(client: primp.Client, url: str, max_retries: int = 5) -> Optional[str]:
+    """Fetch HTML content using primp with Chrome TLS impersonation and backoff."""
     for attempt in range(max_retries):
         try:
             resp = client.get(url)
             if resp.status_code == 200:
-                return resp
+                return resp.text
             elif resp.status_code == 429:
-                wait_sec = (attempt + 1) * 3
+                wait_sec = (attempt + 1) * 5
                 print(f"[{SHOP_NAME}] Rate limited (429) on {url}. Waiting {wait_sec}s...")
                 import time
                 time.sleep(wait_sec)
             else:
                 print(f"[{SHOP_NAME}] HTTP {resp.status_code} fetching {url}")
-                return resp
+                return resp.text if resp.status_code == 200 else None
         except Exception as e:
             print(f"[{SHOP_NAME}] Fetch exception for {url}: {e}")
             import time
-            time.sleep(1)
+            time.sleep(2)
     return None
+
+def parse_craftbeer_page(html: str) -> List[ScrapedProduct]:
+    """Parses product items directly from /collections/craftbeer HTML DOM."""
+    soup = BeautifulSoup(html, 'html.parser')
+    items: List[ScrapedProduct] = []
+
+    product_nodes = soup.select('li.--collection-product-item')
+    for node in product_nodes:
+        # 1. Product Link & URL
+        a_tag = node.find('a', href=True)
+        if not a_tag:
+            continue
+        href = a_tag.get('href', '')
+        if not href or '/products/' not in href:
+            continue
+        product_url = f"{BASE_URL}{href}" if href.startswith('/') else href
+
+        # 2. Raw Title
+        title_el = node.select_one('.--item-card-title')
+        if not title_el:
+            continue
+        raw_title = title_el.get_text(strip=True)
+        if not raw_title:
+            continue
+
+        # 3. Brand / Brewery Name (<div class="--item-card-brand-name">)
+        brand_el = node.select_one('.--item-card-brand-name')
+        brand_name = brand_el.get_text(strip=True) if brand_el else ""
+
+        # Safe Brewery Formatting Rule:
+        # If brand_name exists and is NOT shop name "WITCH CRAFT MARKET" -> prefix [brand_name]
+        # If brand_name is missing or is "WITCH CRAFT MARKET" -> keep raw_title without bracket
+        if brand_name and brand_name != SHOP_NAME and not brand_name.startswith("WCM"):
+            if not raw_title.startswith('['):
+                name = f"[{brand_name}] {raw_title}"
+            else:
+                name = raw_title
+        else:
+            name = raw_title
+
+        # Check beer relevance
+        if not is_beer_product(raw_title, brand_name):
+            continue
+
+        # 4. Price
+        price_el = node.select_one('.price-item--regular, .price-item--sale, .--item-card-price-text, .price-item')
+        raw_price = price_el.get_text(strip=True) if price_el else ""
+        price = format_price(raw_price)
+
+        # 5. Stock Status (SOLD OUT badge)
+        all_item_text = ' '.join(node.stripped_strings).upper()
+        if "SOLD OUT" in all_item_text or "売り切れ" in all_item_text or "在庫なし" in all_item_text:
+            stock_status = "Sold Out"
+        else:
+            stock_status = "In Stock"
+
+        # 6. Image URL
+        img_tag = node.select_one('img.--item-card-img, img')
+        image_url = None
+        if img_tag:
+            src = img_tag.get('src') or img_tag.get('data-src')
+            if src:
+                if src.startswith('//'):
+                    image_url = f"https:{src}"
+                elif src.startswith('/'):
+                    image_url = f"{BASE_URL}{src}"
+                else:
+                    image_url = src
+
+        product: ScrapedProduct = {
+            "name": name,
+            "price": price,
+            "url": product_url,
+            "image": image_url,
+            "stock_status": stock_status,
+            "shop": SHOP_NAME
+        }
+
+        items.append(product)
+
+    return items
 
 async def scrape_witch_craft_market(
     limit: Optional[int] = None,
@@ -110,75 +143,44 @@ async def scrape_witch_craft_market(
     full_scrape: bool = False
 ) -> List[ScrapedProduct]:
     """
-    Scrapes product list from WITCH CRAFT MARKET using Shopify API (/collections/craftbeer/products.json)
-    impersonating Chrome browser via primp.
-    NEVER uses store name 'WITCH CRAFT MARKET' as brewery name.
+    Scrapes product list directly from WITCH CRAFT MARKET /collections/craftbeer HTML pages.
+    Directly extracts brand/brewery names from <div class="--item-card-brand-name"> for 100% precision.
     """
     all_products: List[ScrapedProduct] = []
     page: int = 1
     consecutive_existing: int = 0
     early_stop: bool = False
 
-    print(f"[{SHOP_NAME}] Starting scrape (Primp / Shopify API)...")
-
-    # Load static pre-indexed brewery map
-    brewery_map: Dict[str, str] = load_static_brewery_map()
+    print(f"[{SHOP_NAME}] Starting scrape directly from /collections/craftbeer HTML...")
 
     # Create Primp client with Chrome browser TLS impersonation
     client = primp.Client(impersonate="random", follow_redirects=True, timeout=30)
-
-    # Run blocking I/O calls in thread executor for async compatibility
     loop = asyncio.get_event_loop()
 
     while True:
         if limit and len(all_products) >= limit:
             break
 
-        api_url: str = f"{BASE_URL}/collections/craftbeer/products.json?limit=250&page={page}"
+        url: str = f"{BASE_URL}/collections/craftbeer?page={page}"
         try:
-            print(f"[{SHOP_NAME}] Fetching page {page}...")
-            response = await loop.run_in_executor(None, fetch_with_primp, client, api_url)
-            if not response or response.status_code != 200:
-                status = response.status_code if response else 'No Response'
-                print(f"[{SHOP_NAME}] Page {page} returned status {status}. Stopping.")
+            print(f"[{SHOP_NAME}] Fetching HTML page {page}...")
+            html = await loop.run_in_executor(None, fetch_html_with_primp, client, url)
+            if not html:
+                print(f"[{SHOP_NAME}] Failed to fetch page {page}. Stopping.")
                 break
 
-            data: Dict[str, Any] = response.json()
-            products: List[Dict[str, Any]] = data.get("products", [])
+            products = parse_craftbeer_page(html)
             if not products:
-                print(f"[{SHOP_NAME}] No more products found on page {page}. Stopping.")
+                print(f"[{SHOP_NAME}] No product items parsed on page {page}. Stopping.")
                 break
 
-            print(f"[{SHOP_NAME}] Page {page}: Fetched {len(products)} products.")
+            print(f"[{SHOP_NAME}] Page {page}: Parsed {len(products)} products from HTML.")
 
             for prod in products:
                 if limit and len(all_products) >= limit:
                     break
 
-                # Filter out non-beer items
-                if not is_beer_product(prod):
-                    continue
-
-                raw_title: str = prod.get('title', 'Unknown').strip()
-                handle: str = prod.get('handle', '')
-                if not handle:
-                    continue
-
-                # Determine brewery name from collection mapping or title patterns
-                brewery_name: Optional[str] = brewery_map.get(handle)
-                if not brewery_name:
-                    for pattern, bname_val in BREWERY_TITLE_PATTERNS:
-                        if re.search(pattern, raw_title, re.IGNORECASE):
-                            brewery_name = bname_val
-                            break
-
-                # NEVER fallback to "WITCH CRAFT MARKET" as brewery
-                if brewery_name and brewery_name != SHOP_NAME and not raw_title.startswith('['):
-                    title = f"[{brewery_name}] {raw_title}"
-                else:
-                    title = raw_title
-
-                product_url: str = f"{BASE_URL}/products/{handle}"
+                product_url = prod["url"]
 
                 # Early stop check for existing URLs
                 if existing_urls is not None and not full_scrape:
@@ -191,48 +193,13 @@ async def scrape_witch_craft_market(
                     else:
                         consecutive_existing = 0
 
-                # Extract variants info
-                variants: List[Dict[str, Any]] = prod.get('variants', [])
-                in_stock: bool = any(v.get('available', False) for v in variants)
-                stock_status: str = "In Stock" if in_stock else "Sold Out"
-
-                raw_price: Optional[str] = None
-                if variants:
-                    raw_price = str(variants[0].get('price', ''))
-                price: str = format_price(raw_price)
-
-                # Extract image
-                images: List[Dict[str, Any]] = prod.get('images', [])
-                image_url: Optional[str] = None
-                if images:
-                    image_url = images[0].get('src')
-
-                p_item: ScrapedProduct = {
-                    "name": title,
-                    "price": price,
-                    "url": product_url,
-                    "image": image_url,
-                    "stock_status": stock_status,
-                    "shop": SHOP_NAME
-                }
-
-                # Extract date information (updated_at > published_at > created_at)
-                raw_date = prod.get('updated_at') or prod.get('published_at') or prod.get('created_at')
-                if raw_date:
-                    try:
-                        dt = date_parser.parse(raw_date)
-                        dt_utc = dt.astimezone(timezone.utc)
-                        p_item["first_seen"] = dt_utc.isoformat()
-                    except Exception:
-                        pass
-
-                all_products.append(p_item)
+                all_products.append(prod)
 
             if early_stop or (limit and len(all_products) >= limit):
                 break
 
             page += 1
-            await asyncio.sleep(0.3)  # Be polite to the API
+            await asyncio.sleep(0.3)  # Be polite
 
         except Exception as e:
             print(f"[{SHOP_NAME}] Exception on page {page}: {e}")
@@ -242,5 +209,6 @@ async def scrape_witch_craft_market(
     return all_products
 
 if __name__ == "__main__":
-    items: List[ScrapedProduct] = asyncio.run(scrape_witch_craft_market(limit=10))
+    import json
+    items: List[ScrapedProduct] = asyncio.run(scrape_witch_craft_market(limit=15))
     print(json.dumps(items, indent=2, ensure_ascii=False))
