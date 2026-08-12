@@ -3,7 +3,7 @@
    ======================================== */
 .store-selector-container {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
     margin-bottom: 16px;
     background: #ffffff;
@@ -20,17 +20,15 @@
     white-space: nowrap;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    padding-top: 6px;
 }
 
 .store-selector-buttons {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
-    overflow-x: auto;
-    padding: 2px 2px 6px 2px;
-    margin-bottom: -4px;
-    scrollbar-width: thin;
-    -webkit-overflow-scrolling: touch;
+    padding: 2px 0;
 }
 
 .store-selector-buttons::-webkit-scrollbar {
