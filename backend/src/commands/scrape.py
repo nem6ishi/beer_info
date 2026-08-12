@@ -11,7 +11,7 @@ from typing import List, Dict, Optional, Set, Any, Union
 
 from ..core.db import get_supabase_client, async_execute, refresh_materialized_view
 from ..core.types import ScrapedProduct
-from ..scrapers import beervolta, chouseiya, ichigo_ichie, arome, maruho, antenna_america
+from ..scrapers import beervolta, chouseiya, ichigo_ichie, arome, maruho, antenna_america, witch_craft_market
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +212,10 @@ async def scrape_to_supabase(
         run_and_save_store(
             antenna_america.scrape_antenna_america(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
             'Antenna America', supabase, existing_data, new_only, reset_first_seen, base_time, 5, timeout_sec
+        ),
+        run_and_save_store(
+            witch_craft_market.scrape_witch_craft_market(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
+            'WITCH CRAFT MARKET', supabase, existing_data, new_only, reset_first_seen, base_time, 6, timeout_sec
         ),
     ]
 

@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from backend.src.scrapers import arome, beervolta, chouseiya, ichigo_ichie, maruho, antenna_america
+from backend.src.scrapers import arome, beervolta, chouseiya, ichigo_ichie, maruho, antenna_america, witch_craft_market
 from backend.src.core.types import ScrapedProduct
 
 # Arome scraper tests
@@ -141,3 +141,34 @@ async def test_antenna_america_scrape_basic(mock_get):
     assert results[0]["price"] == "1200円"
     assert results[0]["stock_status"] == "In Stock"
     assert results[0]["shop"] == "Antenna America"
+
+# WITCH CRAFT MARKET scraper tests
+@pytest.mark.asyncio
+@patch('backend.src.scrapers.witch_craft_market.httpx.AsyncClient.get')
+async def test_witch_craft_market_scrape_basic(mock_get):
+    json_content = {
+        "products": [
+            {
+                "title": "紫電一閃（シデンイッセン）",
+                "handle": "shidenissen",
+                "product_type": "ビール",
+                "variants": [{"price": "1030", "available": True}],
+                "images": [{"src": "https://cdn.shopify.com/s/files/test_wcm.jpg"}],
+                "published_at": "2026-08-12T14:09:03+09:00"
+            }
+        ]
+    }
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = json_content
+    mock_get.return_value = mock_resp
+
+    results = await witch_craft_market.scrape_witch_craft_market(limit=1)
+    assert isinstance(results, list)
+    assert len(results) == 1
+    assert results[0]["name"] == "紫電一閃（シデンイッセン）"
+    assert results[0]["price"] == "1030円"
+    assert results[0]["stock_status"] == "In Stock"
+    assert results[0]["shop"] == "WITCH CRAFT MARKET"
+    assert "first_seen" in results[0]
+
