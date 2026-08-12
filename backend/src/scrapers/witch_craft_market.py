@@ -168,9 +168,9 @@ async def scrape_witch_craft_market(
                     # Determine brewery name from collection mapping
                     brewery_name: Optional[str] = brewery_map.get(handle)
 
-                    # Build unified title e.g. "AMAKUSA SONAR BEER : ONE MIND/ ワンマインド"
-                    if brewery_name and not raw_title.lower().startswith(brewery_name.lower()) and ":" not in raw_title:
-                        title = f"{brewery_name} : {raw_title}"
+                    # Build unified title e.g. "[AMAKUSA SONAR BEER] ONE MIND/ ワンマインド"
+                    if brewery_name and not raw_title.startswith('[') and brewery_name.lower() not in raw_title.lower():
+                        title = f"[{brewery_name}] {raw_title}"
                     else:
                         title = raw_title
 
@@ -212,8 +212,8 @@ async def scrape_witch_craft_market(
                         "shop": SHOP_NAME
                     }
 
-                    # Extract date information (published_at > created_at)
-                    raw_date = prod.get('published_at') or prod.get('created_at')
+                    # Extract date information (updated_at > published_at > created_at)
+                    raw_date = prod.get('updated_at') or prod.get('published_at') or prod.get('created_at')
                     if raw_date:
                         try:
                             dt = date_parser.parse(raw_date)

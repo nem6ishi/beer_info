@@ -127,7 +127,7 @@ async def scrape_antenna_america(
                         "shop": SHOP_NAME
                     }
 
-                    raw_date = prod.get('published_at') or prod.get('created_at')
+                    raw_date = prod.get('updated_at') or prod.get('published_at') or prod.get('created_at')
                     if raw_date:
                         try:
                             dt = date_parser.parse(raw_date)
