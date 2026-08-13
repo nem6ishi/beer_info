@@ -464,13 +464,15 @@
 .shop-info-primary {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    gap: 6px;
     width: 100%;
 }
 
 .shop-info-secondary {
     display: flex;
     align-items: center;
+    gap: 8px;
     width: 100%;
 }
 
@@ -478,26 +480,24 @@
     font-weight: 700;
     font-family: 'Outfit', sans-serif;
     color: #1a1a1a;
-    min-width: 50px;
     white-space: nowrap;
 }
 
 .shop-name-text {
-    color: #666;
+    color: #333;
+    font-weight: 600;
     font-size: 12px;
-    border-left: 1px solid #e0e0e0;
-    padding-left: 8px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 1;
+    min-width: 0;
 }
 
 .check-date {
     font-size: 10px;
-    color: #aaa;
-    margin-left: 58px;
-    /* Align with shop text roughly (50px price + 8px gap) */
+    color: #888;
+    white-space: nowrap;
 }
 
 .external-link-arrow {
