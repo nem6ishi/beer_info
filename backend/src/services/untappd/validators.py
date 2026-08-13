@@ -15,14 +15,23 @@ from .text_utils import (
 
 logger = logging.getLogger(__name__)
 
-# Loaded dynamically by searcher.py – injected here for alias lookup
-_BREWERY_ALIASES: Dict[str, List[str]] = {}
+# LLM Validator for intelligent pair verification without hardcoded dictionaries
+_llm_validator = None
 
+def _get_llm_validator():
+    global _llm_validator
+    if _llm_validator is None:
+        try:
+            from ..llm.llm_validator import LLMValidator
+            _llm_validator = LLMValidator()
+        except Exception as e:
+            logger.warning(f"Could not initialize LLMValidator: {e}")
+            _llm_validator = None
+    return _llm_validator
 
 def set_brewery_aliases(aliases: Dict[str, List[str]]) -> None:
-    """Set brewery aliases dict (called from searcher after loading aliases.json)."""
-    global _BREWERY_ALIASES
-    _BREWERY_ALIASES = aliases
+    """Legacy compatibility function (No-op: hardcoded brewery aliases have been deprecated)."""
+    pass
 
 
 def get_name_parts(name: str) -> List[str]:
@@ -68,12 +77,6 @@ def _is_safe_substring_match(str_a: str, str_b: str, expected_brewery: Optional[
         for b_word in re.findall(r'[a-z0-9]+', expected_brewery.lower()):
             if len(b_word) >= 3 and b_word in remainder:
                 return True
-        for alias_list in _BREWERY_ALIASES.values():
-            if any(normalize_for_comparison(expected_brewery) == normalize_for_comparison(a) for a in alias_list):
-                for a in alias_list:
-                    a_norm = normalize_for_comparison(a)
-                    if a_norm and len(a_norm) >= 4 and (a_norm in remainder or remainder in a_norm):
-                        return True
     return False
 
 
@@ -300,15 +303,7 @@ def validate_brewery_match(result_element: Union[Tag, Dict[str, Any]], expected_
                 logger.info(f"  [Validation] Brewery MATCH (Cleaned Safe Substring): '{result_brewery}' matches '{expected_brewery}'")
                 return True
 
-    # 3. Alias Check
-    if expected_brewery in _BREWERY_ALIASES:
-        for alias in _BREWERY_ALIASES[expected_brewery]:
-            alias_norm: str = normalize_for_comparison(alias)
-            if alias_norm in rb_norm:
-                logger.info(f"  [Validation] Brewery MATCH (Alias): '{result_brewery}' matches alias '{alias}'")
-                return True
-
-    # 4. Collaboration Check (x, ×, /, &)
+    # 3. Collaboration Check (x, ×, /, &)
     if any(sep in expected_brewery for sep in [' x ', ' X ', 'x', 'X', '×', '/', '&', '+']):
         # Treat both target and expected breweries as potential lists of collaborators
         parts: List[str] = re.split(COLLAB_SPLIT_PATTERN, expected_brewery)
@@ -319,12 +314,6 @@ def validate_brewery_match(result_element: Union[Tag, Dict[str, Any]], expected_
             if part_norm and (part_norm in rb_norm or rb_norm in part_norm):
                 logger.info(f"  [Validation] Brewery MATCH (Collab): '{result_brewery}' matches part '{part}'")
                 return True
-            if part in _BREWERY_ALIASES:
-                for alias in _BREWERY_ALIASES[part]:
-                    alias_norm_sub: str = normalize_for_comparison(alias)
-                    if alias_norm_sub and (alias_norm_sub in rb_norm or rb_norm in alias_norm_sub):
-                        logger.info(f"  [Validation] Brewery MATCH (Collab Alias): alias '{alias}'")
-                        return True
 
     logger.info(f"  [Validation] Brewery FAIL: '{result_brewery}' != '{expected_brewery}'")
     return False
@@ -339,13 +328,30 @@ def validate_final_match(
 ) -> bool:
     """
     Final verification step comparing the original shop product title against the 
-    scraped Untappd beer details (beer name, brewery name, style).
-    
-    Prevents erroneous matches where search queries matched unrelated items 
-    (e.g., 'RIO BREWING' matching 'Rio Cocktail').
+    scraped Untappd beer details using rule-based guards and Gemini LLM Validation.
     """
     if not original_title or not untappd_brewery_name:
         return True
+
+    # 1. LLM Validation (Directly evaluates original_title vs Untappd brewery/beer/style)
+    validator = _get_llm_validator()
+    if validator and validator.client:
+        is_match, conf, reason = validator.validate_pair(
+            original_title=original_title,
+            untappd_brewery=untappd_brewery_name,
+            untappd_beer=untappd_beer_name,
+            untappd_style=untappd_style,
+        )
+        if not is_match:
+            logger.warning(
+                f"  [Final Validation] BLOCKED by LLMValidator: '{original_title}' <-> Untappd '{untappd_brewery_name} / {untappd_beer_name}' | Reason: {reason}"
+            )
+            return False
+        else:
+            logger.info(
+                f"  [Final Validation] PASSED by LLMValidator (conf={conf:.2f}): '{original_title}' <-> Untappd '{untappd_brewery_name} / {untappd_beer_name}'"
+            )
+            return True
 
     # 1. Check Brewery Match with Expected Brewery or Original Title
     if expected_brewery:
