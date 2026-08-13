@@ -1,5 +1,13 @@
 import pytest
+from unittest.mock import patch, MagicMock
 from backend.src.services.untappd.validators import validate_final_match, validate_brewery_match
+
+@pytest.fixture(autouse=True)
+def mock_no_llm_validator():
+    """By default, mock _get_llm_validator to return None so tests verify deterministically via rule-based guards."""
+    with patch("backend.src.services.untappd.validators._get_llm_validator", return_value=None):
+        yield
+
 
 def test_validate_brewery_match_rio_cocktail_prevention():
     # RIO BREWING should NOT match Rio Cocktail
@@ -72,3 +80,19 @@ def test_validate_final_match_real_ale_mismatch():
         expected_brewery="Hansharo Beer"
     )
     assert blocked2 is False, "Final validation must block Real Ale Ver. for NITRO product"
+
+
+def test_validate_final_match_with_llm_validator():
+    mock_validator = MagicMock()
+    mock_validator.client = MagicMock()
+    mock_validator.validate_pair.return_value = (False, 0.9, "LLM mismatched product")
+
+    with patch("backend.src.services.untappd.validators._get_llm_validator", return_value=mock_validator):
+        res = validate_final_match(
+            original_title="【Some Beer/Brewery】",
+            untappd_beer_name="Other Beer",
+            untappd_brewery_name="Other Brewery"
+        )
+        assert res is False
+        mock_validator.validate_pair.assert_called_once()
+
