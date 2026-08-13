@@ -120,6 +120,10 @@ class BreweryManager:
         new_alias = new_alias.strip()
         if len(new_alias) <= 1:
             return False
+
+        # Reject collaboration patterns or multi-brewery names
+        if re.search(r'(\bx\b|×|\bcollab\b|collaboration|,|&)', new_alias, re.IGNORECASE):
+            return False
             
         # Ignore common generic words / suffixes
         stop_words = {
@@ -142,6 +146,23 @@ class BreweryManager:
             
         if not target_brewery or not target_brewery.get('id'):
             return False
+
+        alias_lower = new_alias.lower()
+
+        # Check if alias conflicts with another registered brewery's main name or cleaned name
+        alias_clean = re.sub(r'\b(brewing|brewery|beer|co)\b', '', alias_lower).strip()
+        for b in self.breweries:
+            if b.get('id') == target_brewery.get('id'):
+                continue
+            other_en = (b.get('name_en') or '').lower()
+            other_jp = (b.get('name_jp') or '').lower()
+            if alias_lower in (other_en, other_jp) or (alias_clean and alias_clean in (other_en, other_jp)):
+                print(f"[BreweryManager] ⚠️ Rejected alias '{new_alias}' for '{target_brewery.get('name_en')}' - conflicts with brewery '{b.get('name_en')}'")
+                return False
+            other_en_clean = re.sub(r'\b(brewing|brewery|beer|co)\b', '', other_en).strip()
+            if alias_clean and alias_clean == other_en_clean:
+                print(f"[BreweryManager] ⚠️ Rejected alias '{new_alias}' for '{target_brewery.get('name_en')}' - clean name conflicts with '{b.get('name_en')}'")
+                return False
             
         # Check if already known
         existing_en = target_brewery.get('name_en') or ''
