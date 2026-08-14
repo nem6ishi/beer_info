@@ -5,11 +5,18 @@ This script runs batch enrichment in a loop until all remaining beers are proces
 Designed to run safely during long absences (e.g. 5 days).
 """
 import sys
+import os
 import time
 import argparse
 import logging
 import subprocess
 from datetime import datetime
+
+# Ensure project root is in sys.path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 
 logging.basicConfig(
     level=logging.INFO,
