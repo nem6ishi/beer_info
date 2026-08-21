@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("fix_other_beers")
 
 NON_BEVERAGE_PATTERN = re.compile(
-    r'(書籍|本|著者|出版|雑誌|ZINE|ガイドライン|テイスティングノート|解体新書|Tシャツ|トートバッグ|グラス|ステッカー|コースター|キーホルダー|服飾|新書|単行本|冊子|Zine|論考集|業界俯瞰図|二日酔い|防ぎ方|治し方|教本)',
+    r'(書籍|単行本|新書|文庫|著者|出版|雑誌|ZINE|ガイドライン|テイスティングノート|解体新書|Tシャツ|トートバッグ|グラス|ステッカー|コースター|キーホルダー|服飾|冊子|Zine|論考集|業界俯瞰図|二日酔い|防ぎ方|治し方|教本|カタログ)',
     re.IGNORECASE
 )
 

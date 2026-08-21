@@ -126,7 +126,7 @@ class PromptBuilder:
     def apply_product_type_override(self, res: GeminiExtraction, original_title: str) -> GeminiExtraction:
         """Corrects false 'other' classifications when valid brewery/beer info or beverage indicators exist."""
         non_beverage_pattern = re.compile(
-            r'(書籍|本|著者|出版|雑誌|ZINE|ガイドライン|テイスティングノート|解体新書|Tシャツ|トートバッグ|グラス|ステッカー|コースター|キーホルダー|服飾|新書|単行本)',
+            r'(書籍|単行本|新書|文庫|著者|出版|雑誌|ZINE|ガイドライン|テイスティングノート|解体新書|Tシャツ|トートバッグ|グラス|ステッカー|コースター|キーホルダー|服飾|冊子|Zine|論考集|業界俯瞰図|二日酔い|防ぎ方|治し方|教本|カタログ)',
             re.IGNORECASE
         )
         # If title clearly indicates a non-beverage item, preserve "other" or "glass"
