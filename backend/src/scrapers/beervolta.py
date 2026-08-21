@@ -75,9 +75,21 @@ def extract_product_data(item: Tag) -> Optional[ScrapedProduct]:
              
         name = html.unescape(name)
         
-        # Cleanup extra status tags and dates (e.g. ≪7/4入荷予定≫, 《7/4入荷予定》, 【空輸】)
-        name = re.sub(r'[≪《<＜【\[].*?(?:入荷|予約|予定|出荷|空輸|クール|SALE|売切|新着).*?[≫》>＞\]】]', '', name, flags=re.IGNORECASE)
-        
+        # Cleanup extra status tags, order requirements, and dates (e.g. ≪7/4入荷予定≫, 【ご注文合計6本以上】)
+        noise_keywords = r'入荷|予約|予定|出荷|空輸|クール|SALE|売切|新着|ご注文|本以上|合計|セット|限定|条件|注意|必須|おひとり様|同時購入|推し|対象|配送|発送|即納|ポイント|送料無料'
+        bracket_patterns = [
+            r'【[^】]*?(?:' + noise_keywords + r')[^】]*?】',
+            r'《[^》]*?(?:' + noise_keywords + r')[^》]*?》',
+            r'≪[^≫]*?(?:' + noise_keywords + r')[^≫]*?≫',
+            r'\[[^\]]*?(?:' + noise_keywords + r')[^\]]*?\]',
+            r'<[^>]*?(?:' + noise_keywords + r')[^>]*?>',
+            r'＜[^＞]*?(?:' + noise_keywords + r')[^＞]*?＞',
+            r'\([^)]*?(?:' + noise_keywords + r')[^)]*?\)',
+            r'（[^）]*?(?:' + noise_keywords + r')[^）]*?）',
+        ]
+        for pat in bracket_patterns:
+            name = re.sub(pat, '', name, flags=re.IGNORECASE)
+            
         indicators: List[str] = ['≪入荷予定≫', '《入荷予定》', '≪予約≫', '《予約》', '売切', 'SOLD OUT', 'SALE!!', 'SALE!']
         for indicator in indicators:
             name = re.sub(re.escape(indicator), '', name, flags=re.IGNORECASE)

@@ -17,7 +17,20 @@ def clean_name(name: str) -> str:
     if not name:
         return ""
     # 括弧テキスト除去
-    cleaned = re.sub(r'[≪《<＜【\[].*?(?:入荷|予約|予定|出荷|空輸|クール|SALE|売切|新着).*?[≫》>＞\]】]', '', name, flags=re.IGNORECASE)
+    noise_keywords = r'入荷|予約|予定|出荷|空輸|クール|SALE|売切|新着|ご注文|本以上|合計|セット|限定|条件|注意|必須|おひとり様|同時購入|推し|対象|配送|発送|即納|ポイント|送料無料'
+    bracket_patterns = [
+        r'【[^】]*?(?:' + noise_keywords + r')[^】]*?】',
+        r'《[^》]*?(?:' + noise_keywords + r')[^》]*?》',
+        r'≪[^≫]*?(?:' + noise_keywords + r')[^≫]*?≫',
+        r'\[[^\]]*?(?:' + noise_keywords + r')[^\]]*?\]',
+        r'<[^>]*?(?:' + noise_keywords + r')[^>]*?>',
+        r'＜[^＞]*?(?:' + noise_keywords + r')[^＞]*?＞',
+        r'\([^)]*?(?:' + noise_keywords + r')[^)]*?\)',
+        r'（[^）]*?(?:' + noise_keywords + r')[^）]*?）',
+    ]
+    cleaned = name
+    for pat in bracket_patterns:
+        cleaned = re.sub(pat, '', cleaned, flags=re.IGNORECASE)
     indicators = ['≪入荷予定≫', '《入荷予定》', '≪予約≫', '《予約》', '売切', 'SOLD OUT', 'SALE!!', 'SALE!']
     for ind in indicators:
         cleaned = re.sub(re.escape(ind), '', cleaned, flags=re.IGNORECASE)

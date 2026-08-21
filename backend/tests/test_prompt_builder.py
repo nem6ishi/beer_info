@@ -28,6 +28,11 @@ def test_clean_product_title():
     cleaned4 = pb.clean_product_title(t4)
     assert "入荷予定" not in cleaned4
 
+    # 5. Order limit & arrival schedule combined (User request bug fix)
+    t5 = "【ご注文合計6本以上】ブルホス : ロンリネス 2026 | Brujos: Loneliness 2026《8/22入荷予定》"
+    cleaned5 = pb.clean_product_title(t5)
+    assert cleaned5 == "ブルホス : ロンリネス 2026 | Brujos: Loneliness 2026"
+
 def test_shop_guidance():
     pb = PromptBuilder()
     guidance_volta, _ = pb.get_shop_guidance("BEER VOLTA")

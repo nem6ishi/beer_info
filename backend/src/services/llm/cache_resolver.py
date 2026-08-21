@@ -128,7 +128,19 @@ class LocalCacheResolver:
             # 分割できた場合、ブルワリーが既知かチェック
             if brewery_part and beer_part:
                 # 入荷予定などの不要テキストやセール文字列を除去
-                beer_part = re.sub(r'[≪《<＜【\[].*?(?:入荷|予約|予定|出荷|空輸|クール|SALE|売切|新着).*?[≫》>＞\]】]', '', beer_part, flags=re.IGNORECASE).strip()
+                noise_keywords = r'入荷|予約|予定|出荷|空輸|クール|SALE|売切|新着|ご注文|本以上|合計|セット|限定|条件|注意|必須|おひとり様|同時購入|推し|対象|配送|発送|即納|ポイント|送料無料'
+                bracket_patterns = [
+                    r'【[^】]*?(?:' + noise_keywords + r')[^】]*?】',
+                    r'《[^》]*?(?:' + noise_keywords + r')[^》]*?》',
+                    r'≪[^≫]*?(?:' + noise_keywords + r')[^≫]*?≫',
+                    r'\[[^\]]*?(?:' + noise_keywords + r')[^\]]*?\]',
+                    r'<[^>]*?(?:' + noise_keywords + r')[^>]*?>',
+                    r'＜[^＞]*?(?:' + noise_keywords + r')[^＞]*?＞',
+                    r'\([^)]*?(?:' + noise_keywords + r')[^)]*?\)',
+                    r'（[^）]*?(?:' + noise_keywords + r')[^）]*?）',
+                ]
+                for pat in bracket_patterns:
+                    beer_part = re.sub(pat, '', beer_part, flags=re.IGNORECASE).strip()
                 for ind in ['≪入荷予定≫', '《入荷予定》', '≪予約≫', '《予約》', '売切', 'SOLD OUT', 'SALE!!', 'SALE!']:
                     beer_part = re.sub(re.escape(ind), '', beer_part, flags=re.IGNORECASE).strip()
                 beer_part = re.sub(r'\s+', ' ', beer_part).strip()

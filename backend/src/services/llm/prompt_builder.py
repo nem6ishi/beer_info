@@ -92,8 +92,17 @@ class PromptBuilder:
             return ""
         
         # 1. 【】や《》や[]で囲まれた注意事項（予定、出荷、入荷、ご注文、本以上、クール便、限定、予約、空輸、冷蔵、常温、おひとり様、必須、同時購入、推しなど）を削除
-        pattern = r'[【《\[<][^】》\]>]*(?:予定|出荷|入荷|ご注文|本以上|クール便|限定|予約|空輸|冷蔵|常温|おひとり様|必須|同時購入|推し)[^】》\]>]*[】》\]>]'
-        title = re.sub(pattern, '', title)
+        noise_keywords = r'予定|出荷|入荷|ご注文|本以上|合計|セット|限定|条件|注意|必須|おひとり様|同時購入|推し|対象|配送|発送|即納|ポイント|送料無料|クール便|予約|空輸|冷蔵|常温'
+        bracket_patterns = [
+            r'【[^】]*?(?:' + noise_keywords + r')[^】]*?】',
+            r'《[^》]*?(?:' + noise_keywords + r')[^》]*?》',
+            r'≪[^≫]*?(?:' + noise_keywords + r')[^≫]*?≫',
+            r'\[[^\]]*?(?:' + noise_keywords + r')[^\]]*?\]',
+            r'<[^>]*?(?:' + noise_keywords + r')[^>]*?>',
+            r'＜[^＞]*?(?:' + noise_keywords + r')[^＞]*?＞',
+        ]
+        for pat in bracket_patterns:
+            title = re.sub(pat, '', title, flags=re.IGNORECASE)
 
         # 2. 丸括弧付きの単独発送表記 (空輸), (冷蔵), (常温), (空輸便) などの削除
         title = re.sub(r'[\(（](?:空輸|冷蔵|常温|クール便|空輸便)[\)）]', '', title)
