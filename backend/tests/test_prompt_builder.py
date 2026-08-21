@@ -48,3 +48,24 @@ def test_build_extract_prompt():
     assert "Volume / Size Removal" in prompt
     assert "Stone: IPA 568ml" in prompt
     assert "Shop Rule" in prompt
+
+def test_apply_product_type_override():
+    pb = PromptBuilder()
+    
+    # 1. Other Half beer false positive 'other'
+    res1 = {
+        "brewery_name_jp": "Other Half", "brewery_name_en": "Other Half Brewing Co.",
+        "beer_name_jp": "マイラー バッグ", "beer_name_en": "Mylar Bags",
+        "product_type": "other", "is_set": False
+    }
+    corrected1 = pb.apply_product_type_override(res1, "[Other Half] Mylar Bags/ マイラー バッグ")
+    assert corrected1["product_type"] == "beer"
+
+    # 2. Truly non-beverage merchandise (book)
+    res2 = {
+        "brewery_name_jp": "", "brewery_name_en": "",
+        "beer_name_jp": "", "beer_name_en": "",
+        "product_type": "other", "is_set": False
+    }
+    corrected2 = pb.apply_product_type_override(res2, "(著者サイン入り) ベルギービール解体新書 / 山本高之 (著)")
+    assert corrected2["product_type"] == "other"

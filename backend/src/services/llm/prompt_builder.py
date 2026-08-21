@@ -121,6 +121,32 @@ class PromptBuilder:
                 logger.info(f"  🔧 Enforcing SET classification due to explicit keywords in title: '{original_title}'")
                 res["is_set"] = True
                 res["product_type"] = "set"
+        return self.apply_product_type_override(res, original_title)
+
+    def apply_product_type_override(self, res: GeminiExtraction, original_title: str) -> GeminiExtraction:
+        """Corrects false 'other' classifications when valid brewery/beer info or beverage indicators exist."""
+        non_beverage_pattern = re.compile(
+            r'(書籍|本|著者|出版|雑誌|ZINE|ガイドライン|テイスティングノート|解体新書|Tシャツ|トートバッグ|グラス|ステッカー|コースター|キーホルダー|服飾|新書|単行本)',
+            re.IGNORECASE
+        )
+        # If title clearly indicates a non-beverage item, preserve "other" or "glass"
+        if non_beverage_pattern.search(original_title):
+            return res
+
+        curr_type = res.get("product_type", "beer")
+        if curr_type == "other":
+            # If valid brewery or beer name was extracted, or title doesn't match non-beverage
+            b_en = res.get("brewery_name_en") or ""
+            b_jp = res.get("brewery_name_jp") or ""
+            beer_en = res.get("beer_name_en") or ""
+            beer_jp = res.get("beer_name_jp") or ""
+
+            # Check if any valid name exists or title looks like a beer/beverage
+            if (b_en and b_en.lower() != "none") or (b_jp and b_jp.lower() != "none") or (beer_en and beer_en.lower() != "none") or (beer_jp and beer_jp.lower() != "none"):
+                corrected_type = "set" if res.get("is_set") else "beer"
+                logger.info(f"  🔧 Correcting product_type from 'other' to '{corrected_type}' for beverage item: '{original_title}'")
+                res["product_type"] = corrected_type
+
         return res
 
     def empty_result(self) -> GeminiExtraction:
@@ -155,6 +181,7 @@ class PromptBuilder:
         - **Volume / Size Removal**: ABSOLUTELY DO NOT include volume/capacity numbers (e.g. "355ml", "473ml", "568ml", "750ml", "330ml", "12oz", "500ml", "缶", "瓶") in `beer_name_en` or `beer_name_core`. Strip volume completely!
         - **Collab**: If multiple breweries are involved (×, &, /), include all (e.g., "A x B").
         - **Product Type**: "beer" (single can/bottle only), "set" (multi-can/bottle sets like "4 Cans Set", "4本セット", variety packs, tasting sets), "glass", "other".
+        - **Product Type Classification**: ALL consumable craft beverages (beers, ciders, meads, hard kombuchas, hard seltzers, gin sodas) MUST be classified as "beer" (or "set" if multi-pack). ONLY classify non-beverage merchandise, books, magazines, t-shirts, tote bags, or glassware accessories as "other" or "glass"! Note: Brewery names like "Other Half" containing "Other" are breweries, NOT product type "other"!
         - **is_set**: MUST be `true` if the product contains multiple cans/bottles (e.g. "4 Cans Set", "4本セット", "飲み比べ", "アソート").
         - **brewery_name_jp**: Preserve the original Japanese brewery name as-is (e.g., "ヨロッコ", "家守堂").
         - **brewery_name_en**: Use the brewery's OFFICIAL English/romanized name if known (e.g., "Yorocco Beer" for ヨロッコ, "Yamorido" for 家守堂). For Japanese-only breweries, use phonetic romanization (NOT semantic translation). WRONG: "Root + Branch Brewing" for ヨロッコ. RIGHT: "Yorocco Beer".
