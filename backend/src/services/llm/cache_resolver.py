@@ -45,6 +45,8 @@ class LocalCacheResolver:
 
     async def resolve_tier1_exact_match(self, product_name: str) -> Optional[GeminiExtraction]:
         """Tier 1: 商品名の完全一致キャッシュを検索"""
+        if not product_name or not product_name.strip():
+            return None
         try:
             # 1. Get URLs with the exact matching name
             res = self.supabase.table("scraped_beers").select("url").eq("name", product_name).execute()
@@ -95,6 +97,8 @@ class LocalCacheResolver:
 
     async def resolve_tier2_dictionary_match(self, product_name: str, shop: Optional[str]) -> Optional[GeminiExtraction]:
         """Tier 2: ショップ特有のルール分割 ＋ ブルワリー辞書マッチ"""
+        if not product_name or not product_name.strip():
+            return None
         if not shop or not self.brewery_dict:
             return None
 

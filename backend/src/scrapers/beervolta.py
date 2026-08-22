@@ -94,9 +94,12 @@ def extract_product_data(item: Tag) -> Optional[ScrapedProduct]:
         for indicator in indicators:
             name = re.sub(re.escape(indicator), '', name, flags=re.IGNORECASE)
             
-        # Remove price info from name if it leaked from text content
         name = re.sub(r'[0-9,]+円.*', '', name)
         name = re.sub(r'\s+', ' ', name).strip()
+        
+        if not name:
+            print(f"[Beervolta] Empty name after cleanup for link: {link}")
+            return None
         
         price: str = "Unknown"
         prices_found: List[str] = [part for part in item.get_text(strip=True, separator='|').split('|') if '円' in part]
