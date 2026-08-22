@@ -1,45 +1,23 @@
-# Gemini API Rate Limits
+# Gemini API Rate Limits Configuration
 
-## Current Usage Status (2025-12-07 13:00)
+## Overview (Updated Rates)
 
-![Gemini API Usage](file:///Users/nemu/.gemini/antigravity/brain/fca91a7e-901f-4f75-b1c3-fe5cc53e6cf1/uploaded_image_1765080034447.png)
+The backend exclusively uses **Gemma 4 31B** and high-capacity Gemma models, completely avoiding restrictive `gemini-2.5-flash` limits.
 
-### gemini-2.5-flash-lite
-- **RPM (Requests Per Minute):** 6/10 ⚠️
-- **TPM (Tokens Per Minute):** 1.09K/250K ✅
-- **RPD (Requests Per Day):** 34/20 ❌ **EXHAUSTED**
-- **Status:** Daily quota exceeded
+### Gemma 4 31B (Primary)
+- **RPM (Requests Per Minute):** 30 RPM
+- **TPM (Tokens Per Minute):** 16K
+- **RPD (Requests Per Day):** 14,400 (14.4K) RPD
 
-### gemini-2.5-flash
-- **RPM:** 0/5 ✅
-- **TPM:** 0/250K ✅
-- **RPD:** 0/20 ✅
-- **Status:** Available (switched to after flash-lite exhaustion)
+### Gemma 4 26B (Fallback)
+- Automatically activated if primary model encounters unexpected rate limits or failures.
 
-## Model Switching Strategy
+## Model Configuration
 
-Our implementation automatically switches models when rate limits are hit:
-
-1. **Primary Model:** `gemini-2.5-flash-lite`
-   - Used first for cost efficiency
-   - 20 requests/day limit (free tier)
-   
-2. **Fallback Model:** `gemini-2.5-flash`
-   - Automatically activated when flash-lite quota is exhausted
-   - 20 requests/day limit (free tier)
-   - Higher quality model
-
-## Rate Limit Configuration
-
-### gemini-2.5-flash-lite (Primary)
-- **15 RPM** (Requests Per Minute) = 4 seconds per request minimum
-- **250K TPM** (Tokens Per Minute) = handled by API
-- **20 RPD** (Requests Per Day) = daily limit (free tier)
-
-### gemini-2.5-flash (Fallback)
-- **15 RPM** (Requests Per Minute) = 4 seconds per request minimum  
-- **250K TPM** (Tokens Per Minute) = handled by API
-- **20 RPD** (Requests Per Day) = daily limit (free tier)
+- **Primary Model:** `gemma-4-31b-it`
+- **Fallback Model:** `gemma-4-26b-a4b-it`
+- **Model Interval:** `2.5` seconds (~24 RPM)
+- **Global Daily Limit Guard:** `14,000` RPD
 
 ## Implementation Details
 

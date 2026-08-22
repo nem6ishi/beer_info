@@ -35,7 +35,7 @@ class LLMValidator:
         else:
             self.client = genai.Client(api_key=key)
             
-        self.model_id = model_id or os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash")
+        self.model_id = model_id or os.getenv("GEMINI_MODEL_ID", "gemma-4-31b-it")
         self._cache: Dict[str, Tuple[bool, float, str]] = {}
 
     def validate_pair(
