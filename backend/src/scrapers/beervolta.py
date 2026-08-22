@@ -74,6 +74,8 @@ def extract_product_data(item: Tag) -> Optional[ScrapedProduct]:
              name = text_content
              
         name = html.unescape(name)
+        # Strip any raw HTML tags (e.g. <img ...>)
+        name = re.sub(r'<[^>]+>', '', name).strip()
         
         # Cleanup extra status tags, order requirements, and dates (e.g. ≪7/4入荷予定≫, 【ご注文合計6本以上】)
         noise_keywords = r'入荷|予約|予定|出荷|空輸|クール|SALE|売切|新着|ご注文|本以上|合計|セット|限定|条件|注意|必須|おひとり様|同時購入|推し|対象|配送|発送|即納|ポイント|送料無料'
