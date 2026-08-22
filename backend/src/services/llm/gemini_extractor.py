@@ -42,11 +42,11 @@ class GeminiExtractor(BaseExtractor):
         self.last_request_time = 0
         self.daily_request_count = 0
         
-        # Model Configuration: Gemma 4 31B (15 RPM, 1,500 RPD)
+        # Model Configuration: Gemma 4 31B (30 RPM, 14.4K RPD)
         self.model_id = os.getenv("GEMINI_MODEL_ID", "gemma-4-31b-it")
         self.fallback_model_id = os.getenv("GEMINI_FALLBACK_MODEL_ID", "gemma-4-26b-a4b-it")
-        self.model_interval = 4.5  # 15 RPMの制限に余裕を持たせる (約 13.3 RPM)
-        self.global_daily_limit = 1450  # 1,500 RPDの制限に余裕を持たせる
+        self.model_interval = 2.5  # 30 RPMの制限に余裕を持たせる (約 24 RPM)
+        self.global_daily_limit = 14000  # 14,400 RPDの制限に余裕を持たせる
 
     def _supports_response_schema(self, model_id: str) -> bool:
         """Returns True if the model supports response_schema (e.g. Gemini models)."""
@@ -66,18 +66,22 @@ class GeminiExtractor(BaseExtractor):
         try:
             try:
                 supabase = get_supabase_client()
-                # Atomically increment the usage counter for today
-                res = supabase.rpc('increment_api_usage', {'p_service_name': 'gemini'}).execute()
-                current_usage = res.data
-                self.daily_request_count = current_usage
+                # Check current detailed usage
+                res = supabase.rpc('check_api_usage_detailed', {'p_service_name': 'gemini'}).execute()
+                usage_data = res.data or {}
+                current_rpd = usage_data.get('rpd', 0)
+                current_rpm = usage_data.get('rpm', 0)
+                current_tpm = usage_data.get('tpm', 0)
                 
-                if current_usage > self.global_daily_limit:
-                    logger.warning(f"  [Gemini] Global daily limit reached ({current_usage}/{self.global_daily_limit}). Skipping extraction.")
+                self.daily_request_count = current_rpd
+                
+                # Optional: We log RPM and TPM for debugging, but only strictly enforce RPD here.
+                if current_rpd >= self.global_daily_limit:
+                    logger.warning(f"  [Gemini] Global daily limit reached ({current_rpd}/{self.global_daily_limit}). Skipping extraction.")
                     return None
             except Exception as db_e:
-                logger.error(f"  [Gemini] Failed to increment API usage in DB: {db_e}. Falling back to local limit.")
-                self.daily_request_count += 1
-                if self.daily_request_count > self.global_daily_limit:
+                logger.error(f"  [Gemini] Failed to check API usage in DB: {db_e}. Falling back to local limit.")
+                if self.daily_request_count >= self.global_daily_limit:
                     logger.warning(f"  [Gemini] Local daily limit reached ({self.daily_request_count}/{self.global_daily_limit}). Skipping extraction.")
                     return None
 
@@ -126,7 +130,31 @@ class GeminiExtractor(BaseExtractor):
                 raise
         
         self.last_request_time = time.time()
-        # daily_request_count is now updated before the request
+        
+        # Increment actual usage after successful execution
+        try:
+            if self.client and response:
+                total_tokens = 0
+                prompt_tokens = 0
+                comp_tokens = 0
+                
+                usage = getattr(response, 'usage_metadata', None)
+                if usage:
+                    total_tokens = getattr(usage, 'total_token_count', 0)
+                    prompt_tokens = getattr(usage, 'prompt_token_count', 0)
+                    comp_tokens = getattr(usage, 'candidates_token_count', 0)
+                
+                supabase = get_supabase_client()
+                supabase.rpc('log_api_usage', {
+                    'p_service_name': 'gemini',
+                    'p_total': total_tokens,
+                    'p_prompt': prompt_tokens,
+                    'p_comp': comp_tokens
+                }).execute()
+                self.daily_request_count += 1
+        except Exception as e:
+            logger.error(f"  [Gemini] Failed to log API usage in DB after execution: {e}")
+            self.daily_request_count += 1
         
         if response.text:
             return self._parse_json_response(response.text, sanitize=True)
