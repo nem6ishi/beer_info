@@ -2,7 +2,7 @@ name: Enrich Beer Data (Full Pipeline)
 
 on:
   # This workflow is automatically triggered after "Scrape Beer Data" completes.
-  # Since scraping runs every hour (cron: '0 * * * *'), this will also run every hour.
+  # Since scraping runs every 2 hours (cron: '0 */2 * * *'), this will also run every 2 hours.
   workflow_run:
     workflows: ["Scrape Beer Data"]
     types:
