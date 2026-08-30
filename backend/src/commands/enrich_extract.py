@@ -123,7 +123,7 @@ class LLMEnricher:
     def _fetch_candidates(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         """Fetches a batch of candidate beers."""
         query: Any = self.supabase.table('beer_info_view').select(
-            'url, name, shop, brewery_name_en, beer_name_en, search_hint, untappd_url'
+            'url, name, shop, brewery_name_en, beer_name_en, untappd_url'
         )
         query = self._apply_filters(query)
         response: Any = sync_execute(query.order('first_seen', desc=True).limit(limit).offset(offset))
@@ -151,9 +151,8 @@ class LLMEnricher:
     async def _process_item(self, beer: Dict[str, Any]) -> Tuple[str, Optional[Dict[str, Any]]]:
         """Processes a single beer item: Extract and prepare payload."""
         has_names: bool = bool(beer.get('brewery_name_en') and beer.get('beer_name_en'))
-        has_hint: bool = bool(beer.get('search_hint'))
         is_unlinked: bool = not bool(beer.get('untappd_url'))
-        need_gemini: bool = self.force_reprocess or (self.retry_unlinked and is_unlinked) or not has_names or not has_hint
+        need_gemini: bool = self.force_reprocess or (self.retry_unlinked and is_unlinked) or not has_names
         
         url: str = beer.get('url', '')
         if not url: return 'skipped', None
