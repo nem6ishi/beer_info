@@ -33,7 +33,9 @@ async def clean_data(
         
         # 1. First, always SELECT to show what would be deleted
         logger.info(f"🔍 Checking '{table}' for {column} LIKE '{pattern}'...")
-        query = supabase.table(table).select('*').like(column, pattern)
+        pk_col = 'id' if table in ['breweries', 'untappd_search_failures', 'api_usage_logs'] else 'url'
+        select_cols = column if column == pk_col else f"{pk_col}, {column}"
+        query = supabase.table(table).select(select_cols).like(column, pattern)
         res: Any = sync_execute(query)
         
         records = res.data or []

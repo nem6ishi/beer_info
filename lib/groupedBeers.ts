@@ -19,6 +19,8 @@ export interface GetGroupedBeersOptions {
     only_sale?: string | null;
 }
 
+const GROUPED_BEERS_SELECT = 'untappd_url, beer_name, brewery_name, style, abv, ibu, rating, rating_count, beer_image, brewery_logo, brewery_location, brewery_type, untappd_updated_at, is_set, product_type, min_price, max_price, newest_seen, items';
+
 export async function getGroupedBeers(options: GetGroupedBeersOptions) {
     const {
         search, sort, page, limit, shop,
@@ -32,7 +34,7 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
     const buildQuery = () => {
         let q = supabase
             .from('beer_groups_view')
-            .select('*', { count: 'exact' });
+            .select(GROUPED_BEERS_SELECT, { count: 'exact' });
 
         if (days) {
             const daysNum = parseInt(days, 10);
@@ -160,7 +162,7 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
                 const buildFallbackQuery = () => {
                     let q = supabase
                         .from('beer_groups_view')
-                        .select('*');
+                        .select(GROUPED_BEERS_SELECT);
 
                     if (search) {
                         q = q.or(`beer_name.ilike.%${search}%,brewery_name.ilike.%${search}%`);

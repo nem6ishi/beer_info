@@ -1,6 +1,6 @@
 /** Core beer record returned from the API (beer_info_view). */
 export interface Beer {
-  id: string;
+  id?: string;
   url: string;
   name: string;
   price: number | string | null;

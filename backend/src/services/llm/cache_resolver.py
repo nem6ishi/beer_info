@@ -59,7 +59,7 @@ class LocalCacheResolver:
             
             # 2. Find resolved gemini_data for those URLs
             res_gemini = self.supabase.table("gemini_data") \
-                .select("*") \
+                .select("url, brewery_name_en, brewery_name_jp, beer_name_en, beer_name_jp, product_type, is_set, payload") \
                 .in_("url", urls) \
                 .not_.is_("brewery_name_en", "null") \
                 .limit(1) \

@@ -2,6 +2,9 @@ import { supabase } from '../lib/supabase'
 import HomeClient from '../components/HomeClient'
 import { Suspense } from 'react'
 import { fetchAvailableBreweries } from '../lib/breweries'
+import type { Beer } from '../types/beer'
+
+const BEER_INFO_VIEW_SELECT = 'url, name, price, price_value, image, stock_status, shop, first_seen, last_seen, untappd_url, product_type, is_set, untappd_beer_name, untappd_brewery_name, untappd_style, untappd_abv, untappd_ibu, untappd_rating, untappd_rating_count, untappd_image, brewery_location, brewery_type, brewery_logo, is_sale, sale_tag, expiry_notice, beer_name_en, beer_name_jp, brewery_name_en, brewery_name_jp';
 
 export const revalidate = 60
 
@@ -10,7 +13,7 @@ export default async function Page() {
     const limitNum = 20
     const offset = 0
 
-    let q = supabase.from('beer_info_view').select('*', { count: 'exact' });
+    let q = supabase.from('beer_info_view').select(BEER_INFO_VIEW_SELECT, { count: 'exact' });
     q = q.eq('stock_status', 'In Stock').order('first_seen', { ascending: false });
 
     // Fetch beers, shop counts, available filters, and available breweries in parallel
@@ -49,7 +52,7 @@ export default async function Page() {
     const styles = typedFilterData?.styles || [];
 
     const initialData = {
-        beers: beers || [],
+        beers: (beers as unknown as Beer[]) || [],
         shopCounts: shopCounts,
         pagination: {
             page: pageNum,

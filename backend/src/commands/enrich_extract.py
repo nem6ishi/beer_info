@@ -122,7 +122,9 @@ class LLMEnricher:
 
     def _fetch_candidates(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         """Fetches a batch of candidate beers."""
-        query: Any = self.supabase.table('beer_info_view').select('*')
+        query: Any = self.supabase.table('beer_info_view').select(
+            'url, name, shop, brewery_name_en, beer_name_en, search_hint, untappd_url'
+        )
         query = self._apply_filters(query)
         response: Any = sync_execute(query.order('first_seen', desc=True).limit(limit).offset(offset))
         return cast(List[Dict[str, Any]], response.data or [])

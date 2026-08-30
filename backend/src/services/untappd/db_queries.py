@@ -17,7 +17,7 @@ def fetch_beers(
     """Fetches candidates based on current mode."""
     if mode == 'missing':
         query: Any = supabase.table('beer_info_view') \
-            .select('*') \
+            .select('url, name, shop, beer_name_en, beer_name_jp, brewery_name_en, brewery_name_jp, product_type, untappd_url, untappd_beer_name, untappd_brewery_name') \
             .or_('untappd_url.is.null,untappd_url.ilike.%/search?%,untappd_beer_name.is.null') \
             .or_('product_type.eq.beer,product_type.is.null')
         if shop_filter:
@@ -58,7 +58,9 @@ def fetch_beers(
         urls = [f['product_url'] for f in (res.data or []) if f.get('product_url')]
         if not urls:
             return []
-        b_query = supabase.table('beer_info_view').select('*').in_('url', urls)
+        b_query = supabase.table('beer_info_view').select(
+            'url, name, shop, beer_name_en, beer_name_jp, brewery_name_en, brewery_name_jp, product_type, untappd_url, untappd_beer_name, untappd_brewery_name'
+        ).in_('url', urls)
         if shop_filter:
             b_query = b_query.eq('shop', shop_filter)
         b_res = b_query.execute()
