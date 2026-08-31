@@ -374,8 +374,34 @@
         "Evil Twin Brewing",
         "Evil Twin Brewing NYC"
     ],
+    "南信州": [
+        "Minamishinshu Beer Co.",
+        "Minami Shinshu Beer",
+        "Minamishinshu Beer"
+    ],
+    "南信州ビール": [
+        "Minamishinshu Beer Co.",
+        "Minami Shinshu Beer"
+    ],
+    "ファロ": [
+        "Falò Brewing",
+        "Falo Brewing",
+        "Falo"
+    ],
+    "Falò Brewing": [
+        "Falo Brewing",
+        "Falo",
+        "ファロ"
+    ],
+    "Falo Brewing": [
+        "Falò Brewing",
+        "Falo",
+        "ファロ"
+    ],
     "Falo": [
-        "Falo Brewing"
+        "Falò Brewing",
+        "Falo Brewing",
+        "ファロ"
     ],
     "North Island": [
         "North Island Beer",
