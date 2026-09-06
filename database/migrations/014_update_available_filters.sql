@@ -20,9 +20,9 @@ BEGIN
             SELECT 
                 v.untappd_brewery_name as name, 
                 MAX(v.brewery_location) as location,
-                (
-                    string_agg(DISTINCT v.brewery_name_jp, ' ') || ' ' || 
-                    string_agg(DISTINCT v.brewery_name_en, ' ')
+                TRIM(
+                    COALESCE(string_agg(DISTINCT v.brewery_name_jp, ' '), '') || ' ' || 
+                    COALESCE(string_agg(DISTINCT v.brewery_name_en, ' '), '')
                 ) as searchStr
             FROM public.beer_info_view v
             WHERE v.untappd_brewery_name IS NOT NULL AND v.untappd_brewery_name != ''
