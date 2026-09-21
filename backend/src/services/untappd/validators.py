@@ -248,6 +248,28 @@ def score_beer_match(result_elem: Union[Tag, Dict[str, Any]], expected_beer: str
                     logger.info(f"  [Validation] Beer MATCH (Part/Token Inclusion, 75): '{rp}' matches '{ep}'")
                     return 75
 
+    # 6b. Token Set / Word-order-independent Match (e.g. "Triptych Nectar: Angry Angel" vs "Angry Angel BA Triptych Nectar")
+    ignore_set_words = {
+        'ba', 'collab', 'collabo', 'w', 'with', 'x', 'beer', 'ale', 'ipa',
+        '330ml', '350ml', '375ml', '473ml', '500ml', '750ml', 'can', 'bottle', 'vol', 'ver',
+        'cask', 'nitro'
+    }
+    rb_words_clean = set(w.lower() for w in re.findall(r'[a-z0-9]+', result_beer) if len(w) >= 3 and w.lower() not in ignore_set_words)
+    eb_words_clean = set(w.lower() for w in re.findall(r'[a-z0-9]+', expected_beer) if len(w) >= 3 and w.lower() not in ignore_set_words)
+    if len(rb_words_clean) >= 2 and len(eb_words_clean) >= 2:
+        intersection = rb_words_clean & eb_words_clean
+        union = rb_words_clean | eb_words_clean
+        shorter_set, longer_set = (rb_words_clean, eb_words_clean) if len(rb_words_clean) <= len(eb_words_clean) else (eb_words_clean, rb_words_clean)
+        is_token_match = False
+        if shorter_set.issubset(longer_set) and len(shorter_set) >= 2:
+            is_token_match = True
+        elif union and (len(intersection) / len(union)) >= 0.70:
+            is_token_match = True
+
+        if is_token_match and not has_variant_mismatch(result_beer, expected_beer):
+            logger.info(f"  [Validation] Beer MATCH (Token Set, 75): '{result_beer}' matches '{expected_beer}'")
+            return 75
+
     # 7. Fuzzy Match / Typo Tolerance (for minor spelling errors like "Hopwierd" vs "Hopwired")
     if len(rb_core) >= 4 and len(eb_core) >= 4:
         ratio = SequenceMatcher(None, rb_core, eb_core).ratio()
@@ -255,6 +277,7 @@ def score_beer_match(result_elem: Union[Tag, Dict[str, Any]], expected_beer: str
             if not has_variant_mismatch(result_beer, expected_beer):
                 logger.info(f"  [Validation] Beer MATCH (Fuzzy Typo, 70): '{result_beer}' ≈ '{expected_beer}' (ratio={ratio:.2f})")
                 return 70
+
 
     logger.info(f"  [Validation] Beer FAIL: '{result_beer}' ({rb_norm}) != '{expected_beer}' ({eb_norm})")
     return 0

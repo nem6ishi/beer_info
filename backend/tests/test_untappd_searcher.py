@@ -240,6 +240,13 @@ class TestScoreBeerMatch(unittest.IsolatedAsyncioTestCase):
         )
         self.assertGreater(score, 0)
 
+    async def test_token_set_match_inverted_order_with_ba_abbrev(self):
+        """Word-order-independent matching (e.g. Triptych Nectar: Angry Angel vs Angry Angel BA Triptych Nectar)."""
+        score = score_beer_match(
+            self._make_element("Triptych Nectar: Angry Angel"),
+            "Angry Angel BA Triptych Nectar (collab w/Angry Chair) 375ml/Zymarium"
+        )
+        self.assertGreaterEqual(score, 75)
 
 
 class TestAbbreviationExpansion(unittest.IsolatedAsyncioTestCase):

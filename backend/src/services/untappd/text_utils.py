@@ -188,6 +188,22 @@ def has_variant_mismatch(name_a: str, name_b: str) -> bool:
                     logger.debug(f"  [Variant] Subtitle match allowed: '{name_a}' extends base '{name_b}' with descriptive modifiers {mods_a}")
                     return False
 
+        # Check aging modifier difference (e.g. shop title adds "BA", but Untappd has no "BA" in title)
+        aging_modifiers = {'barrelaged', 'bourbonbarrelaged', 'rumbarrelaged', 'oakaged', 'whiskeybarrelaged'}
+        if diff.issubset(aging_modifiers):
+            # If neither side has full-spelled "barrel aged" (i.e. only isolated abbreviation like "\bBA\b"),
+            # and they share at least 2 distinctive core tokens, allow it through to LLM validation.
+            has_full_spec_a = bool(re.search(r'\b(?:barrel|bourbon|oak|whiskey|rum)\s+aged\b', name_a, re.IGNORECASE))
+            has_full_spec_b = bool(re.search(r'\b(?:barrel|bourbon|oak|whiskey|rum)\s+aged\b', name_b, re.IGNORECASE))
+            if not (has_full_spec_a or has_full_spec_b):
+                stop_words = {'beer', 'ale', 'ipa', 'mead', 'cider', 'stout', 'collab', 'collabo', '375ml', '350ml', '500ml', 'can', 'bottle'}
+                words_a = set(w.lower() for w in re.findall(r'[a-z0-9]+', name_a) if len(w) >= 3 and w.lower() not in stop_words)
+                words_b = set(w.lower() for w in re.findall(r'[a-z0-9]+', name_b) if len(w) >= 3 and w.lower() not in stop_words)
+                common_tokens = words_a & words_b
+                if len(common_tokens) >= 2:
+                    logger.debug(f"  [Variant] Abbreviated aging modifier diff {diff} allowed between '{name_a}' and '{name_b}' (common tokens: {common_tokens})")
+                    return False
+
         logger.debug(f"  [Variant] Modifier mismatch: '{name_a}' has {mods_a}, '{name_b}' has {mods_b}, diff={diff}")
         return True
     return False

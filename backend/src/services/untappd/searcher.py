@@ -231,6 +231,22 @@ async def _get_untappd_url_single(
 
         if len(all_candidates) < 5:
             tokens = []
+            
+            # 1. Cleaned core title (strip parenthesized notes like collab w/..., volume e.g. 375ml)
+            if target_beer_name:
+                clean_phrase = re.sub(r'[\(\[（].*?[\)\]）]', '', target_beer_name)
+                clean_phrase = re.sub(r'\b\d{3,4}\s*ml\b', '', clean_phrase, flags=re.IGNORECASE)
+                clean_phrase = re.sub(r'\s+', ' ', clean_phrase).strip()
+                if clean_phrase and clean_phrase != target_beer_name and len(clean_phrase) >= 4:
+                    tokens.append(clean_phrase)
+                
+                # 2. Add first two distinctive words (bigram like "Angry Angel", "Angry Trail")
+                phrase_words = [w for w in re.split(r'[\s/—–\-]+', clean_phrase) if len(w) >= 3 and w.lower() not in {'ipa', 'dipa', 'tipa', 'neipa', 'ale', 'stout', 'lager', 'pilsner', 'sour', 'porter', 'saison', 'gose', 'hazy', 'double', 'triple', 'single', 'imperial', 'session', 'fruited', 'wild', 'beer', 'cider', 'mead', 'ba'}]
+                if len(phrase_words) >= 2:
+                    bigram = f"{phrase_words[0]} {phrase_words[1]}"
+                    if bigram not in tokens:
+                        tokens.append(bigram)
+
             for text in [target_beer_name, beer_name_jp]:
                 if not text:
                     continue
@@ -259,6 +275,7 @@ async def _get_untappd_url_single(
                         tokens.append(num_sub[0])
                     if w_clean not in tokens and w_clean != target_beer_name and w_clean != beer_name_jp:
                         tokens.append(w_clean)
+
             for token in tokens[:6]:
                 logger.info(f"🔄 [Token-fallback] Searching for token '{token}' within brewery: {cand_b_url}")
                 cands_token = await search_brewery_beer_candidates(
