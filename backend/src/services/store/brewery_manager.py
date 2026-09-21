@@ -125,10 +125,16 @@ class BreweryManager:
         if re.search(r'(\bx\b|×|\bcollab\b|collaboration|,|&)', new_alias, re.IGNORECASE):
             return False
             
-        # Ignore common generic words / suffixes
+        # Ignore common generic words / suffixes and beer style names
         stop_words = {
             'beer', 'brewery', 'brewing', 'craft', 'ale', 'lager', 'ipa', 'co', 'inc', 'ltd',
-            'company', 'brewing co', 'brewing company', 'beer co', 'beer company'
+            'company', 'brewing co', 'brewing company', 'beer co', 'beer company',
+            'west coast ipa', 'hazy ipa', 'double ipa', 'triple ipa', 'neipa',
+            'imperial stout', 'pastry stout', 'sour ale', 'fruit sour', 'pale ale',
+            'session ipa', 'dipa', 'tipa', 'cold ipa', 'black ipa', 'barleywine',
+            'farmhouse ale', 'saison', 'hard seltzer', 'cider', 'pilsner',
+            'ウエストコーストipa', 'ヘイジーipa', 'ペールエール', 'セゾン', 'スタウト',
+            'ダブルipa', 'サワーエール', 'フルーツサワー', 'ピルスナー'
         }
         if new_alias.lower() in stop_words:
             return False
@@ -149,16 +155,24 @@ class BreweryManager:
 
         alias_lower = new_alias.lower()
 
-        # Check if alias conflicts with another registered brewery's main name or cleaned name
+        # Check if alias conflicts with another registered brewery's main name, clean name, or existing aliases
         alias_clean = re.sub(r'\b(brewing|brewery|beer|co)\b', '', alias_lower).strip()
         for b in self.breweries:
             if b.get('id') == target_brewery.get('id'):
                 continue
             other_en = (b.get('name_en') or '').lower()
             other_jp = (b.get('name_jp') or '').lower()
-            if alias_lower in (other_en, other_jp) or (alias_clean and alias_clean in (other_en, other_jp)):
+            other_aliases = [a.lower() for a in (b.get('aliases') or [])]
+            
+            # Check direct collision with name_en, name_jp, or existing aliases
+            if alias_lower in (other_en, other_jp) or alias_lower in other_aliases:
                 print(f"[BreweryManager] ⚠️ Rejected alias '{new_alias}' for '{target_brewery.get('name_en')}' - conflicts with brewery '{b.get('name_en')}'")
                 return False
+                
+            if alias_clean and alias_clean in (other_en, other_jp):
+                print(f"[BreweryManager] ⚠️ Rejected alias '{new_alias}' for '{target_brewery.get('name_en')}' - clean name conflicts with '{b.get('name_en')}'")
+                return False
+
             other_en_clean = re.sub(r'\b(brewing|brewery|beer|co)\b', '', other_en).strip()
             if alias_clean and alias_clean == other_en_clean:
                 print(f"[BreweryManager] ⚠️ Rejected alias '{new_alias}' for '{target_brewery.get('name_en')}' - clean name conflicts with '{b.get('name_en')}'")
@@ -174,6 +188,7 @@ class BreweryManager:
             return False
         if any(alias_lower == a.lower() for a in current_aliases):
             return False
+
             
         # Prepare updates
         payload: Dict[str, Any] = {}

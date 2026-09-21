@@ -34,6 +34,25 @@ def main():
             
     logger.info(f"Built main names lookup with {len(main_name_to_ids)} keys.")
     
+    STYLE_STOP_WORDS = {
+        'beer', 'brewery', 'brewing', 'craft', 'ale', 'lager', 'ipa', 'co', 'inc', 'ltd',
+        'company', 'brewing co', 'brewing company', 'beer co', 'beer company',
+        'west coast ipa', 'hazy ipa', 'double ipa', 'triple ipa', 'neipa',
+        'imperial stout', 'pastry stout', 'sour ale', 'fruit sour', 'pale ale',
+        'session ipa', 'dipa', 'tipa', 'cold ipa', 'black ipa', 'barleywine',
+        'farmhouse ale', 'saison', 'hard seltzer', 'cider', 'pilsner',
+        'ウエストコーストipa', 'ヘイジーipa', 'ペールエール', 'セゾン', 'スタウト',
+        'ダブルipa', 'サワーエール', 'フルーツサワー', 'ピルスナー'
+    }
+
+    # Protected mappings for known acronyms / brands
+    KNOWN_EXCLUSIVE_ALIASES = {
+        'wcb': 'West Coast Brewing',
+        'wcb ウェストコーストブルーイング': 'West Coast Brewing',
+        'other half': 'Other Half Brewing',
+        'アザーハーフ': 'Other Half Brewing',
+    }
+
     updated_count = 0
     removed_aliases_total = 0
     
@@ -44,6 +63,13 @@ def main():
         b_jp = b.get("name_jp") or ""
         raw_aliases = b.get("aliases") or []
         
+        # Check explicit bad name_jp for East Brother
+        updated_b_jp = b_jp
+        if b_en == "East Brother Beer Company" and b_jp == "アザーハーフ":
+            updated_b_jp = "イーストブラザー"
+            sb.from_("breweries").update({"name_jp": updated_b_jp}).eq("id", b_id).execute()
+            logger.info(f"  🔧 Corrected name_jp for East Brother Beer Company: 'アザーハーフ' -> '{updated_b_jp}'")
+
         cleaned_aliases = []
         removed_aliases = []
         
@@ -52,11 +78,23 @@ def main():
             alias_lower = alias_str.lower()
             alias_clean = re.sub(r'\b(brewing|brewery|beer|co)\b', '', alias_lower).strip()
             
+            # Check style stop words
+            if alias_lower in STYLE_STOP_WORDS or alias_clean in STYLE_STOP_WORDS:
+                removed_aliases.append((alias_str, "Beer style stop word"))
+                continue
+
             # Check collaboration patterns
             if re.search(r'(\bx\b|×|\bcollab\b|collaboration|,|&)', alias_str, re.IGNORECASE):
                 removed_aliases.append((alias_str, "Collaboration pattern"))
                 continue
                 
+            # Check exclusive aliases (e.g. WCB belongs ONLY to West Coast Brewing)
+            if alias_lower in KNOWN_EXCLUSIVE_ALIASES:
+                target_owner = KNOWN_EXCLUSIVE_ALIASES[alias_lower]
+                if b_en.lower() != target_owner.lower():
+                    removed_aliases.append((alias_str, f"Exclusive alias belonging to {target_owner}"))
+                    continue
+
             # Check conflict with main names of OTHER breweries
             conflicts = False
             for test_key in [alias_lower, alias_clean]:
@@ -70,7 +108,7 @@ def main():
                 removed_aliases.append((alias_str, "Conflict with other brewery main name"))
                 continue
                 
-            if alias_lower in (b_en.lower(), b_jp.lower()):
+            if alias_lower in (b_en.lower(), (updated_b_jp or '').lower()):
                 # Redundant with main name
                 continue
                 
@@ -93,6 +131,7 @@ def main():
                 logger.info(f"     - Removed '{ra}' ({reason})")
 
     logger.info(f"✅ Cleaned aliases for {updated_count} breweries (removed {removed_aliases_total} aliases).")
+
     
     logger.info("\n3. Fixing target product 'うちゅうブルーイング / 宇宙LAGER' (id=6939)...")
     url_target = "https://www.arome.jp/products/detail.php?product_id=6939"
@@ -159,9 +198,29 @@ def main():
                 
     logger.info(f"✅ Reset {fixed_misassigned} misassigned beers for re-processing.")
     
-    logger.info("\n5. Refreshing Materialized View (beer_info_view)...")
+    logger.info("\n5. Resetting false failure records in untappd_search_failures for recent items...")
+    recent_failures = sb.from_("untappd_search_failures").select("id, product_url, failure_reason, brewery_name, beer_name").gte("first_failed_at", "2026-09-19T00:00:00Z").execute()
+    reset_ids = []
+    for row in (recent_failures.data or []):
+        f_reason = row.get("failure_reason")
+        b_name = row.get("brewery_name") or ""
+        # Reset if it was a final validation mismatch or misattributed brewery
+        if f_reason == "final_validation_mismatch" or b_name in ("East Brother Beer Company", "Revision Brewing Company"):
+            reset_ids.append(row["id"])
+
+    if reset_ids:
+        # Delete from untappd_search_failures so they will be cleanly retried
+        for i in range(0, len(reset_ids), 50):
+            batch = reset_ids[i:i+50]
+            sb.from_("untappd_search_failures").delete().in_("id", batch).execute()
+        logger.info(f"✅ Reset/removed {len(reset_ids)} recent false failures from untappd_search_failures.")
+    else:
+        logger.info("No recent false failures found to reset.")
+
+    logger.info("\n6. Refreshing Materialized View (beer_info_view)...")
     refresh_materialized_view(sb, logger)
     logger.info("🎉 All tasks completed successfully!")
 
 if __name__ == "__main__":
     main()
+

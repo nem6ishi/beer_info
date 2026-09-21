@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 load_dotenv()
 
@@ -36,7 +37,26 @@ class LLMValidator:
             self.client = genai.Client(api_key=key)
             
         self.model_id = model_id or os.getenv("GEMINI_MODEL_ID", "gemma-4-31b-it")
-        self._cache: Dict[str, Tuple[bool, float, str]] = {}
+        self._cache: Dict[str, Tuple[Optional[bool], float, str]] = {}
+
+    def _call_api_with_retry(self, prompt: str) -> types.GenerateContentResponse:
+        """Call Gemini API with retry logic for transient errors (e.g. 503, 429)."""
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1.5, min=2, max=10),
+            reraise=True,
+        )
+        def _execute():
+            return self.client.models.generate_content(
+                model=self.model_id,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=LLMValidationResult,
+                    temperature=0.1,
+                ),
+            )
+        return _execute()
 
     def validate_pair(
         self,
@@ -44,12 +64,15 @@ class LLMValidator:
         untappd_brewery: str,
         untappd_beer: str,
         untappd_style: Optional[str] = None,
-    ) -> Tuple[bool, float, str]:
+    ) -> Tuple[Optional[bool], float, str]:
         """
         Validates if original_title and Untappd info refer to the same craft beer.
         
         Returns:
-            Tuple[is_match (bool), confidence (float), reason (str)]
+            Tuple[is_match (Optional[bool]), confidence (float), reason (str)]
+            - is_match is True: Verified match
+            - is_match is False: Verified mismatch
+            - is_match is None: API error / cannot determine (fallback to rule-based)
         """
         if not original_title or not untappd_brewery or not untappd_beer:
             return False, 0.0, "Missing required input fields"
@@ -59,19 +82,8 @@ class LLMValidator:
             return self._cache[cache_key]
 
         if not self.client:
-            # Fallback when API key is missing: basic string inclusion check
-            orig_lower = original_title.lower()
-            brew_lower = untappd_brewery.lower()
-            beer_lower = untappd_beer.lower()
-            
-            # Simple fallback check
-            brew_match = brew_lower in orig_lower or any(w in orig_lower for w in brew_lower.split() if len(w) >= 4)
-            beer_match = beer_lower in orig_lower or any(w in orig_lower for w in beer_lower.split() if len(w) >= 4)
-            is_match = brew_match and beer_match
-            reason = "Fallback string check (No Gemini client)" if is_match else "Fallback check failed"
-            result = (is_match, 0.7 if is_match else 0.0, reason)
-            self._cache[cache_key] = result
-            return result
+            # Fallback when API key is missing: return None so rule-based validator can take over
+            return None, 0.0, "No Gemini API client (fallback to rule-based)"
 
         prompt = f"""You are an expert craft beer validator.
 Determine if the scraped online shop product title and the Untappd search result refer to the SAME craft beer product.
@@ -91,16 +103,7 @@ Evaluate strictly and return JSON with is_match, confidence, and reason.
 """
 
         try:
-            # Call Gemini API with Pydantic structured response
-            response = self.client.models.generate_content(
-                model=self.model_id,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=LLMValidationResult,
-                    temperature=0.1,
-                ),
-            )
+            response = self._call_api_with_retry(prompt)
             
             if response and response.parsed:
                 parsed: LLMValidationResult = response.parsed
@@ -112,9 +115,8 @@ Evaluate strictly and return JSON with is_match, confidence, and reason.
                 return res_tuple
 
         except Exception as e:
-            logger.warning(f"[LLMValidator] API call error for '{original_title}': {e}")
+            logger.warning(f"[LLMValidator] API call error after retries for '{original_title}': {e}")
             
-        # Fallback in case of API failure
-        fallback_res = (False, 0.0, "API Error during LLM validation")
-        self._cache[cache_key] = fallback_res
-        return fallback_res
+        # Fallback in case of API failure: return None so callers fallback to rule-based, and do NOT cache
+        return None, 0.0, f"API Error during LLM validation"
+

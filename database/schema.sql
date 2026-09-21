@@ -273,36 +273,78 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 9. API Usage Tracking
-CREATE TABLE IF NOT EXISTS api_usage_tracking (
+-- 9. API Usage Tracking (Detailed Logs for RPM/TPM/RPD)
+CREATE TABLE IF NOT EXISTS api_usage_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   service_name TEXT NOT NULL,
-  date DATE NOT NULL DEFAULT CURRENT_DATE,
-  request_count INTEGER NOT NULL DEFAULT 0,
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  PRIMARY KEY (service_name, date)
+  executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0
 );
 
-ALTER TABLE api_usage_tracking ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Auth Write API Usage" ON api_usage_tracking FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Public Read API Usage" ON api_usage_tracking FOR SELECT TO anon USING (true);
+CREATE INDEX IF NOT EXISTS idx_api_usage_logs_service_time ON api_usage_logs(service_name, executed_at);
 
-CREATE OR REPLACE FUNCTION increment_api_usage(p_service_name TEXT)
-RETURNS INTEGER
+ALTER TABLE api_usage_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Auth Write API Usage" ON api_usage_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Public Read API Usage" ON api_usage_logs FOR SELECT TO anon USING (true);
+
+-- Check detailed usage (RPD, RPM, TPM)
+CREATE OR REPLACE FUNCTION check_api_usage_detailed(p_service_name TEXT)
+RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_new_count INTEGER;
-  v_today DATE := CURRENT_DATE;
+  v_rpd INTEGER;
+  v_rpm INTEGER;
+  v_tpm INTEGER;
 BEGIN
-  INSERT INTO api_usage_tracking (service_name, date, request_count, updated_at)
-  VALUES (p_service_name, v_today, 1, NOW())
-  ON CONFLICT (service_name, date)
-  DO UPDATE SET 
-    request_count = api_usage_tracking.request_count + 1,
-    updated_at = NOW()
-  RETURNING request_count INTO v_new_count;
-  
-  RETURN v_new_count;
+  -- RPD (Requests Per Day - last 24h)
+  SELECT COUNT(*) INTO v_rpd
+  FROM api_usage_logs
+  WHERE service_name = p_service_name
+    AND executed_at >= NOW() - INTERVAL '24 hours';
+    
+  -- RPM (Requests Per Min - last 1m)
+  SELECT COUNT(*) INTO v_rpm
+  FROM api_usage_logs
+  WHERE service_name = p_service_name
+    AND executed_at >= NOW() - INTERVAL '1 minute';
+    
+  -- TPM (Tokens Per Min - last 1m)
+  SELECT COALESCE(SUM(total_tokens), 0) INTO v_tpm
+  FROM api_usage_logs
+  WHERE service_name = p_service_name
+    AND executed_at >= NOW() - INTERVAL '1 minute';
+    
+  RETURN json_build_object(
+    'rpd', v_rpd,
+    'rpm', v_rpm,
+    'tpm', v_tpm
+  );
+END;
+$$;
+
+-- Log API usage and cleanup old logs
+CREATE OR REPLACE FUNCTION log_api_usage(
+  p_service_name TEXT, 
+  p_total INTEGER DEFAULT 0, 
+  p_prompt INTEGER DEFAULT 0, 
+  p_comp INTEGER DEFAULT 0
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Insert the new log
+  INSERT INTO api_usage_logs (service_name, executed_at, total_tokens, prompt_tokens, completion_tokens)
+  VALUES (p_service_name, NOW(), p_total, p_prompt, p_comp);
+    
+  -- Cleanup logs older than 24 hours
+  DELETE FROM api_usage_logs 
+  WHERE service_name = p_service_name 
+    AND executed_at < NOW() - INTERVAL '24 hours';
 END;
 $$;

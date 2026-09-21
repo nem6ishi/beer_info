@@ -74,3 +74,31 @@ def test_validate_final_match_with_llm(mock_get_validator):
         untappd_style="Lager - Helles"
     )
     assert res_good is True
+
+    # Case 3: API Error (None) falls back to rule-based check and passes for valid match
+    mock_validator.validate_pair.return_value = (None, 0.0, "API Error")
+    res_fallback = validate_final_match(
+        original_title="うちゅうブルーイング / 宇宙LAGER (Helles) 350ml缶 [UCHU BREWING / UCHU LAGER]",
+        untappd_beer_name="宇宙LAGER (UCHU LAGER)",
+        untappd_brewery_name="Uchu Brewing",
+        untappd_style="Lager - Helles",
+        expected_brewery="Uchu Brewing"
+    )
+    assert res_fallback is True
+
+def test_llm_validator_api_error():
+    validator = LLMValidator(api_key="mock_key")
+    validator.client = MagicMock()
+    validator.client.models.generate_content.side_effect = Exception("503 Service Unavailable")
+
+    is_match, conf, reason = validator.validate_pair(
+        original_title="バテレ　テネラ（VERTERE Tenera）",
+        untappd_brewery="VERTERE",
+        untappd_beer="Tenera",
+        untappd_style="IPA - New England / Hazy"
+    )
+
+    assert is_match is None
+    assert conf == 0.0
+    assert "API Error" in reason
+

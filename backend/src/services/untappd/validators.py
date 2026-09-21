@@ -342,16 +342,22 @@ def validate_final_match(
             untappd_beer=untappd_beer_name,
             untappd_style=untappd_style,
         )
-        if not is_match:
+        if is_match is False:
             logger.warning(
                 f"  [Final Validation] BLOCKED by LLMValidator: '{original_title}' <-> Untappd '{untappd_brewery_name} / {untappd_beer_name}' | Reason: {reason}"
             )
             return False
-        else:
+        elif is_match is True:
             logger.info(
                 f"  [Final Validation] PASSED by LLMValidator (conf={conf:.2f}): '{original_title}' <-> Untappd '{untappd_brewery_name} / {untappd_beer_name}'"
             )
             return True
+        else:
+            # is_match is None: API error / indeterminate -> Fallback to rule-based checks below
+            logger.warning(
+                f"  [Final Validation] LLMValidator indeterminate ({reason}). Falling back to rule-based validation for '{original_title}'"
+            )
+
 
     # 1. Check Brewery Match with Expected Brewery or Original Title
     if expected_brewery:
