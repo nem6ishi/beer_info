@@ -62,7 +62,7 @@ async def search_brewery_beer_candidates(
     for suffix in ('/beer', '/photos', '/activity'):
         if base_url.endswith(suffix):
             base_url = base_url[:-len(suffix)]
-    url: str = f"{base_url}/beer?q={encoded_query}&sort=created_at_desc"
+    url: str = f"{base_url}/beer?q={encoded_query}"
 
     headers: Dict[str, str] = {
         "User-Agent": _UA,

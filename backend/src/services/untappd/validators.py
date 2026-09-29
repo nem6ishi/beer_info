@@ -230,9 +230,9 @@ def score_beer_match(result_elem: Union[Tag, Dict[str, Any]], expected_beer: str
         logger.info(f"  [Validation] Beer MATCH (Ordinal+Core, 60): '{result_beer}' matches '{expected_beer}'")
         return 60
 
-    # 6. Part / Token Inclusion Check (for multilingual or parenthesized titles like "Doron (どろん)" vs "Ise Shima Doron")
-    rb_parts = get_name_parts(rb_clean)
-    eb_parts = get_name_parts(eb_clean)
+    # 6. Part / Token Inclusion Check (for multilingual or parenthesized titles like "Chintalychee (チンタライチ)" vs "チンタライチ")
+    rb_parts = list(dict.fromkeys(get_name_parts(result_beer) + get_name_parts(rb_clean)))
+    eb_parts = list(dict.fromkeys(get_name_parts(expected_beer) + get_name_parts(eb_clean)))
     for rp in rb_parts:
         for ep in eb_parts:
             rp_norm = normalize_for_comparison(strip_for_core_comparison(rp))

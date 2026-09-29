@@ -42,16 +42,12 @@ class GeminiExtractor(BaseExtractor):
         self.last_request_time = 0
         self.daily_request_count = 0
         
-        # Model Configuration: Gemma 4 31B (30 RPM, 14.4K RPD)
-        self.model_id = os.getenv("GEMINI_MODEL_ID", "gemma-4-31b-it")
-        self.fallback_model_id = os.getenv("GEMINI_FALLBACK_MODEL_ID", "gemma-4-26b-a4b-it")
-        self.model_interval = 2.5  # 30 RPMの制限に余裕を持たせる (約 24 RPM)
-        self.global_daily_limit = 14000  # 14,400 RPDの制限に余裕を持たせる
-
-    def _supports_response_schema(self, model_id: str) -> bool:
-        """Returns True if the model supports response_schema (e.g. Gemini models)."""
-        return model_id.lower().startswith("gemini-")
-
+        # Model Configuration: Gemini 3.1 Flash Lite Preview / Lite
+        self.primary_model_id = os.getenv("GEMINI_MODEL_ID", "gemini-3.1-flash-lite-preview")
+        self.model_id = self.primary_model_id
+        self.fallback_model_id = os.getenv("GEMINI_FALLBACK_MODEL_ID", "gemini-3.1-flash-lite")
+        self.model_interval = 4.0
+        self.global_daily_limit = 14000
 
     def _supports_response_schema(self, model_id: str) -> bool:
         """Returns True if the model supports response_schema (e.g. Gemini models)."""
@@ -64,70 +60,71 @@ class GeminiExtractor(BaseExtractor):
             return None
 
         try:
+            supabase = get_supabase_client()
+            # Check current detailed usage
+            res = supabase.rpc('check_api_usage_detailed', {'p_service_name': 'gemini'}).execute()
+            usage_data = res.data or {}
+            current_rpd = usage_data.get('rpd', 0)
+            
+            self.daily_request_count = current_rpd
+            
+            if current_rpd >= self.global_daily_limit:
+                logger.warning(f"  [Gemini] Global daily limit reached ({current_rpd}/{self.global_daily_limit}). Skipping extraction.")
+                return None
+        except Exception as db_e:
+            logger.error(f"  [Gemini] Failed to check API usage in DB: {db_e}. Falling back to local limit.")
+            if self.daily_request_count >= self.global_daily_limit:
+                logger.warning(f"  [Gemini] Local daily limit reached ({self.daily_request_count}/{self.global_daily_limit}). Skipping extraction.")
+                return None
+
+        models_to_try = [self.primary_model_id]
+        if self.fallback_model_id and self.fallback_model_id not in models_to_try:
+            models_to_try.append(self.fallback_model_id)
+        if "gemini-2.5-flash" not in models_to_try:
+            models_to_try.append("gemini-2.5-flash")
+
+        response = None
+        for i, model_id in enumerate(models_to_try):
             try:
-                supabase = get_supabase_client()
-                # Check current detailed usage
-                res = supabase.rpc('check_api_usage_detailed', {'p_service_name': 'gemini'}).execute()
-                usage_data = res.data or {}
-                current_rpd = usage_data.get('rpd', 0)
-                current_rpm = usage_data.get('rpm', 0)
-                current_tpm = usage_data.get('tpm', 0)
-                
-                self.daily_request_count = current_rpd
-                
-                # Optional: We log RPM and TPM for debugging, but only strictly enforce RPD here.
-                if current_rpd >= self.global_daily_limit:
-                    logger.warning(f"  [Gemini] Global daily limit reached ({current_rpd}/{self.global_daily_limit}). Skipping extraction.")
-                    return None
-            except Exception as db_e:
-                logger.error(f"  [Gemini] Failed to check API usage in DB: {db_e}. Falling back to local limit.")
-                if self.daily_request_count >= self.global_daily_limit:
-                    logger.warning(f"  [Gemini] Local daily limit reached ({self.daily_request_count}/{self.global_daily_limit}). Skipping extraction.")
-                    return None
-
-            await self._throttle(self.model_interval, self.model_id)
-
-            config = None
-            if schema and self._supports_response_schema(self.model_id):
-                from google.genai import types
-                config = types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=schema,
-                )
-
-            logger.info(f"  [Gemini] Calling {self.model_id}...")
-            response: Any = await self.client.aio.models.generate_content(
-                model=self.model_id,
-                contents=prompt,
-                config=config,
-            )
-        except Exception as e:
-            error_msg: str = str(e).lower()
-            # 意図: 無料枠のGemini APIはレートリミット(429)やリソース枯渇(unavailable)が起きやすいため、
-            # エラーを検知したら、別のモデル（fallback_model_id）に切り替えて即座にリトライを行う。
-            # fallback_model_id はレートリミットの枠が別であるため成功しやすい。
-            if getattr(e, 'code', None) == 429 or "exhausted" in error_msg or "quota" in error_msg or "unavailable" in error_msg:
-                if self.model_id != self.fallback_model_id:
-                    logger.warning(f"  [Gemini] {self.model_id} limit reached or unavailable. Falling back to {self.fallback_model_id}")
-                    self.model_id = self.fallback_model_id
-                    await self._throttle(self.model_interval, self.model_id)
-                    logger.info(f"  [Gemini] Calling fallback {self.model_id}...")
-                    fallback_config = None
-                    if schema and self._supports_response_schema(self.model_id):
-                        from google.genai import types
-                        fallback_config = types.GenerateContentConfig(
-                            response_mime_type="application/json",
-                            response_schema=schema,
-                        )
-                    response = await self.client.aio.models.generate_content(
-                        model=self.model_id,
-                        contents=prompt,
-                        config=fallback_config,
+                await self._throttle(self.model_interval, model_id)
+                model_config = None
+                if schema and self._supports_response_schema(model_id):
+                    from google.genai import types
+                    model_config = types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=schema,
                     )
+                if i > 0:
+                    logger.info(f"  [Gemini] Calling fallback {model_id}...")
+                else:
+                    logger.info(f"  [Gemini] Calling {model_id}...")
+
+                response = await asyncio.wait_for(
+                    self.client.aio.models.generate_content(
+                        model=model_id,
+                        contents=prompt,
+                        config=model_config,
+                    ),
+                    timeout=20.0
+                )
+                break
+            except Exception as e:
+                error_msg: str = str(e).lower()
+                is_transient = (
+                    isinstance(e, asyncio.TimeoutError) or
+                    getattr(e, 'code', None) in (429, 503) or
+                    "exhausted" in error_msg or
+                    "quota" in error_msg or
+                    "unavailable" in error_msg or
+                    "server" in error_msg or
+                    "timeout" in error_msg
+                )
+                if is_transient and i < len(models_to_try) - 1:
+                    logger.warning(f"  [Gemini] {model_id} failed ({e}). Falling back to next model...")
+                    continue
                 else:
                     raise
-            else:
-                raise
+
         
         self.last_request_time = time.time()
         
@@ -389,6 +386,7 @@ class GeminiExtractor(BaseExtractor):
                     return None
         except Exception as e:
             logger.error(f"[Gemini] select_best_untappd_candidate failed: {e}")
+            raise
 
         return None
 

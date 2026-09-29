@@ -442,7 +442,7 @@ async def _get_untappd_url_single(
                 else:
                     logger.info("  ⏭️ [LLM Selection] LLM rejected all candidates as none matched accurately.")
                     top_cand = all_candidates[0]
-                    if top_cand.get('score', 0) >= 90 or top_cand.get('source') == 'duckduckgo':
+                    if top_cand.get('score', 0) >= 80 or top_cand.get('source') == 'duckduckgo':
                         logger.info(f"  [Scoring Safety Net] Selecting top candidate despite LLM reject: {top_cand.get('url')}")
                         return {
                             'url': top_cand.get('url'),

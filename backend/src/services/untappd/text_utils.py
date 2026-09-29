@@ -4,6 +4,7 @@ Split from searcher.py for better modularity.
 """
 import re
 import logging
+import unicodedata
 from typing import Optional, List, Dict, Match
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,14 @@ _ABBREVIATION_MAP: Dict[str, str] = {
 }
 
 
+def remove_accents(text: str) -> str:
+    """Converts accented characters (û, à, é, ö, etc.) to plain ASCII (u, a, e, o)."""
+    if not text:
+        return ""
+    nfkd = unicodedata.normalize('NFKD', text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+
 def expand_abbreviations(text: str) -> str:
     """Expands common beer abbreviations (DDH, TDH, LR, etc.) for better matching."""
     if not text:
@@ -38,7 +47,7 @@ def expand_abbreviations(text: str) -> str:
 
 
 def normalize_for_comparison(text: str, expand_abbr: bool = False) -> str:
-    """Removes whitespace and non-alphanumeric characters for fuzzy comparison.
+    """Removes whitespace, accents, and non-alphanumeric characters for fuzzy comparison.
     
     Args:
         text: Input string to normalize.
@@ -46,9 +55,11 @@ def normalize_for_comparison(text: str, expand_abbr: bool = False) -> str:
     """
     if not text:
         return ""
+    text = remove_accents(text)
     if expand_abbr:
         text = expand_abbreviations(text)
     return "".join(c.lower() for c in text if c.isalnum())
+
 
 
 # Common beer style suffixes (sorted by length descending for greedy matching)
@@ -219,8 +230,8 @@ def normalize_ordinals(text: str) -> str:
 
 def strip_for_core_comparison(text: str) -> str:
     """Strips year, date markers, style suffixes, dashes, and punctuation for core name comparison."""
-    # Remove year/date in parens or brackets like (2026), (2026.07), [26/07], (2026-07)
-    text = re.sub(r'\s*[([（]\s*(?:20)?\d{2}(?:[./-]\d{1,2})?\s*[)\]）]\s*', ' ', text)
+    # Remove year/date in parens or brackets like (2026), (2026.07), [26/07], (2026-07), (2022-2023)
+    text = re.sub(r'\s*[([（]\s*(?:19|20)?\d{2}(?:\s*[-/]\s*(?:19|20)?\d{2}|[./-]\d{1,2})?\s*[)\]）]\s*', ' ', text)
     # Remove standalone dates like 2026.07 at end
     text = re.sub(r'\s+(?:20)?\d{2}[./-]\d{1,2}$', ' ', text)
     # Remove em-dashes and en-dashes (common in Untappd names)
@@ -263,8 +274,8 @@ def clean_beer_name(name: str) -> str:
     name = re.sub(r'\b(?:TDH|DDH|SDH)\s+', '', name, flags=re.IGNORECASE)
     name = re.sub(r'\b(?:Triple|Double|Single)\s+Dry\s+Hopped\s+', '', name, flags=re.IGNORECASE)
 
-    # Remove date/year markers like (2026.07), (2026/07), (26.07), [2026.07], (2026)
-    name = re.sub(r'\s*[([（]\s*(?:20)?\d{2}(?:[./-]\d{1,2})?\s*[)\]）]\s*', ' ', name)
+    # Remove date/year markers like (2026.07), (2026/07), (26.07), [2026.07], (2026), (2022-2023)
+    name = re.sub(r'\s*[([（]\s*(?:19|20)?\d{2}(?:\s*[-/]\s*(?:19|20)?\d{2}|[./-]\d{1,2})?\s*[)\]）]\s*', ' ', name)
     name = re.sub(r'\s+(?:20)?\d{2}[./-]\d{1,2}$', '', name)
 
     # Remove #XX, Vol.X, Batch X patterns
@@ -326,8 +337,18 @@ def clean_beer_name(name: str) -> str:
     name = re.sub(r'\bST\.\s*', 'St ', name, flags=re.IGNORECASE)
     
     # Special: Remove parenthesis that contain long sentences (e.g. toe 25th Anniversary)
-    # This prevents the search query from being too specific and failing entirely.
-    name = re.sub(r'\([^)]+\)', '', name)
+    # but preserve short bilingual / Japanese translations like (チンタライチ).
+    def _strip_long_or_comment_parens(m: re.Match) -> str:
+        content = m.group(1).strip()
+        # If it has Japanese chars and is short, keep it
+        if re.search(r'[\u3040-\u30ff\u4e00-\u9fff]', content) and len(content) <= 20:
+            return m.group(0)
+        # If long English phrase (>= 15 chars or >= 3 words), strip it
+        if len(content) >= 15 or len(content.split()) >= 3:
+            return ''
+        return m.group(0)
+
+    name = re.sub(r'\(([^)]+)\)', _strip_long_or_comment_parens, name)
 
     # Clean up extra whitespace
     name = ' '.join(name.split())

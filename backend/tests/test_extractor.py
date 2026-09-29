@@ -5,7 +5,7 @@ from backend.src.services.llm.gemini_extractor import GeminiExtractor
 @pytest.mark.asyncio
 async def test_extractor_initialization():
     extractor = GeminiExtractor()
-    assert extractor.model_id == "gemma-4-31b-it"
+    assert extractor.model_id in ["gemini-3.1-flash-lite-preview", "gemini-3.1-flash-lite", "gemini-2.5-flash"]
 
 @pytest.mark.skip(reason="requires complex google mock")
 @patch("google.generativeai.GenerativeModel")

@@ -36,7 +36,7 @@ class LLMValidator:
         else:
             self.client = genai.Client(api_key=key)
             
-        self.model_id = model_id or os.getenv("GEMINI_MODEL_ID", "gemma-4-31b-it")
+        self.model_id = model_id or os.getenv("GEMINI_MODEL_ID", "gemini-3.1-flash-lite-preview")
         self._cache: Dict[str, Tuple[Optional[bool], float, str]] = {}
 
     def _call_api_with_retry(self, prompt: str) -> types.GenerateContentResponse:
