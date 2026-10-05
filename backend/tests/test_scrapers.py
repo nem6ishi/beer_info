@@ -34,6 +34,47 @@ async def test_arome_scrape_basic(mock_get):
     # Just asserting it doesn't crash and handles mock gracefully
     assert isinstance(results, list)
 
+def test_arome_parse_list_page():
+    html_content = """
+    <html>
+        <body>
+            <ul class="ec-shelfGrid">
+                <li class="ec-shelfGrid__item">
+                    <a href="https://www.arome.jp/products/detail/9999">
+                        <p class="ec-shelfGrid__item-image">
+                            <img src="/html/upload/save_image/test.jpg" alt="Test Beer 2026 500ml [Test Brewery]">
+                        </p>
+                        <p class="price02-default">￥1,500</p>
+                    </a>
+                    <form action="https://www.arome.jp/products/add_cart/9999" method="post">
+                        <button type="submit" class="add-cart">カートに入れる</button>
+                    </form>
+                </li>
+            </ul>
+            <script>
+            eccube.productsClassCategories = {
+                "9999": {
+                    "class": {
+                        "#": {
+                            "stock_find": true,
+                            "price02_inc_tax": "1500"
+                        }
+                    }
+                }
+            };
+            </script>
+        </body>
+    </html>
+    """
+    products = arome.parse_list_page(html_content)
+    assert len(products) == 1
+    p = products[0]
+    assert p["name"] == "Test Beer 2026 500ml [Test Brewery]"
+    assert p["url"] == "https://www.arome.jp/products/detail.php?product_id=9999"
+    assert p["price"] == "1500円"
+    assert p["stock_status"] == "In Stock"
+    assert p["shop"] == "アローム"
+
 # Beervolta scraper tests
 @pytest.mark.asyncio
 @patch('backend.src.scrapers.beervolta.httpx.AsyncClient.get')

@@ -197,12 +197,24 @@ class UntappdEnricher:
         logger.info("  🔍 Pre-loading failure history for backoff filtering...")
         from dateutil import parser as dateutil_parser
         cutoff: datetime = datetime.now(timezone.utc) - timedelta(days=3)
-        failure_res: Any = self.supabase.table('untappd_search_failures') \
-            .select('product_url, search_attempts, last_failed_at') \
-            .eq('resolved', False) \
-            .execute()
+        # Supabase は1回のレスポンスが最大1000行のため、ページングで全件取得する
+        failure_rows: List[Dict[str, Any]] = []
+        page_size: int = 1000
+        page_offset: int = 0
+        while True:
+            failure_res: Any = self.supabase.table('untappd_search_failures') \
+                .select('product_url, search_attempts, last_failed_at') \
+                .eq('resolved', False) \
+                .order('id') \
+                .range(page_offset, page_offset + page_size - 1) \
+                .execute()
+            rows = failure_res.data or []
+            failure_rows.extend(rows)
+            if len(rows) < page_size:
+                break
+            page_offset += page_size
             
-        for f in (failure_res.data or []):
+        for f in failure_rows:
             attempts: int = f.get('search_attempts', 0)
             last_failed_str: Optional[str] = f.get('last_failed_at')
             p_url: str = f.get('product_url', '')
@@ -318,6 +330,17 @@ class UntappdEnricher:
 
         if not brewery or not beer_name:
             logger.warning(f"  ⚠️  Missing brewery or beer name - skipping")
+            # 失敗として記録し、バックオフ対象にする（記録しないと毎回同じ商品がバッチ枠を占有する）
+            if url and not self.offline and self.supabase:
+                record_enrichment_failure(
+                    self.supabase,
+                    product_url=url,
+                    brewery_name=brewery,
+                    beer_name=beer_name,
+                    beer_name_jp=beer.get('beer_name_jp'),
+                    failure_reason='missing_brewery_or_name',
+                    error_message="Could not determine brewery or beer name from extracted data/title",
+                )
             return None
 
         try:

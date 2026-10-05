@@ -1,3 +1,5 @@
+import re
+import json
 import httpx
 from bs4 import BeautifulSoup, Tag
 import ssl
@@ -51,18 +53,55 @@ async def fetch_url(client: httpx.AsyncClient, url: str) -> Tuple[Optional[str],
         return None, 0
 
 def check_stock_arome(soup: BeautifulSoup) -> str:
-    """Checks stock status for Arome (ECCube)."""
-    text: str = soup.get_text()
-    if "品切" in text or "只今品切れ中" in text or "申し訳ございません" in text or "売り切れ" in text or "在庫切れ" in text:
+    """Checks stock status for Arome (ECCube 4 and legacy)."""
+    # 1. Check schema.org Product JSON-LD offers.availability
+    for s in soup.select('script[type="application/ld+json"]'):
+        if s.string and '"Product"' in s.string:
+            try:
+                data = json.loads(s.string)
+                if data.get("@type") == "Product":
+                    offers = data.get("offers")
+                    if isinstance(offers, dict):
+                        avail = offers.get("availability", "")
+                        if "OutOfStock" in avail:
+                            return "Sold Out"
+                        elif "InStock" in avail:
+                            return "In Stock"
+            except Exception:
+                pass
+
+    # 2. Check embedded productsClassCategories JS
+    soup_text = soup.get_text()
+    m_cats = re.search(r'eccube\.productsClassCategories\s*=\s*(\{.*?\});\s*(?:var|\$|\n)', str(soup), re.S)
+    if m_cats:
+        try:
+            cats = json.loads(m_cats.group(1))
+            has_stock = False
+            for _, v1 in cats.items():
+                if isinstance(v1, dict):
+                    for _, v2 in v1.items():
+                        if isinstance(v2, dict) and v2.get("stock_find") is True:
+                            has_stock = True
+                            break
+            return "In Stock" if has_stock else "Sold Out"
+        except Exception:
+            pass
+
+    # 3. Check EC-CUBE 4 action buttons
+    cart_btn = soup.select_one(".ec-blockBtn--action, .add-cart, button[type='submit']")
+    if cart_btn:
+        btn_text = cart_btn.get_text(strip=True)
+        if "品切" in btn_text or "売り切れ" in btn_text or "sold out" in btn_text.lower():
+            return "Sold Out"
+
+    # 4. Legacy checks
+    text_zone: Optional[Tag] = soup.select_one("div.text-zone, .ec-productRole__profile")
+    if text_zone and ("在庫切れ" in text_zone.get_text() or "品切" in text_zone.get_text() or "申し訳ございません" in text_zone.get_text()):
         return "Sold Out"
-        
-    text_zone: Optional[Tag] = soup.select_one("div.text-zone")
-    if text_zone and ("在庫切れ" in text_zone.get_text() or "品切" in text_zone.get_text()):
-        return "Sold Out"
-    
+
     if soup.select_one('img[alt="売り切れ"]') or soup.select_one('img[src*="soldout"]'):
         return "Sold Out"
-        
+
     return "In Stock"
 
 def check_stock_beervolta(soup: BeautifulSoup) -> str:
@@ -110,12 +149,34 @@ def check_stock_ichigo_ichie(soup: BeautifulSoup) -> str:
     return "In Stock"
 
 def extract_price_arome(soup: BeautifulSoup) -> Optional[str]:
+    # 1. EC-CUBE 4 price element (e.g. ￥2,310)
+    price_eccube4 = soup.select_one("span.ec-price__price, .ec-price__price, .price02-default")
+    if price_eccube4:
+        val = re.sub(r'[^0-9]', '', price_eccube4.get_text())
+        if val and val != '0':
+            return f"{val}円"
+
+    # 2. Check schema.org Product JSON-LD offers.price
+    for s in soup.select('script[type="application/ld+json"]'):
+        if s.string and '"Product"' in s.string:
+            try:
+                data = json.loads(s.string)
+                if data.get("@type") == "Product":
+                    offers = data.get("offers")
+                    if isinstance(offers, dict) and offers.get("price"):
+                        val = re.sub(r'[^0-9]', '', str(offers["price"]))
+                        if val and val != '0':
+                            return f"{val}円"
+            except Exception:
+                pass
+
+    # 3. Legacy selectors
     price_02 = soup.select_one("#price02_default")
     if price_02:
         val = price_02.get_text(strip=True).replace(",", "")
         if val and val.isdigit() and int(val) > 0:
             return f"{val}円"
-            
+
     sale_el = soup.select_one(".sale_price")
     if sale_el:
         text = sale_el.get_text()
@@ -124,7 +185,7 @@ def extract_price_arome(soup: BeautifulSoup) -> Optional[str]:
             val = m_tax.group(1).replace(',', '')
             if val != '0':
                 return f"{val}円"
-                
+
     for p in soup.select(".price") + soup.select("#price"):
         text = p.get_text(strip=True)
         if text and text != "0円" and "0円" not in text:

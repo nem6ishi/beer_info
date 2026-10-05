@@ -39,5 +39,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
         
+      - name: Lint with ruff
+        run: uvx ruff check backend/src --select F821,E9
+
       - name: Run pytest
         run: uv run pytest --cov=backend/src backend/tests/

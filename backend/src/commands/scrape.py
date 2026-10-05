@@ -40,24 +40,28 @@ async def run_and_save_store(
     base_time: datetime,
     store_index: int,
     timeout: int = 420,
-) -> tuple[int, int, int]:
+) -> tuple[int, int, int, str]:
     """
     Run a single scraper with a timeout, process items, and upsert directly to Supabase.
-    Returns (new_count, updated_count, upserted_count).
+    Returns (new_count, updated_count, upserted_count, status).
+    status: 'ok' | 'empty' | 'error' | 'timeout'
     """
     logger.info(f"🚀 Starting scraper for {display_name} (timeout: {timeout}s)...")
     try:
         items: List[ScrapedProduct] = await asyncio.wait_for(scraper_coro, timeout=timeout)
     except asyncio.TimeoutError:
         logger.error(f"  ❌ {display_name}: Scraper timed out after {timeout}s")
-        return 0, 0, 0
+        print(f"::error title=Scraper timeout::{display_name} timed out after {timeout}s", flush=True)
+        return 0, 0, 0, "timeout"
     except Exception as e:
         logger.error(f"  ❌ {display_name}: Scraper error - {e}")
-        return 0, 0, 0
+        print(f"::error title=Scraper error::{display_name} error: {e}", flush=True)
+        return 0, 0, 0, "error"
 
     if not items:
-        logger.info(f"  ✅ {display_name}: 0 items fetched.")
-        return 0, 0, 0
+        logger.warning(f"  ⚠️ {display_name}: 0 items fetched.")
+        print(f"::warning title=Scraper empty::{display_name} returned 0 items", flush=True)
+        return 0, 0, 0, "empty"
 
     logger.info(f"  ✅ {display_name}: {len(items)} items fetched. Preparing upsert...")
 
@@ -140,7 +144,7 @@ async def run_and_save_store(
         except Exception as e:
             logger.warning(f"  ⚠️ {display_name}: Error refreshing view: {e}")
 
-    return new_count, updated_count, len(beers_to_upsert)
+    return new_count, updated_count, len(beers_to_upsert), "ok"
 
 
 async def scrape_to_supabase(
@@ -190,37 +194,22 @@ async def scrape_to_supabase(
     timeout_sec: int = int(os.getenv("SCRAPER_TIMEOUT", "1800"))
     base_time: datetime = datetime.now(timezone.utc)
 
+    # Store configurations: (name, coroutine)
+    store_configs = [
+        ('BeerVolta', beervolta.scrape_beervolta(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape), 0),
+        ('Chouseiya', chouseiya.scrape_chouseiya(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape), 1),
+        ('Ichigo Ichie', ichigo_ichie.scrape_ichigo_ichie(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape), 2),
+        ('Arôme', arome.scrape_arome(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape), 3),
+        ('Maruho', maruho.scrape_maruho(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape), 4),
+        ('Antenna America', antenna_america.scrape_antenna_america(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape), 5),
+        ('WITCH CRAFT MARKET', witch_craft_market.scrape_witch_craft_market(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape), 6),
+    ]
+
     # Run scrapers and save independently per store
     logger.info(f"\n🔍 Running scrapers and saving directly per store (timeout: {timeout_sec}s)...")
     tasks = [
-        run_and_save_store(
-            beervolta.scrape_beervolta(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
-            'BeerVolta', supabase, existing_data, new_only, reset_first_seen, base_time, 0, timeout_sec
-        ),
-        run_and_save_store(
-            chouseiya.scrape_chouseiya(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
-            'Chouseiya', supabase, existing_data, new_only, reset_first_seen, base_time, 1, timeout_sec
-        ),
-        run_and_save_store(
-            ichigo_ichie.scrape_ichigo_ichie(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
-            'Ichigo Ichie', supabase, existing_data, new_only, reset_first_seen, base_time, 2, timeout_sec
-        ),
-        run_and_save_store(
-            arome.scrape_arome(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
-            'Arôme', supabase, existing_data, new_only, reset_first_seen, base_time, 3, timeout_sec
-        ),
-        run_and_save_store(
-            maruho.scrape_maruho(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
-            'Maruho', supabase, existing_data, new_only, reset_first_seen, base_time, 4, timeout_sec
-        ),
-        run_and_save_store(
-            antenna_america.scrape_antenna_america(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
-            'Antenna America', supabase, existing_data, new_only, reset_first_seen, base_time, 5, timeout_sec
-        ),
-        run_and_save_store(
-            witch_craft_market.scrape_witch_craft_market(limit=limit, existing_urls=existing_urls if new_only else None, full_scrape=full_scrape),
-            'WITCH CRAFT MARKET', supabase, existing_data, new_only, reset_first_seen, base_time, 6, timeout_sec
-        ),
+        run_and_save_store(coro, name, supabase, existing_data, new_only, reset_first_seen, base_time, idx, timeout_sec)
+        for (name, coro, idx) in store_configs
     ]
 
     store_results = await asyncio.gather(*tasks)
@@ -231,9 +220,36 @@ async def scrape_to_supabase(
 
     logger.info(f"\n{'='*60}")
     logger.info("📈 Statistics:")
+    for (name, _, _), r in zip(store_configs, store_results):
+        status_icon = "✅" if r[3] == "ok" else ("⚠️" if r[3] == "empty" else "❌")
+        logger.info(f"  {status_icon} {name:20}: new={r[0]}, updated={r[1]}, upserted={r[2]}, status={r[3]}")
     logger.info(f"  🆕 New beers: {total_new}")
     logger.info(f"  🔄 Updated beers: {total_updated}")
     logger.info(f"  📦 Total upserted: {total_upserted}")
     logger.info("=" * 60)
     logger.info("✨ Scraping completed!")
     logger.info("=" * 60)
+
+    # Write GitHub Step Summary if running in GitHub Actions
+    summary_path = os.getenv("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        try:
+            with open(summary_path, "a", encoding="utf-8") as f:
+                f.write("### 🍺 Scrape Results Summary\n\n")
+                f.write("| Shop | Status | New | Updated | Upserted |\n")
+                f.write("| --- | :---: | :---: | :---: | :---: |\n")
+                for (name, _, _), r in zip(store_configs, store_results):
+                    badge = "✅ OK" if r[3] == "ok" else ("⚠️ 0 Items" if r[3] == "empty" else f"❌ {r[3].upper()}")
+                    f.write(f"| {name} | {badge} | {r[0]} | {r[1]} | {r[2]} |\n")
+                f.write(f"\n**Total New**: {total_new} | **Total Updated**: {total_updated} | **Total Upserted**: {total_upserted}\n")
+        except Exception as e:
+            logger.warning(f"Failed to write GITHUB_STEP_SUMMARY: {e}")
+
+    # Check for failure conditions to alert CI
+    error_stores = [name for (name, _, _), r in zip(store_configs, store_results) if r[3] in ("error", "timeout")]
+    empty_stores = [name for (name, _, _), r in zip(store_configs, store_results) if r[3] == "empty"]
+
+    if error_stores:
+        raise RuntimeError(f"Scraper failed for stores: {', '.join(error_stores)}")
+    if len(empty_stores) >= 4:
+        raise RuntimeError(f"Majority of scrapers returned 0 items ({len(empty_stores)}/7): {', '.join(empty_stores)}")
