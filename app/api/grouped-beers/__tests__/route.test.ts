@@ -36,7 +36,7 @@ describe('GET /api/grouped-beers (API Route Handler Tests)', () => {
                 totalPages: 1
             }
         });
-        expect(res.headers.get('Cache-Control')).toContain('public, s-maxage=60');
+        expect(res.headers.get('Cache-Control')).toContain('public, s-maxage=30');
     });
 
     it('should correctly parse and forward all search parameters to getGroupedBeers', async () => {

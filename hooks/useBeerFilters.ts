@@ -52,9 +52,17 @@ export function useBeerFilters() {
 
         const searchStr = params.toString();
         const queryStr = searchStr ? `?${searchStr}` : '';
-        startTransition(() => {
-            router.push(`${targetPath}${queryStr}`, { scroll: false });
-        });
+        const targetUrl = `${targetPath}${queryStr}`;
+
+        if (targetPath === pathname) {
+            if (typeof window !== 'undefined') {
+                window.history.pushState(null, '', targetUrl);
+            }
+        } else {
+            startTransition(() => {
+                router.push(targetUrl, { scroll: false });
+            });
+        }
     }, [pathname, router, searchParams]);
 
     const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -78,9 +86,13 @@ export function useBeerFilters() {
     }, [updateURL]);
 
     const resetFilters = useCallback(() => {
-        startTransition(() => {
-            router.push(pathname, { scroll: false });
-        });
+        if (typeof window !== 'undefined') {
+            window.history.pushState(null, '', pathname);
+        } else {
+            startTransition(() => {
+                router.push(pathname, { scroll: false });
+            });
+        }
     }, [pathname, router]);
 
     const syncFiltersFromParams = useCallback(() => {

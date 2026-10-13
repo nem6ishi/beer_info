@@ -21,7 +21,7 @@ vi.mock('../supabase', () => ({
     }
 }));
 
-import { getFlag, fetchAvailableBreweries } from '../breweries';
+import { getFlag, fetchAvailableBreweries, fetchAvailableFilters } from '../breweries';
 
 describe('lib/breweries', () => {
     beforeEach(() => {
@@ -112,6 +112,27 @@ describe('lib/breweries', () => {
             expect(newest).toBeDefined();
             expect(newest?.flag).toBe('🇺🇸');
             expect(newest?.searchStr).toContain('新着ブルワリー');
+        });
+    });
+
+    describe('fetchAvailableFilters', () => {
+        it('returns both styles and breweries in a single RPC call', async () => {
+            singleMock.mockResolvedValue({
+                data: {
+                    styles: ['IPA', 'Stout'],
+                    breweries: [
+                        { name: 'Brewery A', location: 'Japan', searchStr: 'Brewery A' }
+                    ]
+                },
+                error: null
+            });
+
+            const result = await fetchAvailableFilters(true);
+
+            expect(result.styles).toEqual(['IPA', 'Stout']);
+            expect(result.breweries).toHaveLength(1);
+            expect(result.breweries[0].name).toBe('Brewery A');
+            expect(result.breweries[0].flag).toBe('🇯🇵');
         });
     });
 });

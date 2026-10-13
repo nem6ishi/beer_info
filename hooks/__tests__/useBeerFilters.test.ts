@@ -4,6 +4,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 const pushMock = vi.fn();
 let currentSearchParams = new URLSearchParams();
+let pushStateSpy: any;
 
 vi.mock('next/navigation', () => ({
     useRouter: () => ({
@@ -17,6 +18,12 @@ describe('useBeerFilters', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         currentSearchParams = new URLSearchParams();
+        pushStateSpy = vi.spyOn(window.history, 'pushState').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        pushStateSpy?.mockRestore?.();
     });
 
     it('should initialize with default values', () => {
@@ -35,8 +42,7 @@ describe('useBeerFilters', () => {
         });
 
         expect(result.current.tempFilters.style_filter).toBe('IPA|Stout');
-        expect(pushMock).toHaveBeenCalled();
-        expect(pushMock.mock.calls[0][0]).toContain('style_filter=IPA%7CStout');
+        expect(pushStateSpy).toHaveBeenCalledWith(null, '', expect.stringContaining('style_filter=IPA%7CStout'));
     });
 
     it('should sync filters from params', () => {
@@ -63,7 +69,7 @@ describe('useBeerFilters', () => {
         act(() => {
             vi.runAllTimers();
         });
-        expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('stock_filter=sold_out'), { scroll: false });
+        expect(pushStateSpy).toHaveBeenCalledWith(null, '', expect.stringContaining('stock_filter=sold_out'));
 
         act(() => {
             result.current.handleFilterChange('stock_filter', 'in_stock');
@@ -72,8 +78,17 @@ describe('useBeerFilters', () => {
             vi.runAllTimers();
         });
         // Since in_stock is default, it should delete stock_filter from URL
-        const lastCall = pushMock.mock.calls[pushMock.mock.calls.length - 1][0];
+        const lastCall = pushStateSpy.mock.calls[pushStateSpy.mock.calls.length - 1][2];
         expect(lastCall).not.toContain('stock_filter=in_stock');
-        vi.useRealTimers();
+    });
+
+    it('should use router.push when navigating to a different pathname', () => {
+        const { result } = renderHook(() => useBeerFilters());
+
+        act(() => {
+            result.current.updateURL({}, '/grouped');
+        });
+
+        expect(pushMock).toHaveBeenCalledWith('/grouped', { scroll: false });
     });
 });

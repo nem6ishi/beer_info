@@ -36,7 +36,13 @@ export const getFlag = (location: string | null): string => {
     return '🏳️';
 }
 
+export interface AvailableFilters {
+    styles: string[];
+    breweries: BreweryOption[];
+}
+
 // In-memory cache for fast repeated lookups (TTL: 5 minutes)
+let cachedFilters: AvailableFilters | null = null;
 let cachedBreweries: BreweryOption[] | null = null;
 let cacheExpiry = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -86,16 +92,16 @@ async function fetchBreweriesFromView(): Promise<BreweryOption[]> {
         .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 }
 
-export async function fetchAvailableBreweries(forceRefresh: boolean = false): Promise<BreweryOption[]> {
+export async function fetchAvailableFilters(forceRefresh: boolean = false): Promise<AvailableFilters> {
     const now = Date.now();
-    if (!forceRefresh && cachedBreweries && cacheExpiry > now) {
-        return cachedBreweries;
+    if (!forceRefresh && cachedFilters && cacheExpiry > now) {
+        return cachedFilters;
     }
 
     try {
         // Try RPC first (Migration 014 format: returns { styles, breweries: [{ name, location, searchStr }] })
         const { data: rpcData, error: rpcError } = await supabase.rpc('get_available_filters').single();
-        const typedRpcData = rpcData as { breweries?: any[] } | null;
+        const typedRpcData = rpcData as { styles?: string[]; breweries?: any[] } | null;
         if (!rpcError && typedRpcData?.breweries && Array.isArray(typedRpcData.breweries) && typedRpcData.breweries.length > 0) {
             const first = typedRpcData.breweries[0];
             // Check if returned breweries match the new structure (has 'name')
@@ -108,9 +114,12 @@ export async function fetchAvailableBreweries(forceRefresh: boolean = false): Pr
                     }))
                     .sort((a: BreweryOption, b: BreweryOption) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 
+                const styles: string[] = typedRpcData.styles || [];
+                const result: AvailableFilters = { styles, breweries };
+                cachedFilters = result;
                 cachedBreweries = breweries;
                 cacheExpiry = now + CACHE_TTL_MS;
-                return breweries;
+                return result;
             }
         }
     } catch (e) {
@@ -119,7 +128,21 @@ export async function fetchAvailableBreweries(forceRefresh: boolean = false): Pr
 
     // Fallback: Paginated fetch from beer_info_view (avoids 1,000 row PostgREST limit)
     const breweries = await fetchBreweriesFromView();
+    const result: AvailableFilters = {
+        styles: cachedFilters?.styles || [],
+        breweries
+    };
+    cachedFilters = result;
     cachedBreweries = breweries;
     cacheExpiry = now + CACHE_TTL_MS;
-    return breweries;
+    return result;
+}
+
+export async function fetchAvailableBreweries(forceRefresh: boolean = false): Promise<BreweryOption[]> {
+    const now = Date.now();
+    if (!forceRefresh && cachedBreweries && cacheExpiry > now) {
+        return cachedBreweries;
+    }
+    const filters = await fetchAvailableFilters(forceRefresh);
+    return filters.breweries;
 }

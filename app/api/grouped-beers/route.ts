@@ -43,7 +43,7 @@ export async function GET(request: Request) {
             }
         });
         
-        response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+        response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
         return response;
 
     } catch (error) {

@@ -35,11 +35,11 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
         data: beers,
         shopCounts,
         loading,
+        isValidating,
         error,
         totalPages,
         totalItems,
-        fetchData,
-        syncDataFromInitial
+        fetchData
     } = useBeerData<Beer[], BeersApiResponse>({
         initialData,
         endpoint: '/api/beers',
@@ -51,18 +51,8 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
     const limit = searchParams.get('limit') || '20';
 
     useEffect(() => {
-        const hasFilters = Array.from(searchParams.keys()).length > 0;
-        
-        if (hasFilters) {
-            // URL has parameters, fetch client-side
-            fetchData();
-        } else {
-            // No parameters, use the instantly loaded static default data
-            syncDataFromInitial();
-        }
-        
         syncFiltersFromParams();
-    }, [initialData, searchParams, fetchData, syncDataFromInitial, syncFiltersFromParams]);
+    }, [searchParams, syncFiltersFromParams]);
 
     const handlePageChange = (newPage: number) => updateURL({ page: newPage.toString() });
 

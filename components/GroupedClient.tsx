@@ -38,8 +38,7 @@ export default function GroupedClient({ initialData, availableStyles, availableB
         error,
         totalPages,
         totalItems,
-        fetchData,
-        syncDataFromInitial
+        fetchData
     } = useBeerData<GroupedBeer[], GroupedBeersApiResponse>({
         initialData,
         endpoint: '/api/grouped-beers',
@@ -51,18 +50,8 @@ export default function GroupedClient({ initialData, availableStyles, availableB
     const sort = searchParams.get('sort') || 'newest';
 
     useEffect(() => {
-        const hasFilters = Array.from(searchParams.keys()).length > 0;
-        
-        if (hasFilters) {
-            // URL has parameters, fetch client-side
-            fetchData();
-        } else {
-            // No parameters, use the instantly loaded static default data
-            syncDataFromInitial();
-        }
-        
         syncFiltersFromParams();
-    }, [initialData, searchParams, fetchData, syncDataFromInitial, syncFiltersFromParams]);
+    }, [searchParams, syncFiltersFromParams]);
 
     const handlePageChange = (newPage: number) => updateURL({ page: newPage.toString() });
 

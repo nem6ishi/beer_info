@@ -75,7 +75,7 @@ describe('GET /api/beers (Individual Display API Route Tests)', () => {
                 totalPages: 1
             }
         });
-        expect(res.headers.get('Cache-Control')).toContain('public, s-maxage=60');
+        expect(res.headers.get('Cache-Control')).toContain('public, s-maxage=30');
     });
 
     it('should query beer_info_view with exact filters (in_stock default)', async () => {

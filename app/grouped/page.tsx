@@ -1,8 +1,7 @@
-import { supabase } from '../../lib/supabase'
 import { getGroupedBeers } from '../../lib/groupedBeers'
 import GroupedClient from '../../components/GroupedClient'
 import { Suspense } from 'react'
-import { fetchAvailableBreweries } from '../../lib/breweries'
+import { fetchAvailableFilters } from '../../lib/breweries'
 
 export const revalidate = 60
 
@@ -19,7 +18,7 @@ export default async function GroupedPage({
     const pageNum = parseInt(page, 10)
     const limitNum = parseInt(limit, 10)
 
-    const [groupedRes, filterRes, breweries] = await Promise.all([
+    const [groupedRes, filters] = await Promise.all([
         getGroupedBeers({
             search,
             sort,
@@ -38,16 +37,11 @@ export default async function GroupedPage({
             days: (searchParams.days as string) || null,
             only_sale: (searchParams.only_sale as string) || null
         }),
-        supabase.rpc('get_available_filters').single(),
-        fetchAvailableBreweries()
+        fetchAvailableFilters()
     ]);
 
-    if (filterRes.error) console.error('Filters RPC Error:', filterRes.error);
-
     const { groupsData: groups, shopCounts, totalCount: count } = groupedRes;
-
-    const typedFilterData = filterRes.data as any;
-    const styles = typedFilterData?.styles || [];
+    const { styles, breweries } = filters;
 
     const initialData = {
         groups: groups || [],

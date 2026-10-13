@@ -60,13 +60,21 @@ describe('GroupedClient (Grouped Display Page Integration Tests)', () => {
         }
     };
 
+    let pushStateSpy: any;
+
     beforeEach(() => {
         vi.clearAllMocks();
         currentSearchParams = new URLSearchParams();
+        pushStateSpy = vi.spyOn(window.history, 'pushState').mockImplementation(() => {});
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: async () => initialData
         }));
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        pushStateSpy?.mockRestore?.();
     });
 
     it('should render header, search input, filters, and grouped beer table with initial data', async () => {
@@ -107,9 +115,10 @@ describe('GroupedClient (Grouped Display Page Integration Tests)', () => {
             vi.runAllTimers();
         });
 
-        expect(pushMock).toHaveBeenCalledWith(
-            expect.stringContaining('search=Stout'),
-            expect.any(Object)
+        expect(pushStateSpy).toHaveBeenCalledWith(
+            null,
+            '',
+            expect.stringContaining('search=Stout')
         );
         vi.useRealTimers();
     });
@@ -135,9 +144,10 @@ describe('GroupedClient (Grouped Display Page Integration Tests)', () => {
             fireEvent.click(optionIPA);
         });
 
-        expect(pushMock).toHaveBeenCalledWith(
-            expect.stringContaining('style_filter=IPA'),
-            expect.any(Object)
+        expect(pushStateSpy).toHaveBeenCalledWith(
+            null,
+            '',
+            expect.stringContaining('style_filter=IPA')
         );
     });
 
@@ -159,9 +169,10 @@ describe('GroupedClient (Grouped Display Page Integration Tests)', () => {
             fireEvent.change(sortSelect, { target: { value: 'price_asc' } });
         });
 
-        expect(pushMock).toHaveBeenCalledWith(
-            expect.stringContaining('sort=price_asc'),
-            expect.any(Object)
+        expect(pushStateSpy).toHaveBeenCalledWith(
+            null,
+            '',
+            expect.stringContaining('sort=price_asc')
         );
     });
 
@@ -182,9 +193,7 @@ describe('GroupedClient (Grouped Display Page Integration Tests)', () => {
             fireEvent.click(headerLink);
         });
 
-        expect(pushMock).toHaveBeenCalled();
-        const lastCall = pushMock.mock.calls[pushMock.mock.calls.length - 1][0];
-        expect(lastCall).not.toContain('search=old query');
+        expect(pushStateSpy).toHaveBeenCalledWith(null, '', '/grouped');
     });
 
     it('should display "Error: Refresh failed" when client fetch to /api/grouped-beers fails with 500 status', async () => {

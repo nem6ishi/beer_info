@@ -35,8 +35,10 @@ export function useBeerData<TData, TResponse extends { pagination: PaginationDat
         fetcher,
         {
             fallbackData: !paramsStr ? initialData : undefined,
+            revalidateOnMount: true,
             revalidateOnFocus: false,
-            keepPreviousData: true
+            keepPreviousData: true,
+            shouldRetryOnError: false
         }
     );
 
@@ -50,22 +52,21 @@ export function useBeerData<TData, TResponse extends { pagination: PaginationDat
     const error = swrError ? (swrError.message || 'Refresh failed') : null;
 
     const fetchData = useCallback(async () => {
-        await mutate();
-    }, [mutate]);
-
-    const syncDataFromInitial = useCallback(() => {
-        mutate(initialData, false);
-    }, [mutate, initialData]);
+        const sep = swrKey.includes('?') ? '&' : '?';
+        const bypassUrl = `${swrKey}${sep}_t=${Date.now()}`;
+        const freshData = await fetcher(bypassUrl);
+        await mutate(freshData, false);
+    }, [swrKey, mutate]);
 
     return {
         data,
         shopCounts,
         loading,
+        isValidating,
         error,
         totalPages,
         totalItems,
-        fetchData,
-        syncDataFromInitial
+        fetchData
     };
 }
 
