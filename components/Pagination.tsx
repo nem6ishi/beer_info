@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useCallback } from 'react'
 
 interface PaginationProps {
     currentPage: number;
@@ -8,7 +8,7 @@ interface PaginationProps {
 }
 
 export default function Pagination({ currentPage, totalPages, totalItems, onPageChange }: PaginationProps) {
-    const handlePageClick = (page: number) => {
+    const handlePageClick = useCallback((page: number) => {
         onPageChange(page);
         
         setTimeout(() => {
@@ -20,7 +20,43 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         }, 50);
-    };
+    }, [onPageChange]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const activeElement = document.activeElement;
+            const isInputField =
+                activeElement instanceof HTMLInputElement ||
+                activeElement instanceof HTMLTextAreaElement ||
+                activeElement instanceof HTMLSelectElement ||
+                activeElement?.getAttribute('contenteditable') === 'true';
+
+            if (isInputField) {
+                return;
+            }
+
+            if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) {
+                return;
+            }
+
+            if (e.key === 'ArrowRight') {
+                if (currentPage < totalPages) {
+                    e.preventDefault();
+                    handlePageClick(currentPage + 1);
+                }
+            } else if (e.key === 'ArrowLeft') {
+                if (currentPage > 1) {
+                    e.preventDefault();
+                    handlePageClick(currentPage - 1);
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [currentPage, totalPages, handlePageClick]);
 
     return (
         <div className="pagination-wrapper">
@@ -44,6 +80,8 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                         className="page-btn"
                         disabled={currentPage <= 1}
                         onClick={() => handlePageClick(currentPage - 1)}
+                        title="Previous Page (←)"
+                        aria-label="Previous Page"
                     >
                         ‹ Prev
                     </button>
@@ -105,6 +143,8 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                         className="page-btn"
                         disabled={currentPage >= totalPages}
                         onClick={() => handlePageClick(currentPage + 1)}
+                        title="Next Page (→)"
+                        aria-label="Next Page"
                     >
                         Next ›
                     </button>
