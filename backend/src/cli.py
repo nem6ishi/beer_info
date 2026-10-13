@@ -91,6 +91,14 @@ def main() -> None:
     clean_parser.add_argument("--pattern", type=str, required=True, help="LIKE pattern to match")
     clean_parser.add_argument("--execute", action="store_true", help="Actually execute the deletion (defaults to dry-run)")
 
+    # Optimize Storage command
+    optimize_parser = subparsers.add_parser("optimize-storage", help="Clean up resolved/stale data to stay within Supabase Free Tier")
+    optimize_parser.add_argument("--execute", action="store_true", help="Actually execute the cleanup (defaults to dry-run)")
+    optimize_parser.add_argument("--skip-resolved", action="store_true", help="Skip cleaning resolved failures")
+    optimize_parser.add_argument("--stale-days", type=int, default=90, help="Days threshold for stale unresolved failures (0 to disable)")
+    optimize_parser.add_argument("--clean-payloads", action="store_true", help="Nullify debug payloads in gemini_data")
+    optimize_parser.add_argument("--batch-size", type=int, default=100, help="Batch size for deletions/updates")
+
     args: argparse.Namespace = parser.parse_args()
 
     if args.command == "scrape":
@@ -146,6 +154,18 @@ def main() -> None:
     elif args.command == "clean":
         from .commands.clean_data import clean_data
         asyncio.run(clean_data(table=args.table, column=args.column, pattern=args.pattern, dry_run=not args.execute))
+            
+    elif args.command == "optimize-storage":
+        from ..scripts.optimize_storage import optimize_storage
+        asyncio.run(
+            optimize_storage(
+                clean_resolved_failures=not args.skip_resolved,
+                clean_stale_failures_days=args.stale_days if args.stale_days > 0 else None,
+                clean_gemini_payloads=args.clean_payloads,
+                dry_run=not args.execute,
+                batch_size=args.batch_size,
+            )
+        )
             
     elif args.command == "check-variants":
         from .commands.check_variants import check_variants
