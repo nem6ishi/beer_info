@@ -176,6 +176,78 @@ FIXES = [
             "beer_name_en": "kasumi 2026",
             "beer_name_jp": "霞 2026"
         }
+    },
+    # 4. 深掘り点検で判明した誤マッチ解消
+    {
+        "url": "https://beer-chouseiya.shop/shopdetail/000000001932",
+        "untappd_url": "https://untappd.com/b/kume-zakura-micro-brewery-co-daisen-g-dunkel-weizenbock/304853",
+        "gemini": {
+            "brewery_name_en": "Kumezakura Micro Brewery (Daisen G Beer)",
+            "brewery_name_jp": "大山Gビール",
+            "beer_name_en": "Daisen G Dunkel Weizenbock",
+            "beer_name_jp": "ヴァイツェンボック",
+            "untappd_url": "https://untappd.com/b/kume-zakura-micro-brewery-co-daisen-g-dunkel-weizenbock/304853"
+        }
+    },
+    {
+        "url": "https://witchcraftmarket.com/products/shidenissen",
+        "untappd_url": "https://untappd.com/b/isekado-isekado-ddh-west-coast-ipa-shiden-issen/6827134",
+        "gemini": {
+            "brewery_name_en": "ISEKADO",
+            "brewery_name_jp": "伊勢角屋麦酒",
+            "beer_name_en": "Shiden Issen (紫電一閃)",
+            "beer_name_jp": "紫電一閃",
+            "untappd_url": "https://untappd.com/b/isekado-isekado-ddh-west-coast-ipa-shiden-issen/6827134"
+        }
+    },
+    {
+        "url": "https://beer-chouseiya.shop/shopdetail/000000003186",
+        "untappd_url": "https://untappd.com/b/field-ales-san-sho-san/6806907",
+        "gemini": {
+            "brewery_name_en": "Field Ales",
+            "brewery_name_jp": "フィールドエールズ",
+            "beer_name_en": "San Sho San",
+            "beer_name_jp": "San Sho San",
+            "untappd_url": "https://untappd.com/b/field-ales-san-sho-san/6806907"
+        }
+    },
+    {
+        "url": "https://beervolta.com/?pid=193531014",
+        "untappd_url": None,
+        "gemini": {
+            "brewery_name_en": "Cave D'occi",
+            "brewery_name_jp": "カーブドッチ",
+            "beer_name_en": "Chimere",
+            "beer_name_jp": "シメール",
+            "untappd_url": None
+        }
+    },
+    {
+        "url": "https://151l.shop/?pid=193549252",
+        "untappd_url": "https://untappd.com/b/west-coast-brewing-jog-juice/6901231",
+        "gemini": {
+            "brewery_name_en": "West Coast Brewing",
+            "brewery_name_jp": "ウエストコーストブルーイング",
+            "untappd_url": "https://untappd.com/b/west-coast-brewing-jog-juice/6901231"
+        }
+    },
+    {
+        "url": "https://151l.shop/?pid=193549203",
+        "untappd_url": "https://untappd.com/b/west-coast-brewing-coco-haze/5978930",
+        "gemini": {
+            "brewery_name_en": "West Coast Brewing",
+            "brewery_name_jp": "ウエストコーストブルーイング",
+            "untappd_url": "https://untappd.com/b/west-coast-brewing-coco-haze/5978930"
+        }
+    },
+    {
+        "url": "https://witchcraftmarket.com/products/fc-tokyo-pale-ale",
+        "untappd_url": "https://untappd.com/b/isekado-f-c-tokyo-pale-ale/6343586",
+        "gemini": {
+            "brewery_name_en": "ISEKADO",
+            "brewery_name_jp": "伊勢角屋麦酒",
+            "untappd_url": "https://untappd.com/b/isekado-f-c-tokyo-pale-ale/6343586"
+        }
     }
 ]
 
