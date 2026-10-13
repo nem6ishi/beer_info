@@ -212,3 +212,24 @@ async def test_witch_craft_market_scrape_basic(mock_fetch_html):
     assert results[0]["stock_status"] == "In Stock"
     assert results[0]["shop"] == "WITCH CRAFT MARKET"
 
+
+def test_is_substantially_renamed():
+    from backend.src.commands.scrape import is_substantially_renamed
+
+    # Reused / Recycled URLs
+    assert is_substantially_renamed("【けやきウエストコーストピルスナー/伊勢角屋麦酒】", "【にくきゅうIPAリターンズ/伊勢角屋麦酒】") is True
+    assert is_substantially_renamed("【Black Butte3/Deschutes】", "【Lostphobia/Totopia】") is True
+    assert is_substantially_renamed("【Bakery Boysenberry Pie/The Bruery】", "【AWAKE/BREAK EDGE BEER WORKS】") is True
+    assert is_substantially_renamed("【DayFest IPA/Stone】", "【The Dark Side of the Moon/うちゅう】") is True
+
+    # Same beer with slight title variation / restock / sale tags
+    assert is_substantially_renamed("うちゅうブルーイング　スペースパンチ　缶", "【おひとり様2本まで】うちゅうブルーイング　スペースパンチ") is False
+    assert is_substantially_renamed("ベールブレイカー / トップカッターIPA 355ml缶", "ベールブレイカー / トップカッターIPA (West Coast IPA) 355ml缶 [Bale Breaker / Topcutter IPA]") is False
+    assert is_substantially_renamed("30%OFF【Advent 25 Ale/反射炉ビヤ】", "【Advent 25 Ale/反射炉ビヤ】") is False
+    assert is_substantially_renamed("【Space Punch/うちゅう】", "20%OFF【Space Punch/うちゅう(賞味期限/2026.11/06)】") is False
+
+    # Edge cases
+    assert is_substantially_renamed(None, "New Beer") is False
+    assert is_substantially_renamed("Old Beer", None) is False
+    assert is_substantially_renamed("Same Beer", "Same Beer") is False
+

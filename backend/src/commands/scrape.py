@@ -30,6 +30,32 @@ def parse_price(price_str: Optional[str]) -> Optional[int]:
     except Exception:
         return None
 
+def is_substantially_renamed(old_name: Optional[str], new_name: Optional[str]) -> bool:
+    """
+    Check if a product at the same URL was substantially renamed (i.e. URL was recycled for a different beer).
+    """
+    if not old_name or not new_name:
+        return False
+    if old_name.strip().lower() == new_name.strip().lower():
+        return False
+
+    def extract_tokens(text: str) -> set:
+        cleaned = re.sub(r'(\d+%(?:OFF|off)|\d+ml|賞味期限[^\)\]]+|おひとり様[^\)\]]+|予約|即納|空輸|クール便|入荷予定|缶|瓶|[【】\[\]\(\)])', ' ', text)
+        tokens = set()
+        for tok in re.findall(r'[\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ff]{2,}|[a-zA-Z0-9]{3,}', cleaned.lower()):
+            if tok not in ('beer', 'ale', 'ipa', 'dipa', 'craft', 'ビール', 'エール'):
+                tokens.add(tok)
+        return tokens
+
+    old_t = extract_tokens(old_name)
+    new_t = extract_tokens(new_name)
+    if not old_t or not new_t:
+        return False
+
+    common = old_t & new_t
+    jaccard = len(common) / len(old_t | new_t)
+    return jaccard <= 0.35 and len(common) <= 1
+
 async def run_and_save_store(
     scraper_coro: Any,
     display_name: str,
@@ -68,6 +94,7 @@ async def run_and_save_store(
     current_time_iso: str = datetime.now(timezone.utc).isoformat()
     new_count: int = 0
     updated_count: int = 0
+    reused_urls: List[str] = []
     beers_to_upsert: List[Dict[str, Any]] = []
 
     # Items are likely Newest -> Oldest (Page 1 top -> Page N bottom)
@@ -109,26 +136,49 @@ async def run_and_save_store(
         }
 
         if existing and not reset_first_seen:
-            if new_only and not is_restock:
-                continue
+            old_name: Optional[str] = existing.get('name')
+            new_name: Optional[str] = new_item.get('name')
+            is_renamed: bool = is_substantially_renamed(old_name, new_name)
 
-            # If shop provides an explicit item creation/published date (first_seen), always prioritize it
-            if scraped_first_seen:
-                beer_data['first_seen'] = scraped_first_seen
-            elif is_restock:
+            if is_renamed:
+                logger.warning(
+                    f"  ⚠️ {display_name} Reused URL detected: '{old_name}' -> '{new_name}'. "
+                    f"Resetting first_seen and untappd_url."
+                )
                 beer_data['first_seen'] = item_time_iso
+                beer_data['untappd_url'] = None
+                reused_urls.append(url)
+                new_count += 1
             else:
-                beer_data['first_seen'] = existing.get('first_seen')
+                if new_only and not is_restock:
+                    continue
 
-            if existing.get('untappd_url'):
-                beer_data['untappd_url'] = existing.get('untappd_url')
+                # If shop provides an explicit item creation/published date (first_seen), always prioritize it
+                if scraped_first_seen:
+                    beer_data['first_seen'] = scraped_first_seen
+                elif is_restock:
+                    beer_data['first_seen'] = item_time_iso
+                else:
+                    beer_data['first_seen'] = existing.get('first_seen')
 
-            updated_count += 1
+                if existing.get('untappd_url'):
+                    beer_data['untappd_url'] = existing.get('untappd_url')
+
+                updated_count += 1
         else:
             beer_data['first_seen'] = item_time_iso
             new_count += 1
 
         beers_to_upsert.append(beer_data)
+
+    if reused_urls:
+        try:
+            # Delete old gemini_data so enrich_extract will re-extract from scratch
+            await async_execute(supabase.table('gemini_data').delete().in_('url', reused_urls))
+            await async_execute(supabase.table('untappd_search_failures').delete().in_('product_url', reused_urls))
+            logger.info(f"  🧹 {display_name}: Purged old gemini_data & failures for {len(reused_urls)} reused URLs")
+        except Exception as e:
+            logger.warning(f"  ⚠️ {display_name}: Error cleaning reused URL data: {e}")
 
     if beers_to_upsert:
         batch_size: int = 1000
@@ -175,7 +225,7 @@ async def scrape_to_supabase(
     
     while True:
         # Fetch in chunks
-        response: Any = await async_execute(supabase.table('scraped_beers').select('url, first_seen, stock_status, untappd_url').range(start, start + chunk_size - 1))
+        response: Any = await async_execute(supabase.table('scraped_beers').select('url, name, first_seen, stock_status, untappd_url').range(start, start + chunk_size - 1))
         
         if not response.data:
             break
