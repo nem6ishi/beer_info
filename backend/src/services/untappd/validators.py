@@ -61,6 +61,9 @@ def _is_safe_substring_match(str_a: str, str_b: str, expected_brewery: Optional[
         return False
     if len(shorter) < 3:
         return False
+    # Guard against purely numeric beer names matching volume indicators (e.g. '500' in '500ml')
+    if shorter.isdigit() and shorter != longer:
+        return False
     ratio = SequenceMatcher(None, shorter, longer).ratio()
     if ratio >= 0.78:
         return True
@@ -303,6 +306,11 @@ def validate_brewery_match(result_element: Union[Tag, Dict[str, Any]], expected_
 
     rb_norm: str = normalize_for_comparison(result_brewery)
     eb_norm: str = normalize_for_comparison(expected_brewery)
+
+    # Block amateur Homebrew recipes from matching commercial beers
+    if rb_norm in ('homebrew', 'home brew', 'homebrewer') and 'homebrew' not in eb_norm:
+        logger.debug(f"  [Validation] Brewery BLOCKED (Homebrew recipe): '{result_brewery}'")
+        return False
 
     # 1. Normalization Check
     if rb_norm in eb_norm or eb_norm in rb_norm:
