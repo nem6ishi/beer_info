@@ -147,6 +147,7 @@ async def run_and_save_store(
                 )
                 beer_data['first_seen'] = item_time_iso
                 beer_data['untappd_url'] = None
+                beer_data['untappd_enriched_at'] = None
                 reused_urls.append(url)
                 new_count += 1
             else:

@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { fetchAvailableBreweries } from '../lib/breweries'
 import type { Beer } from '../types/beer'
 
-const BEER_INFO_VIEW_SELECT = 'url, name, price, price_value, image, stock_status, shop, first_seen, last_seen, untappd_url, product_type, is_set, untappd_beer_name, untappd_brewery_name, untappd_style, untappd_abv, untappd_ibu, untappd_rating, untappd_rating_count, untappd_image, brewery_location, brewery_type, brewery_logo, is_sale, sale_tag, expiry_notice, beer_name_en, beer_name_jp, brewery_name_en, brewery_name_jp';
+const BEER_INFO_VIEW_SELECT = 'url, name, price, price_value, image, stock_status, shop, first_seen, last_seen, untappd_url, untappd_enriched_at, product_type, is_set, untappd_beer_name, untappd_brewery_name, untappd_style, untappd_abv, untappd_ibu, untappd_rating, untappd_rating_count, untappd_image, brewery_location, brewery_type, brewery_logo, is_sale, sale_tag, expiry_notice, beer_name_en, beer_name_jp, brewery_name_en, brewery_name_jp';
 
 export const revalidate = 60
 

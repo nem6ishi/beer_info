@@ -115,13 +115,55 @@ class LLMEnricher:
 
     def _get_count(self) -> int:
         """Gets total count of items requiring enrichment."""
+        # 1. Fresh unenriched items in scraped_beers
+        sb_query: Any = self.supabase.table('scraped_beers').select('url', count='exact', head=True).neq('stock_status', 'Dead Link').is_('untappd_enriched_at', 'null')
+        if self.shop_filter:
+            sb_query = sb_query.eq('shop', self.shop_filter)
+        if self.keyword_filter:
+            sb_query = sb_query.ilike('name', f'%{self.keyword_filter}%')
+        sb_res: Any = sync_execute(sb_query)
+        fresh_count: int = cast(int, sb_res.count or 0)
+        if fresh_count > 0:
+            return fresh_count
+
+        # 2. Existing items in view
         query: Any = self.supabase.table('beer_info_view').select('url', count='exact', head=True)
         query = self._apply_filters(query)
         res: Any = sync_execute(query)
-        return cast(int, res.count)
+        return cast(int, res.count or 0)
 
     def _fetch_candidates(self, offset: int, limit: int) -> List[Dict[str, Any]]:
         """Fetches a batch of candidate beers."""
+        # Check if there are fresh items directly from scraped_beers
+        sb_query: Any = self.supabase.table('scraped_beers') \
+            .select('url, name, shop, untappd_url, first_seen') \
+            .neq('stock_status', 'Dead Link') \
+            .is_('untappd_enriched_at', 'null')
+        if self.shop_filter:
+            sb_query = sb_query.eq('shop', self.shop_filter)
+        if self.keyword_filter:
+            sb_query = sb_query.ilike('name', f'%{self.keyword_filter}%')
+        sb_res: Any = sync_execute(sb_query.order('first_seen', desc=True).limit(limit).offset(offset))
+        fresh_items: List[Dict[str, Any]] = cast(List[Dict[str, Any]], sb_res.data or [])
+
+        if fresh_items:
+            fresh_urls = [b['url'] for b in fresh_items if b.get('url')]
+            g_map: Dict[str, Any] = {}
+            if fresh_urls:
+                try:
+                    g_res = self.supabase.table('gemini_data') \
+                        .select('url, brewery_name_en, beer_name_en') \
+                        .in_('url', fresh_urls).execute()
+                    g_map = {r['url']: r for r in (g_res.data or [])}
+                except Exception as e:
+                    logger.warning(f"  ⚠️ Error fetching gemini_data: {e}")
+            for b in fresh_items:
+                g_info = g_map.get(b['url'], {})
+                b['brewery_name_en'] = g_info.get('brewery_name_en')
+                b['beer_name_en'] = g_info.get('beer_name_en')
+            return fresh_items
+
+        # Otherwise query existing view
         query: Any = self.supabase.table('beer_info_view').select(
             'url, name, shop, brewery_name_en, beer_name_en, untappd_url'
         )

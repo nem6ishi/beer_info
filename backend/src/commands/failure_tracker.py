@@ -75,6 +75,15 @@ def record_enrichment_failure(
                 .execute()
             logger.info(f"  📝 Recorded new enrichment failure: {failure_reason}")
             
+        # Also mark untappd_enriched_at on scraped_beers so it is registered as enriched (failed attempt)
+        try:
+            supabase.table('scraped_beers') \
+                .update({'untappd_enriched_at': now}) \
+                .eq('url', product_url) \
+                .execute()
+        except Exception as e_scraped:
+            logger.debug(f"  ⚠️ Could not update scraped_beers untappd_enriched_at: {e_scraped}")
+            
     except Exception as e:
         logger.error(f"  ⚠️  Error recording failure: {e}")
 

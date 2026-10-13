@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS scraped_beers (
   shop TEXT NOT NULL,
   first_seen TIMESTAMPTZ NOT NULL,
   last_seen TIMESTAMPTZ NOT NULL,
-  untappd_url TEXT -- Loose link to untappd_data
+  untappd_url TEXT, -- Loose link to untappd_data
+  untappd_enriched_at TIMESTAMPTZ -- Timestamp when Untappd enrichment was performed
 );
 
 -- 2. gemini_data: AI enriched text (linked by Product URL)
@@ -128,6 +129,12 @@ SELECT
   s.first_seen,
   s.last_seen,
   s.untappd_url,
+  s.untappd_enriched_at,
+  
+  -- Sale and Expiry attributes extracted from raw title
+  ((s.name ~* '([0-9.]+%\s*OFF|SALE|セール|特価|割引|アウトレット|お試し|訳あり|賞味期限|在庫整理|処分|決算)') OR (s.name ~* '【[^】]*特価[^】]*】')) as is_sale,
+  substring(s.name from '([0-9.]+%\s*OFF|SALE!*|セール|最終特価|特価|アウトレット|訳あり|決算セール|在庫整理|お試しセット)') as sale_tag,
+  substring(s.name from '((?:賞味)?期限[^】\)]+)') as expiry_notice,
   
   -- Gemini Data
   g.brewery_name_en,
@@ -158,7 +165,9 @@ SELECT
 FROM scraped_beers s
 LEFT JOIN gemini_data g ON s.url = g.url
 LEFT JOIN untappd_data u ON s.untappd_url = u.untappd_url
-LEFT JOIN breweries b ON u.untappd_brewery_url = b.untappd_url;
+LEFT JOIN breweries b ON u.untappd_brewery_url = b.untappd_url
+WHERE s.stock_status IS DISTINCT FROM 'Dead Link'
+  AND s.untappd_enriched_at IS NOT NULL;
 
 -- Add Indices to Materialized View for ultra-fast filtering
 CREATE UNIQUE INDEX idx_beer_info_view_url ON beer_info_view(url);
@@ -173,6 +182,8 @@ CREATE INDEX idx_beer_info_view_untappd_brewery_name ON beer_info_view(untappd_b
 CREATE INDEX idx_beer_info_view_stock_status ON beer_info_view(stock_status);
 CREATE INDEX idx_beer_info_view_product_type ON beer_info_view(product_type);
 CREATE INDEX idx_beer_info_view_untappd_url ON beer_info_view(untappd_url);
+CREATE INDEX idx_beer_info_view_is_sale ON beer_info_view(is_sale) WHERE is_sale = TRUE;
+CREATE INDEX idx_beer_info_view_untappd_enriched_at ON beer_info_view(untappd_enriched_at DESC);
 
 
 -- 8. beer_groups_view: Unified view for grouped comparisons

@@ -16,6 +16,43 @@ def fetch_beers(
 ) -> List[Dict[str, Any]]:
     """Fetches candidates based on current mode."""
     if mode == 'missing':
+        # 1. Prioritize fresh un-enriched items directly from scraped_beers (so items not yet in beer_info_view are processed)
+        sb_query = supabase.table('scraped_beers') \
+            .select('url, name, shop, untappd_url, first_seen') \
+            .neq('stock_status', 'Dead Link') \
+            .is_('untappd_enriched_at', 'null')
+        if shop_filter:
+            sb_query = sb_query.eq('shop', shop_filter)
+        if name_filter:
+            sb_query = sb_query.ilike('name', f'%{name_filter}%')
+        sb_res = sb_query.order('first_seen', desc=True).limit(db_fetch_limit).offset(offset).execute()
+        fresh_beers = sb_res.data or []
+
+        if fresh_beers:
+            fresh_urls = [b['url'] for b in fresh_beers if b.get('url')]
+            g_map: Dict[str, Any] = {}
+            if fresh_urls:
+                try:
+                    g_res = supabase.table('gemini_data') \
+                        .select('url, beer_name_en, beer_name_jp, brewery_name_en, brewery_name_jp, product_type') \
+                        .in_('url', fresh_urls).execute()
+                    g_map = {r['url']: r for r in (g_res.data or [])}
+                except Exception as e:
+                    logger.warning(f"  ⚠️ Error fetching gemini_data for fresh beers: {e}")
+            for b in fresh_beers:
+                g_info = g_map.get(b['url'], {})
+                b.update({
+                    'beer_name_en': g_info.get('beer_name_en'),
+                    'beer_name_jp': g_info.get('beer_name_jp'),
+                    'brewery_name_en': g_info.get('brewery_name_en'),
+                    'brewery_name_jp': g_info.get('brewery_name_jp'),
+                    'product_type': g_info.get('product_type', 'beer'),
+                })
+            if skip_urls_for_backoff:
+                fresh_beers = [b for b in fresh_beers if b.get('url') not in skip_urls_for_backoff]
+            return fresh_beers
+
+        # 2. Second priority: Items in view that still lack untappd_url or details
         query: Any = supabase.table('beer_info_view') \
             .select('url, name, shop, beer_name_en, beer_name_jp, brewery_name_en, brewery_name_jp, product_type, untappd_url, untappd_beer_name, untappd_brewery_name') \
             .or_('untappd_url.is.null,untappd_url.ilike.%/search?%,untappd_beer_name.is.null') \
@@ -112,13 +149,15 @@ def update_gemini_data_untappd_urls(supabase: Any, gemini_updates: List[Dict[str
         logger.info(f"  💾 Updated {success_count} items in gemini_data (Batch)")
 
 def update_scraped_beers_untappd_urls(supabase: Any, scraped_updates: List[Dict[str, Any]]) -> None:
-    """Update untappd_url in scraped_beers table."""
+    """Update untappd_url and other fields (e.g. untappd_enriched_at) in scraped_beers table."""
     if scraped_updates:
         success_count = 0
         for item in scraped_updates:
             try:
-                supabase.table('scraped_beers').update({'untappd_url': item['untappd_url']}).eq('url', item['url']).execute()
-                success_count += 1
+                update_fields = {k: v for k, v in item.items() if k != 'url'}
+                if update_fields:
+                    supabase.table('scraped_beers').update(update_fields).eq('url', item['url']).execute()
+                    success_count += 1
             except Exception as e:
                 logger.error(f"  ❌ Error updating scraped_beers for {item['url']}: {e}")
         logger.info(f"  💾 Linked {success_count} items in scraped_beers (Batch)")

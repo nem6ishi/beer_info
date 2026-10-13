@@ -15,6 +15,7 @@ export interface Beer {
 
   // Untappd-enriched fields
   untappd_url: string | null;
+  untappd_enriched_at?: string | null;
   untappd_image: string | null;
   untappd_brewery_name: string | null;
   untappd_beer_name: string | null;

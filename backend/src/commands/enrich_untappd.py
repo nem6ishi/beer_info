@@ -284,6 +284,12 @@ class UntappdEnricher:
 
         if product_type and product_type != 'beer':
             logger.info(f"  ⏭️ Item is a {product_type}. Skipping Untappd.")
+            if url and not self.offline and self.supabase:
+                now_iso: str = datetime.now(timezone.utc).isoformat()
+                try:
+                    self.supabase.table('scraped_beers').update({'untappd_enriched_at': now_iso}).eq('url', url).execute()
+                except Exception as e:
+                    logger.debug(f"  ⚠️ Could not update non-beer untappd_enriched_at: {e}")
             return None
 
         # Check if brewery was mistakenly identified as the bottle shop name
@@ -365,7 +371,8 @@ class UntappdEnricher:
             if not untappd_url:
                 return None
 
-            scraped_updates: Dict[str, Any] = {'url': url, 'untappd_url': untappd_url}
+            now_iso: str = datetime.now(timezone.utc).isoformat()
+            scraped_updates: Dict[str, Any] = {'url': url, 'untappd_url': untappd_url, 'untappd_enriched_at': now_iso}
             gemini_updates: Dict[str, Any] = {'url': url, 'untappd_url': untappd_url}
 
             logger.info(f"  ✅ Found URL: {untappd_url}")
@@ -430,10 +437,13 @@ class UntappdEnricher:
                 logger.warning(f"  ⚠️  Could not scrape details")
                 untappd_payload = {'untappd_url': untappd_url, 'fetched_at': datetime.now(timezone.utc).isoformat()}
             
+            refresh_url = beer.get('url')
+            scraped_payload = {'url': refresh_url, 'untappd_enriched_at': datetime.now(timezone.utc).isoformat()} if refresh_url else {}
+            
             return {
                 'untappd_payload': untappd_payload,
                 'gemini_payload': {},
-                'scraped_payload': {},
+                'scraped_payload': scraped_payload,
                 'untappd_brewery_url': untappd_payload.get('untappd_brewery_url')
             }
         except Exception as e:
