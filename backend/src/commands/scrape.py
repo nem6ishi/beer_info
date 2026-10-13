@@ -299,7 +299,15 @@ async def scrape_to_supabase(
     error_stores = [name for (name, _, _), r in zip(store_configs, store_results) if r[3] in ("error", "timeout")]
     empty_stores = [name for (name, _, _), r in zip(store_configs, store_results) if r[3] == "empty"]
 
-    if error_stores:
-        raise RuntimeError(f"Scraper failed for stores: {', '.join(error_stores)}")
-    if len(empty_stores) >= 4:
-        raise RuntimeError(f"Majority of scrapers returned 0 items ({len(empty_stores)}/7): {', '.join(empty_stores)}")
+    failed_count = len(error_stores) + len(empty_stores)
+    if len(error_stores) >= 3 or failed_count >= 4:
+        raise RuntimeError(
+            f"Majority of scrapers failed (errors: {len(error_stores)}, empty: {len(empty_stores)}): "
+            f"Errors: {', '.join(error_stores) or 'None'}, Empty: {', '.join(empty_stores) or 'None'}"
+        )
+    elif error_stores:
+        logger.warning(
+            f"⚠️ Partial scraper failure for stores: {', '.join(error_stores)}. "
+            f"Proceeding with downstream enrichment for {total_new} new items."
+        )
+        print(f"::warning title=Partial Scraper Failure::Failed stores: {', '.join(error_stores)}. Other stores succeeded with {total_new} new items.", flush=True)

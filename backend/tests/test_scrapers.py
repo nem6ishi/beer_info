@@ -130,8 +130,9 @@ async def test_ichigo_ichie_scrape_basic(mock_get):
 
 # Maruho scraper tests
 @pytest.mark.asyncio
-@patch('backend.src.scrapers.maruho.httpx.AsyncClient.get')
-async def test_maruho_scrape_basic(mock_get):
+@patch('backend.src.scrapers.maruho._sync_fetch_page')
+async def test_maruho_scrape_basic(mock_fetch):
+    import json
     json_content = {
         "products": [
             {
@@ -144,8 +145,8 @@ async def test_maruho_scrape_basic(mock_get):
     }
     mock_resp = MagicMock()
     mock_resp.status_code = 200
-    mock_resp.json.return_value = json_content
-    mock_get.return_value = mock_resp
+    mock_resp.text = json.dumps(json_content)
+    mock_fetch.return_value = mock_resp
 
     results = await maruho.scrape_maruho(limit=1)
     assert isinstance(results, list)
