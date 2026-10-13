@@ -181,6 +181,19 @@ def has_variant_mismatch(name_a: str, name_b: str) -> bool:
         "What Rough Beast" vs "What Rough Beast" → False (no mismatch)
         "Fresh Hop What Rough Beast" vs "Fresh Hop What Rough Beast (2019)" → False
     """
+    # Guard against matching deprecated past-recipe entries like "(-2023)", "(-2024)"
+    past_recipe_pattern = r'\([–—-]\s*(?:19|20)\d{2}\)'
+    has_past_a = bool(re.search(past_recipe_pattern, name_a))
+    has_past_b = bool(re.search(past_recipe_pattern, name_b))
+    if has_past_a != has_past_b:
+        year_match = re.search(r'(?:19|20)\d{2}', name_a if has_past_a else name_b)
+        if year_match:
+            year_str = year_match.group(0)
+            other_name = name_b if has_past_a else name_a
+            if year_str not in other_name:
+                logger.debug(f"  [Variant] Deprecated recipe mismatch: '{name_a}' vs '{name_b}' (past recipe year {year_str})")
+                return True
+
     mods_a = extract_variant_modifiers(name_a)
     mods_b = extract_variant_modifiers(name_b)
     

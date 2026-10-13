@@ -272,9 +272,10 @@ class PromptBuilder:
 
         Rules:
         1. **Strict Variant & Title Matching**: Pay very close attention to "Product Title (Original Shop Product Name)" above, which contains the raw shop listing title. If it specifies a specific variant, hop, adjunct, or edition (e.g., DDH, Double Dry Hopped, Barrel Aged / BA, TIPA, Hazy, w/ lemon or fruit, batch number, Specific Vintage Year like 2023 or 2024), the selected candidate MUST exactly match that variant or vintage. Do not pick the regular version or a different vintage year if the specific one is requested. If the requested exact variant/vintage is NOT in the candidate list, return -1 (no match).
-        2. **Collab Matching**: If the target is a collaboration beer (e.g., A x B or mentioned in Product Title), candidate names might list the breweries in a different order (e.g., B / A) or include both names. This is a valid match.
-        3. **Japanese to English Mapping**: The target product info may be in Japanese or Katakana. Match them correctly to their English/Romanized equivalents on Untappd.
-        4. **No Match Option**: If none of the candidates accurately represent the target product, you MUST output selected_index as -1. Do not guess or force a wrong match.
+        2. **Avoid Deprecated Past Recipes**: If an Untappd candidate has a past-year end marker like "(-2023)" or "(-2024)" indicating a retired vintage/recipe, and the product title does NOT explicitly ask for that old year, DO NOT select it. Prefer the current active release (e.g., "(2025-)") or un-suffixed current version.
+        3. **Collab Matching**: If the target is a collaboration beer (e.g., A x B or mentioned in Product Title), candidate names might list the breweries in a different order (e.g., B / A) or include both names. This is a valid match.
+        4. **Japanese to English Mapping**: The target product info may be in Japanese or Katakana. Match them correctly to their English/Romanized equivalents on Untappd.
+        5. **No Match Option**: If none of the candidates accurately represent the target product, you MUST output selected_index as -1. Do not guess or force a wrong match.
 
         Output JSON only:
         {{
