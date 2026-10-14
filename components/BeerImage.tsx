@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import Image from 'next/image'
+import { DEFAULT_BEER_PLACEHOLDER, isDefaultUntappd, toThumbnailUrl } from './utils/imageUtils'
 
 interface BeerImageProps {
     src?: string | null;
@@ -16,29 +17,45 @@ const BeerImage: React.FC<BeerImageProps> = ({
     className = "",
     priority = false
 }) => {
-    const defaultPlaceholder = 'https://placehold.co/100x100?text=No+Image';
-    
-    const isDefaultUntappd = (url: string) => 
-        url.includes('badge-beer-default') || 
-        url.includes('no_image') || 
-        url.includes('placeholder') ||
-        url.includes('next.untappd.com/og/');
+    // Determine the sequence of candidate URLs to try in order of preference
+    const candidates = useMemo(() => {
+        const list: string[] = [];
 
-    const getPrimarySrc = () => {
-        if (src && !isDefaultUntappd(src)) return src;
-        if (fallbackSrc && !isDefaultUntappd(fallbackSrc)) return fallbackSrc;
-        return defaultPlaceholder;
-    };
+        const validSrc = src && !isDefaultUntappd(src) ? src : null;
+        const validFallback = fallbackSrc && !isDefaultUntappd(fallbackSrc) ? fallbackSrc : null;
 
-    const [imgSrc, setImgSrc] = useState<string>(getPrimarySrc());
-    const [isLoaded, setIsLoaded] = useState(false);
-    const [hasError, setHasError] = useState(false);
+        if (validSrc) {
+            const thumb = toThumbnailUrl(validSrc);
+            if (thumb && thumb !== validSrc) list.push(thumb);
+            list.push(validSrc);
+        }
 
-    React.useEffect(() => {
-        setImgSrc(getPrimarySrc());
-        setIsLoaded(false);
-        setHasError(false);
+        if (validFallback) {
+            const thumbFallback = toThumbnailUrl(validFallback);
+            if (thumbFallback && thumbFallback !== validFallback) list.push(thumbFallback);
+            list.push(validFallback);
+        }
+
+        list.push(DEFAULT_BEER_PLACEHOLDER);
+        return list;
     }, [src, fallbackSrc]);
+
+    const [candidateIndex, setCandidateIndex] = useState(0);
+    const [isLoaded, setIsLoaded] = useState(false);
+
+    // Reset when candidates change
+    useEffect(() => {
+        setCandidateIndex(0);
+        setIsLoaded(false);
+    }, [candidates]);
+
+    const currentSrc = candidates[candidateIndex] || DEFAULT_BEER_PLACEHOLDER;
+
+    const handleError = () => {
+        if (candidateIndex < candidates.length - 1) {
+            setCandidateIndex(prev => prev + 1);
+        }
+    };
 
     return (
         <div 
@@ -48,37 +65,21 @@ const BeerImage: React.FC<BeerImageProps> = ({
             }}
         >
             <Image
-                src={imgSrc}
+                src={currentSrc}
                 alt={alt}
                 fill
                 priority={priority}
+                loading={priority ? undefined : 'lazy'}
                 sizes="(max-width: 768px) 80px, 90px"
                 onLoad={() => setIsLoaded(true)}
-                onError={() => {
-                    if (imgSrc === defaultPlaceholder) return;
-                    if (!hasError) {
-                        setHasError(true);
-                        if (fallbackSrc && imgSrc !== fallbackSrc) {
-                            setImgSrc(fallbackSrc);
-                        } else {
-                            setImgSrc(defaultPlaceholder);
-                        }
-                    } else {
-                        setImgSrc(defaultPlaceholder);
-                    }
-                }}
-                unoptimized={true} // Bypassing Next.js image optimization entirely for stability
+                onError={handleError}
+                unoptimized={true}
                 style={{ 
                     objectFit: 'contain',
                     opacity: isLoaded ? 1 : 0,
-                    transition: 'opacity 0.2s ease-in-out'
+                    transition: 'opacity 0.15s ease-out'
                 }}
             />
-            {!isLoaded && !hasError && (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div className="spinner-small" style={{ width: '16px', height: '16px', border: '2px solid #ddd', borderTopColor: '#666', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                </div>
-            )}
         </div>
     )
 }

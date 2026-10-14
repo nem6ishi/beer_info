@@ -38,7 +38,8 @@ export default function GroupedClient({ initialData, availableStyles, availableB
         error,
         totalPages,
         totalItems,
-        fetchData
+        fetchData,
+        preloadPage
     } = useBeerData<GroupedBeer[], GroupedBeersApiResponse>({
         initialData,
         endpoint: '/api/grouped-beers',
@@ -120,6 +121,7 @@ export default function GroupedClient({ initialData, availableStyles, availableB
                         totalPages={totalPages}
                         totalItems={totalItems}
                         onPageChange={handlePageChange}
+                        onPageHover={preloadPage}
                     />
                 )}
             </main>

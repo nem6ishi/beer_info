@@ -34,9 +34,10 @@ describe('GET /api/grouped-beers (API Route Handler Tests)', () => {
                 limit: 20,
                 total: 1,
                 totalPages: 1
-            }
+            },
+            generatedAt: expect.any(Number)
         });
-        expect(res.headers.get('Cache-Control')).toContain('public, s-maxage=30');
+        expect(res.headers.get('Cache-Control')).toContain('public, s-maxage=120');
     });
 
     it('should correctly parse and forward all search parameters to getGroupedBeers', async () => {

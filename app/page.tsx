@@ -13,7 +13,7 @@ export default async function Page() {
     const limitNum = 20
     const offset = 0
 
-    let q = supabase.from('beer_info_view').select(BEER_INFO_VIEW_SELECT, { count: 'exact' });
+    let q = supabase.from('beer_info_view').select(BEER_INFO_VIEW_SELECT, { count: 'estimated' });
     q = q.eq('stock_status', 'In Stock').order('first_seen', { ascending: false });
 
     // Fetch beers, shop counts, and available filters in parallel
@@ -56,7 +56,8 @@ export default async function Page() {
             limit: limitNum,
             total: count || 0,
             totalPages: Math.ceil((count || 0) / limitNum)
-        }
+        },
+        generatedAt: Date.now()
     };
 
     return (

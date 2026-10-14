@@ -5,9 +5,10 @@ interface PaginationProps {
     totalPages: number;
     totalItems: number;
     onPageChange: (page: number) => void;
+    onPageHover?: (page: number) => void;
 }
 
-export default function Pagination({ currentPage, totalPages, totalItems, onPageChange }: PaginationProps) {
+export default function Pagination({ currentPage, totalPages, totalItems, onPageChange, onPageHover }: PaginationProps) {
     const handlePageClick = useCallback((page: number) => {
         onPageChange(page);
         
@@ -70,6 +71,8 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                         className="page-btn icon-btn"
                         disabled={currentPage <= 1}
                         onClick={() => handlePageClick(1)}
+                        onMouseEnter={() => onPageHover?.(1)}
+                        onTouchStart={() => onPageHover?.(1)}
                         aria-label="First Page"
                     >
                         «
@@ -80,6 +83,8 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                         className="page-btn"
                         disabled={currentPage <= 1}
                         onClick={() => handlePageClick(currentPage - 1)}
+                        onMouseEnter={() => currentPage > 1 && onPageHover?.(currentPage - 1)}
+                        onTouchStart={() => currentPage > 1 && onPageHover?.(currentPage - 1)}
                         title="Previous Page (←)"
                         aria-label="Previous Page"
                     >
@@ -130,6 +135,8 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                                         key={p}
                                         className={`page-number ${p === currentPage ? 'active' : ''}`}
                                         onClick={() => handlePageClick(p as number)}
+                                        onMouseEnter={() => onPageHover?.(p as number)}
+                                        onTouchStart={() => onPageHover?.(p as number)}
                                     >
                                         {p}
                                     </button>
@@ -143,6 +150,8 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                         className="page-btn"
                         disabled={currentPage >= totalPages}
                         onClick={() => handlePageClick(currentPage + 1)}
+                        onMouseEnter={() => currentPage < totalPages && onPageHover?.(currentPage + 1)}
+                        onTouchStart={() => currentPage < totalPages && onPageHover?.(currentPage + 1)}
                         title="Next Page (→)"
                         aria-label="Next Page"
                     >
@@ -154,6 +163,8 @@ export default function Pagination({ currentPage, totalPages, totalItems, onPage
                         className="page-btn icon-btn"
                         disabled={currentPage >= totalPages}
                         onClick={() => handlePageClick(totalPages)}
+                        onMouseEnter={() => onPageHover?.(totalPages)}
+                        onTouchStart={() => onPageHover?.(totalPages)}
                         aria-label="Last Page"
                     >
                         »

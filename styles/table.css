@@ -374,7 +374,7 @@
     font-size: 14px;
     font-weight: 500;
     color: #1a1a1a;
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font-outfit), 'Outfit', sans-serif;
     transition: all 0.2s ease;
 }
 
@@ -478,7 +478,7 @@
 
 .price-text {
     font-weight: 700;
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font-outfit), 'Outfit', sans-serif;
     color: #1a1a1a;
     white-space: nowrap;
 }

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getGroupedBeers } from '../../../lib/groupedBeers'
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url)
@@ -40,10 +42,11 @@ export async function GET(request: Request) {
                 limit: limitNum,
                 total: totalCount,
                 totalPages: Math.ceil(totalCount / limitNum)
-            }
+            },
+            generatedAt: Date.now()
         });
         
-        response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+        response.headers.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=600');
         return response;
 
     } catch (error) {

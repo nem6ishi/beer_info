@@ -39,7 +39,8 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
         error,
         totalPages,
         totalItems,
-        fetchData
+        fetchData,
+        preloadPage
     } = useBeerData<Beer[], BeersApiResponse>({
         initialData,
         endpoint: '/api/beers',
@@ -113,6 +114,7 @@ export default function HomeClient({ initialData, availableStyles, availableBrew
                         totalPages={totalPages}
                         totalItems={totalItems}
                         onPageChange={handlePageChange}
+                        onPageHover={preloadPage}
                     />
                 )}
             </main>

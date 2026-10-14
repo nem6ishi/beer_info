@@ -49,6 +49,7 @@ export interface BeersApiResponse {
   beers: Beer[];
   pagination: PaginationInfo;
   shopCounts: Record<string, number>;
+  generatedAt?: number;
 }
 
 /** Multi-select dropdown option. */
@@ -138,4 +139,5 @@ export interface GroupedBeersApiResponse {
   groups: GroupedBeer[];
   pagination: PaginationInfo;
   shopCounts: Record<string, number>;
+  generatedAt?: number;
 }

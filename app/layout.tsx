@@ -5,6 +5,14 @@ import '../styles/responsive.css'
 import '../styles/pagination.css'
 import { Metadata, Viewport } from 'next'
 import Script from 'next/script'
+import { Outfit } from 'next/font/google'
+
+const outfit = Outfit({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-outfit',
+  display: 'swap',
+})
 
 const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_ID || 'G-5C295QK2Y0'
 
@@ -29,7 +37,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="ja">
+    <html lang="ja" className={outfit.variable}>
       <head>
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
@@ -44,7 +52,7 @@ export default function RootLayout({
           `}
         </Script>
       </head>
-      <body>
+      <body className={outfit.className}>
         {children}
       </body>
     </html>

@@ -51,7 +51,8 @@ export default async function GroupedPage({
             limit: limitNum,
             total: count || 0,
             totalPages: Math.ceil((count || 0) / limitNum)
-        }
+        },
+        generatedAt: Date.now()
     };
 
     return (

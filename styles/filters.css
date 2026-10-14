@@ -101,7 +101,7 @@
     border-radius: 8px;
     font-size: 14px;
     color: #1a1a1a;
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font-outfit), 'Outfit', sans-serif;
     transition: all 0.2s ease;
     width: 140px;
     /* Fixed width for better layout */
@@ -161,7 +161,7 @@
     border-radius: 8px;
     font-size: 14px;
     color: #1a1a1a;
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font-outfit), 'Outfit', sans-serif;
     cursor: pointer;
     transition: all 0.2s ease;
     appearance: none;
@@ -384,7 +384,7 @@
     border-radius: 8px;
     font-size: 14px;
     color: #1a1a1a;
-    font-family: 'Outfit', sans-serif;
+    font-family: var(--font-outfit), 'Outfit', sans-serif;
     text-align: left;
     cursor: pointer;
     display: flex;

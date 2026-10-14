@@ -141,7 +141,7 @@ describe('GroupedBeerTable comprehensive display and behavior tests', () => {
         ];
         const { container } = render(<GroupedBeerTable groups={fallbackImgGroups} loading={false} error={null} stockFilter="in_stock" />);
         const img = container.querySelector('img');
-        expect(img?.getAttribute('src')).toBe('https://shopa.example.com/cheapest-fallback.jpg');
+        expect(img?.getAttribute('src')).toMatch(/shopa\.example\.com.*cheapest-fallback\.jpg/);
     });
 
     it('should fallback to shop title for beer name when untappd_url is a search link or null', () => {

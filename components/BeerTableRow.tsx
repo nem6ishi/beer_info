@@ -46,7 +46,7 @@ export interface BeerTableRowProps {
     priority?: boolean;
 }
 
-export default function BeerTableRow({
+function BeerTableRowComponent({
     idKey,
     imageSrc,
     imageFallbackSrc,
@@ -142,3 +142,6 @@ export default function BeerTableRow({
         </tr>
     );
 }
+
+const BeerTableRow = React.memo(BeerTableRowComponent);
+export default BeerTableRow;
