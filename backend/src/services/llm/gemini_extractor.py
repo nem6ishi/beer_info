@@ -42,11 +42,11 @@ class GeminiExtractor(BaseExtractor):
         self.last_request_time = 0
         self.daily_request_count = 0
         
-        # Model Configuration: Gemini 3.1 Flash Lite Preview / Lite
-        self.primary_model_id = os.getenv("GEMINI_MODEL_ID", "gemini-3.1-flash-lite-preview")
+        # Model Configuration: Gemma 4 31B (30 RPM, 14.4K RPD)
+        self.primary_model_id = os.getenv("GEMINI_MODEL_ID", "gemma-4-31b-it")
         self.model_id = self.primary_model_id
-        self.fallback_model_id = os.getenv("GEMINI_FALLBACK_MODEL_ID", "gemini-3.1-flash-lite")
-        self.model_interval = 4.0
+        self.fallback_model_id = os.getenv("GEMINI_FALLBACK_MODEL_ID", "gemma-4-26b-a4b-it")
+        self.model_interval = 2.5
         self.global_daily_limit = 14000
 
     def _supports_response_schema(self, model_id: str) -> bool:
