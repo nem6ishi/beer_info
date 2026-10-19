@@ -369,20 +369,24 @@ async def _get_untappd_url_single(
                         href: str = res.get("href", "")
                         title: str = res.get("title", "")
                             
-                        if "untappd.com/b/" in href and href not in seen_urls:
-                            if title_is_valid(title, brewery_name, target_beer_name):
-                                logger.info(f" Found candidate via DuckDuckGo: {href}")
-                                seen_urls.add(href)
-                                all_candidates.append({
-                                    'url': href,
-                                    'beer_name': title,
-                                    'brewery_name': brewery_name,
-                                    'style': '',
-                                    'score': 0.8,
-                                    'source': 'duckduckgo'
-                                })
-                            else:
-                                logger.debug(f" DDG result failed validation: {title}")
+                        if "untappd.com/b/" in href:
+                            m_url = re.match(r'^(https?://(?:www\.)?untappd\.com/b/[^/?#]+/\d+)', href)
+                            if m_url:
+                                href = m_url.group(1).replace("http://", "https://").replace("://www.", "://")
+                            if href not in seen_urls:
+                                if title_is_valid(title, brewery_name, target_beer_name):
+                                    logger.info(f" Found candidate via DuckDuckGo: {href}")
+                                    seen_urls.add(href)
+                                    all_candidates.append({
+                                        'url': href,
+                                        'beer_name': title,
+                                        'brewery_name': brewery_name,
+                                        'style': '',
+                                        'score': 0.8,
+                                        'source': 'duckduckgo'
+                                    })
+                                else:
+                                    logger.debug(f" DDG result failed validation: {title}")
                         
                     break
                 except Exception as inner_e:

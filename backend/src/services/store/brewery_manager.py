@@ -53,7 +53,10 @@ class BreweryManager:
             'beer', 'brewery', 'brewing', 'craft', 'ale', 'lager', 'ipa',
             'top', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'triple',
             'el', 'la', 'le', 'les', 'de', 'du', 'des', 'van', 'von',
-            'st.', 'saint', 'mt.', 'mount'
+            'st.', 'saint', 'mt.', 'mount',
+            'other', 'ghost', 'tree', 'long', 'pure', 'open', 'root', 'stone', 'pizza',
+            'far', 'young', 'sierra', 'break', 'blade', 'los', 'sante', 'bike', 'high',
+            'deep', 'dark', 'wild', 'free', 'good', 'full', 'holy', 'cold', 'cool', 'hard', 'half'
         }
         
         if name_en:
@@ -80,7 +83,10 @@ class BreweryManager:
         if not text:
             return []
         
-        text_lower = text.lower()
+        # Strip shop-specific notice brackets (e.g. 【鬼推しブルワリー！】) before matching
+        noise_keywords = r'予定|出荷|入荷|ご注文|本以上|合計|セット|限定|条件|注意|必須|おひとり様|同時購入|推し|対象|配送|発送|即納|ポイント|送料無料|クール便|予約|空輸|冷蔵|常温|期限|特価'
+        cleaned_text = re.sub(r'【[^】]*?(?:' + noise_keywords + r')[^】]*?】', ' ', text, flags=re.IGNORECASE)
+        text_lower = cleaned_text.lower()
         found_breweries = []
         found_keys = set()
         
@@ -88,12 +94,17 @@ class BreweryManager:
         sorted_keys = sorted(self.brewery_index.keys(), key=len, reverse=True)
         
         for key in sorted_keys:
-            if key in text_lower:
-                brewery = self.brewery_index[key]
-                # Avoid adding same brewery multiple times via different aliases
-                if brewery['name_en'] not in found_keys:
-                    found_breweries.append(brewery)
-                    found_keys.add(brewery['name_en'])
+            if not key or key not in text_lower:
+                continue
+            # For ASCII keys, require word boundaries so "other" never matches inside "nothern" or "mother"
+            if key.isascii():
+                if not re.search(r'(?<![a-z0-9])' + re.escape(key) + r'(?![a-z0-9])', text_lower):
+                    continue
+            brewery = self.brewery_index[key]
+            # Avoid adding same brewery multiple times via different aliases
+            if brewery['name_en'] not in found_keys:
+                found_breweries.append(brewery)
+                found_keys.add(brewery['name_en'])
         
         return found_breweries
 
@@ -121,8 +132,8 @@ class BreweryManager:
         if len(new_alias) <= 1:
             return False
 
-        # Reject collaboration patterns or multi-brewery names
-        if re.search(r'(\bx\b|×|\bcollab\b|collaboration|,|&)', new_alias, re.IGNORECASE):
+        # Reject collaboration patterns, multi-brewery names, or shop/expiration noise
+        if re.search(r'(\bx\b|×|\bcollab\b|collaboration|,|&|/|／|\(|（|\)|）|入荷|予定|賞味期限|期限|特価|推し|ご注文|本以上|同時購入|美味しい)', new_alias, re.IGNORECASE):
             return False
             
         # Ignore common generic words / suffixes and beer style names
@@ -134,7 +145,10 @@ class BreweryManager:
             'session ipa', 'dipa', 'tipa', 'cold ipa', 'black ipa', 'barleywine',
             'farmhouse ale', 'saison', 'hard seltzer', 'cider', 'pilsner',
             'ウエストコーストipa', 'ヘイジーipa', 'ペールエール', 'セゾン', 'スタウト',
-            'ダブルipa', 'サワーエール', 'フルーツサワー', 'ピルスナー'
+            'ダブルipa', 'サワーエール', 'フルーツサワー', 'ピルスナー',
+            'other', 'ghost', 'tree', 'long', 'pure', 'open', 'root', 'stone', 'pizza',
+            'far', 'young', 'sierra', 'break', 'blade', 'los', 'sante', 'bike', 'high',
+            'new', 'old', 'big', 'small', 'black', 'white', 'red', 'blue', 'green'
         }
         if new_alias.lower() in stop_words:
             return False

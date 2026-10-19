@@ -115,12 +115,18 @@ class PromptBuilder:
 
     def apply_set_override(self, res: GeminiExtraction, original_title: str) -> GeminiExtraction:
         """Deterministic override: If title explicitly mentions set keywords, enforce set status."""
+        cleaned_title = self.clean_product_title(original_title)
         set_pattern = re.compile(r'(\d+本(?:パック|セット|アソート|飲み比べ)|\d+\s*Cans?\s*(?:Set|Pack)|\d+\s*Bottles?\s*(?:Set|Pack)|飲み比べ|アソート|お試しセット|本セット|缶セット|Variety\s*Pack)', re.IGNORECASE)
-        if set_pattern.search(original_title):
+        if set_pattern.search(cleaned_title):
             if not res.get("is_set") or res.get("product_type") != "set":
                 logger.info(f"  🔧 Enforcing SET classification due to explicit keywords in title: '{original_title}'")
                 res["is_set"] = True
                 res["product_type"] = "set"
+        elif re.search(r'(セットと同時購入|合計[^\d]*\d+本[^\d]*以上|本以上になるようご注文)', original_title) and not re.search(r'セット', cleaned_title):
+            if res.get("is_set") or res.get("product_type") == "set":
+                logger.info(f"  🔧 Resetting false SET classification caused by shop purchase notice: '{original_title}'")
+                res["is_set"] = False
+                res["product_type"] = "beer"
         return self.apply_product_type_override(res, original_title)
 
     def apply_product_type_override(self, res: GeminiExtraction, original_title: str) -> GeminiExtraction:

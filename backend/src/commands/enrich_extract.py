@@ -207,7 +207,17 @@ class LLMEnricher:
                 
                 # Extract
                 enriched_info: Optional[GeminiExtraction] = await self._extract_llm(beer)
-                if not enriched_info:
+                has_extracted_content = bool(
+                    enriched_info and (
+                        enriched_info.get('brewery_name_en') or
+                        enriched_info.get('beer_name_en') or
+                        enriched_info.get('brewery_name_jp') or
+                        enriched_info.get('beer_name_jp') or
+                        enriched_info.get('product_type', 'beer') != 'beer' or
+                        enriched_info.get('is_set')
+                    )
+                )
+                if not enriched_info or not has_extracted_content:
                     record_enrichment_failure(self.supabase, url, 'gemini_no_info', error_message="LLM returned no valid info.")
                     return 'error', None
                 

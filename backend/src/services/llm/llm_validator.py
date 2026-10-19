@@ -37,25 +37,57 @@ class LLMValidator:
             self.client = genai.Client(api_key=key)
             
         self.model_id = model_id or os.getenv("GEMINI_MODEL_ID", "gemma-4-31b-it")
+        self.fallback_model_id = os.getenv("GEMINI_FALLBACK_MODEL_ID", "gemma-4-26b-a4b-it")
         self._cache: Dict[str, Tuple[Optional[bool], float, str]] = {}
 
     def _call_api_with_retry(self, prompt: str) -> types.GenerateContentResponse:
-        """Call Gemini API with retry logic for transient errors (e.g. 503, 429)."""
+        """Call Gemini API with model fallback and retry logic for transient errors (e.g. 503, 429)."""
+        models_to_try = [self.model_id]
+        if self.fallback_model_id and self.fallback_model_id not in models_to_try:
+            models_to_try.append(self.fallback_model_id)
+        if "gemini-2.5-flash-lite" not in models_to_try:
+            models_to_try.append("gemini-2.5-flash-lite")
+
         @retry(
-            stop=stop_after_attempt(3),
-            wait=wait_exponential(multiplier=1.5, min=2, max=10),
+            stop=stop_after_attempt(2),
+            wait=wait_exponential(multiplier=1.5, min=2, max=8),
             reraise=True,
         )
         def _execute():
-            return self.client.models.generate_content(
-                model=self.model_id,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=LLMValidationResult,
-                    temperature=0.1,
-                ),
-            )
+            last_err = None
+            for i, m_id in enumerate(models_to_try):
+                try:
+                    resp = self.client.models.generate_content(
+                        model=m_id,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=LLMValidationResult,
+                            temperature=0.1,
+                        ),
+                    )
+                    try:
+                        usage = getattr(resp, 'usage_metadata', None)
+                        total_tok = getattr(usage, 'total_token_count', 0) if usage else 0
+                        if isinstance(total_tok, int) and total_tok > 0:
+                            from ...core.db import get_supabase_client
+                            sb = get_supabase_client()
+                            sb.rpc('log_api_usage', {
+                                'p_service_name': 'gemini',
+                                'p_total': total_tok,
+                                'p_prompt': getattr(usage, 'prompt_token_count', 0) or 0,
+                                'p_comp': getattr(usage, 'candidates_token_count', 0) or 0,
+                            }).execute()
+                    except Exception:
+                        pass
+                    return resp
+                except Exception as e:
+                    last_err = e
+                    if i < len(models_to_try) - 1:
+                        logger.warning(f"  [LLMValidator] {m_id} failed ({e}). Falling back to {models_to_try[i+1]}...")
+                        continue
+                    raise
+            raise last_err
         return _execute()
 
     def validate_pair(

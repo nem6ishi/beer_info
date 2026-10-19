@@ -41,17 +41,21 @@ class GeminiExtractor(BaseExtractor):
         # Rate Limiting Configuration
         self.last_request_time = 0
         self.daily_request_count = 0
+        self._primary_failures = 0
+        self._primary_cooldown_until = 0.0
         
-        # Model Configuration: Gemma 4 31B (30 RPM, 14.4K RPD)
+        # Model Configuration: Gemma 4 31B / 26B (15 RPM, 15K TPM, 1,500 RPD per model)
         self.primary_model_id = os.getenv("GEMINI_MODEL_ID", "gemma-4-31b-it")
         self.model_id = self.primary_model_id
         self.fallback_model_id = os.getenv("GEMINI_FALLBACK_MODEL_ID", "gemma-4-26b-a4b-it")
-        self.model_interval = 2.5
-        self.global_daily_limit = 14000
+        self.model_interval = 4.5       # 15 RPM limit -> ~13.3 RPM safety margin
+        self.rpm_limit = 14             # Max 15 RPM
+        self.tpm_limit = 13500          # Max 15,000 TPM (leave ~1.5K headroom for next request)
+        self.global_daily_limit = 2900  # 1,500 RPD x 2 Gemma 4 models with safety margin
 
     def _supports_response_schema(self, model_id: str) -> bool:
-        """Returns True if the model supports response_schema (e.g. Gemini models)."""
-        return model_id.lower().startswith("gemini-")
+        """Returns True if the model supports response_schema (Gemini and Gemma 4 models)."""
+        return model_id.lower().startswith(("gemini-", "gemma-4-"))
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=4, max=20))
     async def _generate_content(self, prompt: str, schema: Optional[Any] = None) -> Optional[Dict[str, Any]]:
@@ -61,27 +65,42 @@ class GeminiExtractor(BaseExtractor):
 
         try:
             supabase = get_supabase_client()
-            # Check current detailed usage
+            # Check current detailed usage (RPD, RPM, TPM)
             res = supabase.rpc('check_api_usage_detailed', {'p_service_name': 'gemini'}).execute()
             usage_data = res.data or {}
             current_rpd = usage_data.get('rpd', 0)
+            current_rpm = usage_data.get('rpm', 0)
+            current_tpm = usage_data.get('tpm', 0)
             
             self.daily_request_count = current_rpd
             
             if current_rpd >= self.global_daily_limit:
-                logger.warning(f"  [Gemini] Global daily limit reached ({current_rpd}/{self.global_daily_limit}). Skipping extraction.")
+                logger.warning(f"  [Gemini] Global daily limit reached (RPD={current_rpd}/{self.global_daily_limit}). Skipping extraction.")
                 return None
+
+            if current_rpm >= self.rpm_limit or current_tpm >= self.tpm_limit:
+                logger.warning(
+                    f"  [Gemini] Minute rate limit approaching (RPM={current_rpm}/{self.rpm_limit}, TPM={current_tpm}/{self.tpm_limit}). "
+                    f"Sleeping 15s for sliding window cooldown..."
+                )
+                await asyncio.sleep(15.0)
         except Exception as db_e:
             logger.error(f"  [Gemini] Failed to check API usage in DB: {db_e}. Falling back to local limit.")
             if self.daily_request_count >= self.global_daily_limit:
                 logger.warning(f"  [Gemini] Local daily limit reached ({self.daily_request_count}/{self.global_daily_limit}). Skipping extraction.")
                 return None
 
-        models_to_try = [self.primary_model_id]
+        models_to_try: List[str] = []
+        if time.time() >= self._primary_cooldown_until:
+            models_to_try.append(self.primary_model_id)
+        else:
+            logger.debug(f"  [Gemini] Skipping {self.primary_model_id} (in cooldown after consecutive failures)")
+
         if self.fallback_model_id and self.fallback_model_id not in models_to_try:
             models_to_try.append(self.fallback_model_id)
-        if "gemini-2.5-flash" not in models_to_try:
-            models_to_try.append("gemini-2.5-flash")
+        for fb in ("gemini-2.5-flash-lite", "gemini-2.5-flash"):
+            if fb not in models_to_try:
+                models_to_try.append(fb)
 
         response = None
         for i, model_id in enumerate(models_to_try):
@@ -93,6 +112,7 @@ class GeminiExtractor(BaseExtractor):
                     model_config = types.GenerateContentConfig(
                         response_mime_type="application/json",
                         response_schema=schema,
+                        temperature=0.1,
                     )
                 if i > 0:
                     logger.info(f"  [Gemini] Calling fallback {model_id}...")
@@ -105,27 +125,35 @@ class GeminiExtractor(BaseExtractor):
                         contents=prompt,
                         config=model_config,
                     ),
-                    timeout=20.0
+                    timeout=15.0
                 )
+                if model_id == self.primary_model_id:
+                    self._primary_failures = 0
                 break
             except Exception as e:
+                if model_id == self.primary_model_id:
+                    self._primary_failures += 1
+                    if self._primary_failures >= 2:
+                        self._primary_cooldown_until = time.time() + 300.0
+                        logger.warning(f"  [Gemini] {self.primary_model_id} failed {self._primary_failures} times consecutively; cooling down for 300s.")
                 error_msg: str = str(e).lower()
                 is_transient = (
                     isinstance(e, asyncio.TimeoutError) or
-                    getattr(e, 'code', None) in (429, 503) or
+                    getattr(e, 'code', None) in (429, 500, 503) or
                     "exhausted" in error_msg or
                     "quota" in error_msg or
                     "unavailable" in error_msg or
+                    "internal" in error_msg or
                     "server" in error_msg or
                     "timeout" in error_msg
                 )
                 if is_transient and i < len(models_to_try) - 1:
-                    logger.warning(f"  [Gemini] {model_id} failed ({e}). Falling back to next model...")
+                    logger.warning(f"  [Gemini] {model_id} failed ({type(e).__name__}: {e}). Falling back to next model...")
                     continue
                 else:
                     raise
 
-        
+
         self.last_request_time = time.time()
         
         # Increment actual usage after successful execution
