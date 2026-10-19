@@ -76,8 +76,17 @@ async def search_brewery_beer_candidates(
             try:
                 resp: httpx.Response = await client.get(url, headers=headers)
                 if resp.status_code == 200:
-                    html = resp.text
-                    break
+                    final_url_str = str(resp.url)
+                    if "q=" not in final_url_str and final_url_str.rstrip('/') != url.rstrip('/'):
+                        redirect_base = final_url_str.split('?')[0].rstrip('/')
+                        if not redirect_base.endswith('/beer'):
+                            redirect_base = f"{redirect_base}/beer"
+                        retry_url = f"{redirect_base}?q={encoded_query}"
+                        logger.info(f"  [Redirect Fix] Brewery URL redirected and dropped ?q=. Retrying: {retry_url}")
+                        resp = await client.get(retry_url, headers=headers)
+                    if resp.status_code == 200:
+                        html = resp.text
+                        break
                 elif resp.status_code in (429, 403, 503):
                     await asyncio.sleep(1 * (attempt + 1))
             except Exception as httpx_e:
