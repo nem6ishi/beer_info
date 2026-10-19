@@ -92,7 +92,7 @@ class PromptBuilder:
             return ""
         
         # 1. 【】や《》や[]で囲まれた注意事項（予定、出荷、入荷、ご注文、本以上、クール便、限定、予約、空輸、冷蔵、常温、おひとり様、必須、同時購入、推しなど）を削除
-        noise_keywords = r'予定|出荷|入荷|ご注文|本以上|合計|セット|限定|条件|注意|必須|おひとり様|同時購入|推し|対象|配送|発送|即納|ポイント|送料無料|クール便|予約|空輸|冷蔵|常温'
+        noise_keywords = r'予定|出荷|入荷|ご注文|本以上|合計|セットと同時|同時購入|限定|条件|注意|必須|おひとり様|推し|対象|配送|発送|即納|ポイント|送料無料|クール便|予約|空輸|冷蔵|常温'
         bracket_patterns = [
             r'【[^】]*?(?:' + noise_keywords + r')[^】]*?】',
             r'《[^》]*?(?:' + noise_keywords + r')[^》]*?》',
@@ -116,15 +116,21 @@ class PromptBuilder:
     def apply_set_override(self, res: GeminiExtraction, original_title: str) -> GeminiExtraction:
         """Deterministic override: If title explicitly mentions set keywords, enforce set status."""
         cleaned_title = self.clean_product_title(original_title)
-        set_pattern = re.compile(r'(\d+本(?:パック|セット|アソート|飲み比べ)|\d+\s*Cans?\s*(?:Set|Pack)|\d+\s*Bottles?\s*(?:Set|Pack)|飲み比べ|アソート|お試しセット|本セット|缶セット|Variety\s*Pack)', re.IGNORECASE)
+        set_pattern = re.compile(
+            r'([\d０-９]+\s*(?:本|缶|瓶)\s*(?:パック|セット|set|アソート|飲み比べ)|[\d０-９]+\s*(?:Cans?|Bottles?)\s*(?:Set|Pack)|飲み比べ|アソート|お試しセット|本セット|缶セット|Variety\s*Pack)',
+            re.IGNORECASE
+        )
         if set_pattern.search(cleaned_title):
             if not res.get("is_set") or res.get("product_type") != "set":
                 logger.info(f"  🔧 Enforcing SET classification due to explicit keywords in title: '{original_title}'")
                 res["is_set"] = True
                 res["product_type"] = "set"
-        elif re.search(r'(セットと同時購入|合計[^\d]*\d+本[^\d]*以上|本以上になるようご注文)', original_title) and not re.search(r'セット', cleaned_title):
+        elif (
+            re.search(r'(セットと同時購入|合計[^\d]*\d+本[^\d]*以上|本以上になるようご注文)', original_title)
+            or re.search(r'サンセット|Sunset|クローゼット|Closet', original_title, re.IGNORECASE)
+        ) and not set_pattern.search(cleaned_title) and not re.search(r'(?<!サン)(?<!クロー)セット', cleaned_title):
             if res.get("is_set") or res.get("product_type") == "set":
-                logger.info(f"  🔧 Resetting false SET classification caused by shop purchase notice: '{original_title}'")
+                logger.info(f"  🔧 Resetting false SET classification for single beer: '{original_title}'")
                 res["is_set"] = False
                 res["product_type"] = "beer"
         return self.apply_product_type_override(res, original_title)

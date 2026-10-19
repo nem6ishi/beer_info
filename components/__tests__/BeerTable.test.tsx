@@ -78,4 +78,14 @@ describe('BeerTable (Individual Display Table Tests)', () => {
         expect(screen.getByText(/20% OFF SALE/)).toBeDefined();
         expect(screen.getByText(/賞味期限 2026\/09/)).toBeDefined();
     });
+
+    it('should render Untappd brewery and beer name even when product_type is null', () => {
+        const nullProductTypeBeers: Beer[] = [{
+            ...mockBeers[0],
+            product_type: null
+        }];
+        render(<BeerTable beers={nullProductTypeBeers} loading={false} error={null} />);
+        expect(screen.getByText('ENGI!? Sake IPA')).toBeDefined();
+        expect(screen.getByText('Shiga Kogen Beer')).toBeDefined();
+    });
 });

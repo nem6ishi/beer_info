@@ -372,16 +372,24 @@ class UntappdEnricher:
                 return None
 
             now_iso: str = datetime.now(timezone.utc).isoformat()
-            scraped_updates: Dict[str, Any] = {'url': url, 'untappd_url': untappd_url, 'untappd_enriched_at': now_iso}
-            gemini_updates: Dict[str, Any] = {'url': url, 'untappd_url': untappd_url}
-
             logger.info(f"  ✅ Found URL: {untappd_url}")
 
             untappd_payload: Dict[str, Any] = {}
             if not self.offline:
                 untappd_payload = await self._scrape_and_save_details(untappd_url, beer, brewery, beer_name)
+                if untappd_payload.get('_rejected'):
+                    return None
                 if untappd_payload:
                     untappd_payload['untappd_url'] = untappd_url
+
+            scraped_updates: Dict[str, Any] = {'url': url, 'untappd_url': untappd_url, 'untappd_enriched_at': now_iso}
+            gemini_updates: Dict[str, Any] = {
+                'url': url,
+                'untappd_url': untappd_url,
+                'brewery_name_en': beer.get('brewery_name_en') or untappd_payload.get('brewery_name') or brewery,
+                'beer_name_en': beer.get('beer_name_en') or untappd_payload.get('beer_name') or beer_name,
+                'product_type': beer.get('product_type') or 'beer',
+            }
 
             if url and (untappd_payload.get('beer_name') or untappd_payload.get('untappd_rating') or self.offline):
                 resolve_search_failure(self.supabase, url)
@@ -682,7 +690,7 @@ class UntappdEnricher:
                         failure_reason='final_validation_mismatch',
                         error_message=f"Final verification failed: {details.get('untappd_brewery_name')} - {details.get('untappd_beer_name')}"
                     )
-                return {}
+                return {'_rejected': True}
 
             payload: Dict[str, Any] = map_details_to_payload(details)
             payload['untappd_url'] = untappd_url

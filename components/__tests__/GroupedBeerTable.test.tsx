@@ -229,4 +229,16 @@ describe('GroupedBeerTable comprehensive display and behavior tests', () => {
         expect(shopNames[0]).toBe('Shop A');
         expect(shopNames[1]).toBe('Shop B');
     });
+
+    it('should display Untappd brewery and beer name even when product_type is null', () => {
+        const nullTypeGroups: GroupedBeer[] = [
+            {
+                ...mockGroups[0],
+                product_type: null
+            }
+        ];
+        render(<GroupedBeerTable groups={nullTypeGroups} loading={false} error={null} stockFilter="in_stock" />);
+        expect(screen.getByText('Test IPA')).toBeDefined();
+        expect(screen.getByText('Test Brewery')).toBeDefined();
+    });
 });

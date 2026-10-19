@@ -60,7 +60,7 @@ export default function BeerTable({ beers, loading, error, isDebug }: BeerTableP
     }
 
     const hasUntappdBeerData = (beer: Beer): boolean =>
-        !!(beer.untappd_url && !beer.untappd_url.includes('/search') && beer.product_type === 'beer');
+        !!(beer.untappd_url && !beer.untappd_url.includes('/search') && (!beer.product_type || beer.product_type === 'beer'));
 
     return (
         <div className="table-container" style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s' }}>

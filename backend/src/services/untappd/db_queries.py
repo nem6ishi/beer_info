@@ -137,12 +137,28 @@ def upsert_untappd_data(supabase: Any, untappd_payloads: List[Dict[str, Any]]) -
             logger.error(f"  ❌ Error saving to untappd_data (Batch): {e}")
 
 def update_gemini_data_untappd_urls(supabase: Any, gemini_updates: List[Dict[str, Any]]) -> None:
-    """Update untappd_url in gemini_data table."""
+    """Update untappd_url in gemini_data table, inserting a row if none exists."""
     if gemini_updates:
         success_count = 0
+        now_iso = datetime.now(timezone.utc).isoformat()
         for item in gemini_updates:
             try:
-                supabase.table('gemini_data').update({'untappd_url': item['untappd_url']}).eq('url', item['url']).execute()
+                res = supabase.table('gemini_data').update({'untappd_url': item['untappd_url']}).eq('url', item['url']).execute()
+                if not res.data:
+                    upsert_payload: Dict[str, Any] = {
+                        'url': item['url'],
+                        'untappd_url': item['untappd_url'],
+                        'product_type': item.get('product_type') or 'beer',
+                        'is_set': False,
+                        'updated_at': now_iso,
+                    }
+                    if item.get('brewery_name_en'):
+                        upsert_payload['brewery_name_en'] = item['brewery_name_en']
+                    if item.get('beer_name_en'):
+                        upsert_payload['beer_name_en'] = item['beer_name_en']
+                    supabase.table('gemini_data').upsert(upsert_payload).execute()
+                elif res.data[0].get('product_type') is None:
+                    supabase.table('gemini_data').update({'product_type': item.get('product_type') or 'beer'}).eq('url', item['url']).execute()
                 success_count += 1
             except Exception as e:
                 logger.error(f"  ⚠️ Error updating gemini_data for {item['url']}: {e}")

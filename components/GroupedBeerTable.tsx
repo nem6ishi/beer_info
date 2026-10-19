@@ -133,7 +133,7 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug, stoc
                             </div>
                         );
 
-                        const isBeer = group.product_type === 'beer';
+                        const isBeer = !group.product_type || group.product_type === 'beer';
                         const originalItemName = cheapestItem?.name || group.original_name || group.beer_name;
 
                         return (
