@@ -366,7 +366,7 @@ def validate_final_match(
 
     # 0. Deterministic Guard: Block deprecated past-recipe entries like "(-2023)", "(-2024)", "(~2025)"
     if untappd_beer_name:
-        past_recipe_match = re.search(r'\([–—-~〜]\s*((?:19|20)\d{2})\)', untappd_beer_name)
+        past_recipe_match = re.search(r'\([\-–—~〜]\s*((?:19|20)\d{2})\)', untappd_beer_name)
         if past_recipe_match:
             past_year = past_recipe_match.group(1)
             if past_year not in original_title:

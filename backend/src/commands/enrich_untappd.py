@@ -425,7 +425,7 @@ class UntappdEnricher:
             if details:
                 u_beer_name = details.get('untappd_beer_name') or ''
                 orig_title = beer.get('name') or ''
-                past_match = re.search(r'\([–—-~〜]\s*((?:19|20)\d{2})\)', u_beer_name)
+                past_match = re.search(r'\([\-–—~〜]\s*((?:19|20)\d{2})\)', u_beer_name)
                 if past_match and past_match.group(1) not in orig_title:
                     logger.warning(
                         f"  ⚠️  [Refresh] Untappd entry '{u_beer_name}' is now a deprecated past recipe (-{past_match.group(1)}). Unlinking '{orig_title}' for re-enrichment!"
