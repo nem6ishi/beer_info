@@ -423,6 +423,19 @@ class UntappdEnricher:
             details: UntappdBeerDetails = await scrape_beer_details(untappd_url)
             untappd_payload: Dict[str, Any]
             if details:
+                u_beer_name = details.get('untappd_beer_name') or ''
+                orig_title = beer.get('name') or ''
+                past_match = re.search(r'\([–—-~〜]\s*((?:19|20)\d{2})\)', u_beer_name)
+                if past_match and past_match.group(1) not in orig_title:
+                    logger.warning(
+                        f"  ⚠️  [Refresh] Untappd entry '{u_beer_name}' is now a deprecated past recipe (-{past_match.group(1)}). Unlinking '{orig_title}' for re-enrichment!"
+                    )
+                    refresh_url = beer.get('url')
+                    if refresh_url and self.supabase and not self.offline:
+                        self.supabase.table('scraped_beers').update({'untappd_url': None, 'untappd_enriched_at': None}).eq('url', refresh_url).execute()
+                        self.supabase.table('gemini_data').update({'untappd_url': None}).eq('url', refresh_url).execute()
+                    return None
+
                 untappd_payload = map_details_to_payload(details)
                 untappd_payload['untappd_url'] = untappd_url
                 logger.info(f"  ✅ Details updated: Rating {details.get('untappd_rating', 'N/A')}")

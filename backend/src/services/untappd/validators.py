@@ -364,6 +364,17 @@ def validate_final_match(
     if not original_title or not untappd_brewery_name:
         return True
 
+    # 0. Deterministic Guard: Block deprecated past-recipe entries like "(-2023)", "(-2024)", "(~2025)"
+    if untappd_beer_name:
+        past_recipe_match = re.search(r'\([–—-~〜]\s*((?:19|20)\d{2})\)', untappd_beer_name)
+        if past_recipe_match:
+            past_year = past_recipe_match.group(1)
+            if past_year not in original_title:
+                logger.warning(
+                    f"  [Final Validation] BLOCKED (Deprecated Past Recipe): Untappd beer '{untappd_beer_name}' has retired marker '(-{past_year})' not requested in '{original_title}'"
+                )
+                return False
+
     # 1. LLM Validation (Directly evaluates original_title vs Untappd brewery/beer/style)
     validator = _get_llm_validator()
     if validator and validator.client:
