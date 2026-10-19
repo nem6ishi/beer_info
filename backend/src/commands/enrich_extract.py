@@ -93,6 +93,9 @@ class LLMEnricher:
                 if status == 'enriched' and payload:
                     self.stats["enriched"] += 1
                     self.pending_payloads.append(payload)
+                    if len(self.pending_payloads) >= 10:
+                        self._save_gemini_data_batch(self.pending_payloads)
+                        self.pending_payloads.clear()
                 elif status == 'already_exists':
                     self.stats["enriched"] += 1
                 elif status == 'error':
