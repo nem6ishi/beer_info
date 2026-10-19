@@ -29,28 +29,41 @@ def get_audit_targets(limit_unenriched: int = 20, limit_recent: int = 5, limit_r
     recent_res = sb.table('beer_info_view') \
         .select('url, name, shop, first_seen, untappd_enriched_at, untappd_url, untappd_beer_name, untappd_brewery_name, untappd_rating, product_type') \
         .eq('stock_status', 'In Stock') \
+        .not_.is_('untappd_url', 'null') \
         .gte('untappd_enriched_at', recent_cutoff) \
         .order('untappd_enriched_at', desc=True) \
         .limit(limit_recent) \
         .execute()
     recent_enriched = recent_res.data or []
 
-    # 3. Rolling audit: in-stock beers with oldest untappd_fetched_at or needing review
-    # Exclude non-beer / other
+    # 3. Rolling audit: in-stock beers with oldest untappd_fetched_at (refresh candidates)
     rolling_res = sb.table('beer_info_view') \
         .select('url, name, shop, first_seen, untappd_fetched_at, untappd_url, untappd_beer_name, untappd_brewery_name, untappd_rating, product_type') \
         .eq('stock_status', 'In Stock') \
+        .not_.is_('untappd_url', 'null') \
         .or_('product_type.eq.beer,product_type.is.null') \
         .order('untappd_fetched_at', desc=False, nullsfirst=True) \
         .limit(limit_rolling) \
         .execute()
     rolling_candidates = rolling_res.data or []
 
+    # 4. Unlinked beers needing Untappd investigation
+    unlinked_res = sb.table('beer_info_view') \
+        .select('url, name, shop, first_seen, untappd_url, product_type') \
+        .eq('stock_status', 'In Stock') \
+        .is_('untappd_url', 'null') \
+        .or_('product_type.eq.beer,product_type.is.null') \
+        .order('first_seen', desc=True) \
+        .limit(5) \
+        .execute()
+    unlinked_candidates = unlinked_res.data or []
+
     return {
         "timestamp": now.isoformat(),
         "unenriched": unenriched,
         "recent_enriched_to_verify": recent_enriched,
-        "rolling_audit_candidates": rolling_candidates
+        "rolling_audit_candidates": rolling_candidates,
+        "unlinked_candidates": unlinked_candidates
     }
 
 def main():
@@ -87,7 +100,7 @@ def main():
             print("   ✨ 直近の対象はありません。")
 
         rolling = targets["rolling_audit_candidates"]
-        print(f"\n3. 既存データのローリング巡回監査・修正対象 [{len(rolling)} 件]:")
+        print(f"\n3. 既存データのローリング巡回監査・情報更新対象 [{len(rolling)} 件]:")
         if rolling:
             for i, item in enumerate(rolling, 1):
                 u_beer = item.get('untappd_beer_name') or '---'
@@ -96,6 +109,14 @@ def main():
                 print(f"   [{i}] ({item['shop']}) {item['name']}\n       -> 現状: [{u_brewery}] {u_beer} (最終取得: {fetched})\n       -> URL: {item.get('untappd_url')}")
         else:
             print("   ✨ 監査対象はありません。")
+
+        unlinked = targets["unlinked_candidates"]
+        print(f"\n4. Untappd未紐付け在庫ビール (調査・登録確認対象) [{len(unlinked)} 件]:")
+        if unlinked:
+            for i, item in enumerate(unlinked, 1):
+                print(f"   [{i}] ({item['shop']}) {item['name']}\n       -> URL: {item.get('url')}")
+        else:
+            print("   ✨ 未紐付けビールはありません。")
         print("=" * 70)
 
 if __name__ == '__main__':
