@@ -342,9 +342,38 @@ def validate_brewery_match(result_element: Union[Tag, Dict[str, Any]], expected_
             if not part:
                 continue
             part_norm: str = normalize_for_comparison(part)
+            part_clean: str = normalize_for_comparison(clean_brewery_name(part))
             if part_norm and (part_norm in rb_norm or rb_norm in part_norm):
                 logger.info(f"  [Validation] Brewery MATCH (Collab): '{result_brewery}' matches part '{part}'")
                 return True
+            if part_clean and (part_clean in cr_norm or cr_norm in part_clean):
+                logger.info(f"  [Validation] Brewery MATCH (Collab Clean): '{result_brewery}' matches part '{part}'")
+                return True
+
+    # 4. Known Japanese - English Brewery Alias Check
+    jp_en_brewery_pairs = [
+        ('isekad', '伊勢角屋'),
+        ('isekad', '伊勢角'),
+        ('uchu', 'うちゅう'),
+        ('daisen', '大山'),
+        ('kumezakura', '久米桜'),
+        ('shigakogen', '志賀高原'),
+        ('tamamura', '玉村'),
+        ('minoh', '箕面'),
+        ('kyoto', '京都'),
+        ('fujizakura', '富士桜'),
+        ('yohobrewing', 'ヤッホー'),
+        ('baird', 'ベアード'),
+        ('coedo', 'コエド'),
+        ('totopia', 'トートピア'),
+        ('westcoast', 'ウエストコースト'),
+        ('blacktide', 'ブラックタイド'),
+        ('beeasy', 'ビーイージー'),
+    ]
+    for en_key, jp_key in jp_en_brewery_pairs:
+        if (en_key in rb_norm and jp_key in expected_brewery) or (en_key in eb_norm and jp_key in result_brewery):
+            logger.info(f"  [Validation] Brewery MATCH (Known JP-EN Alias): '{result_brewery}' matches '{expected_brewery}'")
+            return True
 
     logger.info(f"  [Validation] Brewery FAIL: '{result_brewery}' != '{expected_brewery}'")
     return False
@@ -404,8 +433,14 @@ def validate_final_match(
     # 1. Check Brewery Match with Expected Brewery or Original Title
     if expected_brewery:
         if not validate_brewery_match({"brewery_name": untappd_brewery_name}, expected_brewery):
-            logger.warning(f"  [Final Validation] BLOCKED: Untappd brewery '{untappd_brewery_name}' fails validation against expected '{expected_brewery}' (Product: '{original_title}')")
-            return False
+            # Check if Untappd brewery name (or clean name) appears in the original shop title
+            orig_lower = original_title.lower()
+            u_clean = clean_brewery_name(untappd_brewery_name).lower()
+            if u_clean and (u_clean in orig_lower or normalize_for_comparison(u_clean) in normalize_for_comparison(original_title)):
+                logger.info(f"  [Final Validation] Brewery MATCH (Clean Untappd in Original Title): '{untappd_brewery_name}' found in '{original_title}'")
+            else:
+                logger.warning(f"  [Final Validation] BLOCKED: Untappd brewery '{untappd_brewery_name}' fails validation against expected '{expected_brewery}' (Product: '{original_title}')")
+                return False
 
     # 2. Check for severe brand clash between original title and Untappd brewery
     orig_norm = normalize_for_comparison(original_title)
@@ -426,14 +461,16 @@ def validate_final_match(
                 return False
 
     # 4. Check Vintage / Year Mismatch (e.g. 2023BY in Untappd beer name when title has no vintage/year)
+    # Ignore open-ended recipe year ranges like "(2024-)", "(2023~)" which represent current active recipes
     u_beer_lower = untappd_beer_name.lower()
     orig_lower = original_title.lower()
-    year_match = re.search(r'\b(20\d{2}(?:by)?)\b', u_beer_lower)
-    if year_match:
-        year_str = year_match.group(1)
-        if year_str not in orig_lower and year_str.replace("by", "") not in orig_lower:
-            logger.warning(f"  [Final Validation] BLOCKED: Untappd beer '{untappd_beer_name}' specifies vintage '{year_str}' but original title '{original_title}' has no vintage.")
-            return False
+    if not re.search(r'\b20\d{2}\s*[\-–—~〜]', u_beer_lower):
+        year_match = re.search(r'\b(20\d{2}(?:by)?)\b', u_beer_lower)
+        if year_match:
+            year_str = year_match.group(1)
+            if year_str not in orig_lower and year_str.replace("by", "") not in orig_lower:
+                logger.warning(f"  [Final Validation] BLOCKED: Untappd beer '{untappd_beer_name}' specifies vintage '{year_str}' but original title '{original_title}' has no vintage.")
+                return False
 
     # 5. Check Real Ale / Cask / Nitro Conditioning Mismatch
     if any(ra in u_beer_lower for ra in ["real ale", "real soun", "cask"]):

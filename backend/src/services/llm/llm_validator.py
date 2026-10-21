@@ -118,7 +118,7 @@ class LLMValidator:
             return None, 0.0, "No Gemini API client (fallback to rule-based)"
 
         prompt = f"""You are an expert craft beer validator.
-Determine if the scraped online shop product title and the Untappd search result refer to the SAME craft beer product.
+Determine if the scraped online shop product title and the Untappd search result refer to the SAME craft beer (or cider/perry/mead) product.
 
 Input Data:
 - Original Shop Product Title: "{original_title}"
@@ -127,11 +127,18 @@ Input Data:
 - Untappd Style: "{untappd_style or 'N/A'}"
 
 Validation Rules:
-1. BREWERY CHECK: Does the brewery in the original title match the Untappd brewery? (Japanese/English variants like 'うちゅうブルーイング' and 'Uchu Brewing' match, but DIFFERENT breweries like 'Uchu Brewing' and 'West Coast Brewing' MUST BE MARKED is_match = false).
-2. BEER NAME CHECK: Does the beer name match (ignoring volume like 350ml, 473ml, can/bottle)?
-3. PRODUCT TYPE CHECK: Are both craft beer products (not cider, cocktail, or glassware)?
+1. BREWERY CHECK: Does the brewery in the original title match the Untappd brewery?
+   - Japanese/English variants match (e.g. '伊勢角屋麦酒' and 'ISEKADO', 'うちゅうブルーイング' and 'Uchu Brewing').
+   - For COLLABORATIONS (e.g. 'Brewery A x Brewery B' or 'Collab with B'), if Untappd lists either Brewery A or Brewery B, IT IS A MATCH.
+   - Distinct, unrelated breweries (e.g. 'Uchu Brewing' vs 'West Coast Brewing') MUST be marked is_match = false.
+2. BEER NAME CHECK: Does the beer name match core identity?
+   - Ignore volume (350ml, 473ml, 16oz), packaging (can, bottle, 缶), shop notes/shipping dates (【10/22出荷】, [予約], etc.).
+   - Minor subtitles, series variants, year markers (e.g. '(2024-)', '(2021)'), or edition numbers (e.g. 'Art & Blood 2' vs 'Art & Blood', 'Daily Forecast' vs 'Daily Forecast: Mimosa') are ACCEPTABLE MATCHES if they are essentially the same beer or release.
+3. PRODUCT TYPE CHECK:
+   - Beer, Cider, Perry, and Mead products sold in craft beer bottle shops ARE VALID.
+   - Glassware, apparel/t-shirts, magazines/books, or non-beverage merchandise MUST BE MARKED is_match = false.
 
-Evaluate strictly and return JSON with is_match, confidence, and reason.
+Evaluate carefully and return JSON with is_match, confidence, and reason.
 """
 
         try:
