@@ -146,17 +146,21 @@ class PromptBuilder:
             return res
 
         curr_type = res.get("product_type", "beer")
-        if curr_type == "other":
-            # If valid brewery or beer name was extracted, or title doesn't match non-beverage
+        if curr_type in ("other", "cider", "mead"):
+            # Craft beverages like Hop Soda, Cider, Mead, Hard Seltzer should be treated as 'beer' for Untappd enrichment
+            beverage_keywords = ["soda", "ソーダ", "mead", "ミード", "cider", "サイダー", "シードル", "seltzer", "セルツァー", "hop water", "ホップウォーター"]
+            is_craft_beverage = any(kw in original_title.lower() for kw in beverage_keywords)
+
+            # If valid brewery or beer name was extracted, or title indicates a craft beverage
             b_en = res.get("brewery_name_en") or ""
             b_jp = res.get("brewery_name_jp") or ""
             beer_en = res.get("beer_name_en") or ""
             beer_jp = res.get("beer_name_jp") or ""
 
             # Check if any valid name exists or title looks like a beer/beverage
-            if (b_en and b_en.lower() != "none") or (b_jp and b_jp.lower() != "none") or (beer_en and beer_en.lower() != "none") or (beer_jp and beer_jp.lower() != "none"):
+            if is_craft_beverage or (b_en and b_en.lower() != "none") or (b_jp and b_jp.lower() != "none") or (beer_en and beer_en.lower() != "none") or (beer_jp and beer_jp.lower() != "none"):
                 corrected_type = "set" if res.get("is_set") else "beer"
-                logger.info(f"  🔧 Correcting product_type from 'other' to '{corrected_type}' for beverage item: '{original_title}'")
+                logger.info(f"  🔧 Correcting product_type from '{curr_type}' to '{corrected_type}' for beverage item: '{original_title}'")
                 res["product_type"] = corrected_type
 
         return res
