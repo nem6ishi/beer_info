@@ -159,6 +159,7 @@ export default function GroupedBeerTable({ groups, loading, error, isDebug, stoc
                                 rating={group.rating}
                                 ratingCount={group.rating_count}
                                 untappdUrl={group.untappd_url}
+                                untappdEnrichedAt={group.untappd_updated_at}
                                 shopContent={shopContent}
                                 isDebug={isDebug}
                                 firstSeen={group.newest_seen}

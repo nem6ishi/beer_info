@@ -106,6 +106,7 @@ export default function BeerTable({ beers, loading, error, isDebug }: BeerTableP
                                 rating={beer.untappd_rating}
                                 ratingCount={beer.untappd_rating_count}
                                 untappdUrl={beer.untappd_url}
+                                untappdEnrichedAt={beer.untappd_enriched_at}
                                 shopContent={shopContent}
                                 isDebug={isDebug}
                                 firstSeen={beer.first_seen}

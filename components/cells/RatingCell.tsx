@@ -6,14 +6,30 @@ interface RatingCellProps {
     url: string | null;
     productType: string | null;
     breweryName?: string | null;
+    enrichedAt?: string | null;
 }
 
-export default function RatingCell({ rating, count, url, productType }: RatingCellProps) {
+function formatEnrichedDate(isoString?: string | null): string | null {
+    if (!isoString) return null;
+    try {
+        const date = new Date(isoString.replace(' ', 'T'));
+        if (isNaN(date.getTime())) return null;
+        const y = date.getFullYear();
+        const m = (date.getMonth() + 1).toString().padStart(2, '0');
+        const d = date.getDate().toString().padStart(2, '0');
+        return `${y}/${m}/${d}時点`;
+    } catch {
+        return null;
+    }
+}
+
+export default function RatingCell({ rating, count, url, productType, enrichedAt }: RatingCellProps) {
     const displayRating = rating
         ? (typeof rating === 'number' ? rating.toFixed(2) : Number(rating).toFixed(2))
         : 'N/A';
 
     const validUrl = url && !url.includes('/search?q=') ? url : null;
+    const enrichedDateText = formatEnrichedDate(enrichedAt);
 
     return (
         <div className="rating-box">
@@ -31,9 +47,15 @@ export default function RatingCell({ rating, count, url, productType }: RatingCe
                         <span className="untappd-badge">{displayRating}</span>
                     </div>
                 ) : (
-                    <div className="untappd-badge-container" title="Untappd未登録のアイテムです">
+                    <div 
+                        className="untappd-badge-container" 
+                        title={enrichedDateText ? `Untappd未登録のアイテムです (${enrichedDateText})` : "Untappd未登録のアイテムです"}
+                    >
                         <span className="untappd-header">UNTAPPD</span>
                         <span className="untappd-badge unlisted">未登録</span>
+                        {enrichedDateText && (
+                            <span className="unlisted-date">{enrichedDateText}</span>
+                        )}
                     </div>
                 )
             )}

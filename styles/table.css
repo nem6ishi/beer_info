@@ -265,6 +265,15 @@
     border-radius: 4px;
 }
 
+.unlisted-date {
+    font-size: 9px;
+    color: #888;
+    margin-top: 3px;
+    line-height: 1.2;
+    white-space: nowrap;
+    font-feature-settings: "tnum";
+}
+
 .untappd-header {
     font-size: 10px;
     font-weight: 700;

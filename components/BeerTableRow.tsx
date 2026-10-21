@@ -29,6 +29,7 @@ export interface BeerTableRowProps {
     rating: number | null;
     ratingCount: number | null;
     untappdUrl: string | null;
+    untappdEnrichedAt?: string | null;
 
     // Shop availability content (varies between list and grouped)
     shopContent: ReactNode;
@@ -64,6 +65,7 @@ function BeerTableRowComponent({
     rating,
     ratingCount,
     untappdUrl,
+    untappdEnrichedAt,
     shopContent,
     isDebug,
     firstSeen,
@@ -133,6 +135,7 @@ function BeerTableRowComponent({
                         url={untappdUrl}
                         productType={productType}
                         breweryName={breweryName}
+                        enrichedAt={untappdEnrichedAt}
                     />
                 )}
             </td>
