@@ -8,18 +8,8 @@ from backend.src.commands.enrich_untappd import map_details_to_payload
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# 1. 非ビール（RTD / ノンアルコール等）の誤分類是正
+# 1. 非ビール（グッズ等）の誤分類是正
 NON_BEER_UPDATES = [
-    {
-        "url": "https://beer-chouseiya.shop/shopdetail/000000001796",
-        "name": "【HOP GLOW SODA/伊勢角屋麦酒】",
-        "notes": "若潮酒造コラボ芋焼酎ソーダ (RTD/Shochu Soda)"
-    },
-    {
-        "url": "https://maruho.shop/products/hop-glow-soda-collab-w-若潮酒造-350ml-伊勢角麦酒",
-        "name": "Hop Glow Soda (collab w/若潮酒造） 350ml/伊勢角麦酒",
-        "notes": "若潮酒造コラボ芋焼酎ソーダ (RTD/Shochu Soda)"
-    },
     {
         "url": "https://www.antenna-america.com/products/n136-c12001",
         "name": "Kure's Craft Beverage Kure's Ginger Beer (355ml) / キュリーズ ジンジャービア【8/27出荷】",
@@ -27,8 +17,16 @@ NON_BEER_UPDATES = [
     }
 ]
 
-# 2. GAME BREW ロマンシング佐賀コラボ（Untappd未登録確認済み）のステータス更新
+# 2. クラフト飲料・Untappd未登録確認済みアイテムのステータス更新
 UNREGISTERED_BEERS = [
+    {
+        "url": "https://beer-chouseiya.shop/shopdetail/000000001796",
+        "notes": "若潮酒造コラボ芋焼酎ホップソーダ（クラフト飲料のためproduct_type='beer'として登録）"
+    },
+    {
+        "url": "https://maruho.shop/products/hop-glow-soda-collab-w-若潮酒造-350ml-伊勢角麦酒",
+        "notes": "若潮酒造コラボ芋焼酎ホップソーダ（クラフト飲料のためproduct_type='beer'として登録）"
+    },
     {
         "url": "https://witchcraftmarket.com/products/maelstrom-hazy-ipa",
         "notes": "Untappd未登録確認済み (GAME BREW 魔海侯フォルネウス MAELSTROM HAZY IPA)"

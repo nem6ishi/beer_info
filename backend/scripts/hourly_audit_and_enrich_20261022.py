@@ -508,25 +508,13 @@ NEW_ENRICH_ITEMS = [
     }
 ]
 
-# 2. 非ビール商品（グッズ・RTD等：product_type='other'へ更新）
+# 2. 非ビール商品（グッズ等：product_type='other'へ更新）
 NON_BEER_ITEMS = [
     {
         "url": "https://maruho.shop/products/カミナリ-garrulo",
         "name": "カミナリ/Garrulo (マルホ酒店)",
         "product_type": "other",
         "notes": "刺繍ブランドGARRULOのワッペン/ステッカー（非ビール・グッズ）"
-    },
-    {
-        "url": "https://maruho.shop/products/hop-glow-soda-collab-w-若潮酒造-350ml-伊勢角麦酒",
-        "name": "Hop Glow Soda (collab w/若潮酒造） 350ml/伊勢角麦酒 (マルホ酒店)",
-        "product_type": "other",
-        "notes": "若潮酒造芋焼酎のホップ炭酸水割り・麦芽ゼロ（焼酎ソーダ/RTD）"
-    },
-    {
-        "url": "https://beer-chouseiya.shop/shopdetail/000000001796",
-        "name": "【HOP GLOW SODA/伊勢角屋麦酒】 (ちょうせいや)",
-        "product_type": "other",
-        "notes": "若潮酒造芋焼酎のホップ炭酸水割り・麦芽ゼロ（焼酎ソーダ/RTD）"
     }
 ]
 
@@ -564,6 +552,16 @@ AUDITED_UNREGISTERED_BEERS = [
         "url": "https://witchcraftmarket.com/products/maelstrom-hazy-ipa",
         "name": "[GAME BREW] 魔海侯フォルネウス MAELSTROM HAZY IPA (WITCH CRAFT MARKET)",
         "notes": "GAME BREW（佐賀）とロマ佐賀コラボ四魔貴族シリーズ新作。Untappdブルワリーページを精査し未登録を確認"
+    },
+    {
+        "url": "https://beer-chouseiya.shop/shopdetail/000000001796",
+        "name": "【HOP GLOW SODA/伊勢角屋麦酒】 (ちょうせいや)",
+        "notes": "若潮酒造コラボ芋焼酎ホップソーダ。クラフト飲料のためproduct_type='beer'として登録、Untappd未登録確認済み"
+    },
+    {
+        "url": "https://maruho.shop/products/hop-glow-soda-collab-w-若潮酒造-350ml-伊勢角麦酒",
+        "name": "Hop Glow Soda (collab w/若潮酒造） 350ml/伊勢角麦酒 (マルホ酒店)",
+        "notes": "若潮酒造コラボ芋焼酎ホップソーダ。クラフト飲料のためproduct_type='beer'として登録、Untappd未登録確認済み"
     }
 ]
 
@@ -685,6 +683,7 @@ async def main():
         }).eq("url", p_url).execute()
 
         sb.table("gemini_data").update({
+            "product_type": "beer",
             "updated_at": now_iso
         }).eq("url", p_url).execute()
 
