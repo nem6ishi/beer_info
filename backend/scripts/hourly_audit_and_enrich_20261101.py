@@ -9,213 +9,217 @@ from backend.src.commands.enrich_untappd import map_details_to_payload
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def safe_execute(query, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            return query.execute()
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise
-            logger.warning(f"Database query retry {attempt + 1}/{max_retries} due to {e}")
-            time.sleep(2)
-
-# 1. 新規エンリッチ商品（未エンリッチ20件 + 未紐付けから特定1件 = 計21件）
+# 1. 新規エンリッチ商品（未エンリッチ20件 + 未紐付け特定5件 = 計25件）
 NEW_ENRICH_ITEMS = [
-    # --- 未エンリッチ商品 (最優先) ---
+    # --- 未エンリッチ商品 (最優先 20件) ---
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=8260",
-        "untappd_url": "https://untappd.com/b/hinterland-brewery-packerland-pilsner/501979",
+        "url": "https://beer-chouseiya.shop/shopdetail/000000002205",
+        "untappd_url": "https://untappd.com/b/west-coast-brewing-fruitstories-2-the-citrus-games/7643827",
         "gemini_update": {
-            "brewery_name_en": "Hinterland Brewery",
-            "brewery_name_jp": "ヒンターランド",
-            "beer_name_en": "Packerland Pilsner",
-            "beer_name_jp": "パッカーランド・ピルスナー",
-            "beer_name_core": "Packerland Pilsner",
+            "brewery_name_en": "West Coast Brewing",
+            "brewery_name_jp": "ウエストコーストブルーイング",
+            "beer_name_en": "#fruitstories 2 - The Citrus Games -",
+            "beer_name_jp": "#fruitstories 2",
+            "beer_name_core": "The Citrus Games",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/hinterland-brewery-packerland-pilsner/501979"
+            "untappd_url": "https://untappd.com/b/west-coast-brewing-fruitstories-2-the-citrus-games/7643827"
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=8259",
-        "untappd_url": "https://untappd.com/b/hinterland-brewery-football-is-better-with-cheese-and-sausage/6552719",
+        "url": "https://beer-chouseiya.shop/shopdetail/000000002208",
+        "untappd_url": "https://untappd.com/b/black-tide-brewing-fruitstories-2-the-citrus-games/7650675",
         "gemini_update": {
-            "brewery_name_en": "Hinterland x Hop Butcher",
-            "brewery_name_jp": "ヒンターランド x ホップブッチャー",
-            "beer_name_en": "Football Is Better With Sausage and Cheese",
-            "beer_name_jp": "フットボール・イズ・ベター・ウィズ・ソーセージ・アンド・チーズ",
-            "beer_name_core": "Football Is Better With Sausage and Cheese",
+            "brewery_name_en": "Black Tide Brewing",
+            "brewery_name_jp": "ブラックタイドブルーイング",
+            "beer_name_en": "#FRUITSTORIES 2 = the Citrus Games =",
+            "beer_name_jp": "#fruitstories 2",
+            "beer_name_core": "fruitstories 2",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/hinterland-brewery-football-is-better-with-cheese-and-sausage/6552719"
+            "untappd_url": "https://untappd.com/b/black-tide-brewing-fruitstories-2-the-citrus-games/7650675"
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=5996",
-        "untappd_url": "https://untappd.com/b/hinterland-brewery-blueberry-wheat/4542419",
+        "url": "https://beervolta.com/?pid=194229883",
+        "untappd_url": "https://untappd.com/b/rikri-brewing-big-hoppa/6609159",
         "gemini_update": {
-            "brewery_name_en": "Hinterland Brewery",
-            "brewery_name_jp": "ヒンターランド",
-            "beer_name_en": "Blueberry Wheat",
-            "beer_name_jp": "ブルーベリーウィート",
-            "beer_name_core": "Blueberry Wheat",
+            "brewery_name_en": "RIKRI BREWING",
+            "brewery_name_jp": "リクリブルーイング",
+            "beer_name_en": "Big Hoppa",
+            "beer_name_jp": "Big Hoppa",
+            "beer_name_core": "Big Hoppa",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/hinterland-brewery-blueberry-wheat/4542419"
+            "untappd_url": "https://untappd.com/b/rikri-brewing-big-hoppa/6609159"
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=8264",
-        "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-hat-dance/3640739",
+        "url": "https://151l.shop/?pid=194236852",
+        "untappd_url": "https://untappd.com/b/uchu-brewing-orochi/7646855",
         "gemini_update": {
-            "brewery_name_en": "Heavy Riff Brewing Company",
-            "brewery_name_jp": "ヘヴィーリフ",
-            "beer_name_en": "Hat Dance",
-            "beer_name_jp": "ハットダンス",
-            "beer_name_core": "Hat Dance",
+            "brewery_name_en": "UCHU Brewing × Brujos Brewing",
+            "brewery_name_jp": "うちゅうブルーイング × ブルホスブルーイング",
+            "beer_name_en": "Orochi",
+            "beer_name_jp": "おろち",
+            "beer_name_core": "Orochi",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-hat-dance/3640739"
+            "untappd_url": "https://untappd.com/b/uchu-brewing-orochi/7646855"
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=8263",
-        "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-daisy-glaze/2459386",
+        "url": "https://151l.shop/?pid=194236894",
+        "untappd_url": "https://untappd.com/b/uchu-brewing-ghost-in-the-nebula/7648425",
         "gemini_update": {
-            "brewery_name_en": "Heavy Riff Brewing Company",
-            "brewery_name_jp": "ヘヴィーリフ",
-            "beer_name_en": "Daisy Glaze",
-            "beer_name_jp": "デイジーグレイズ",
-            "beer_name_core": "Daisy Glaze",
+            "brewery_name_en": "UCHU Brewing x Messorem",
+            "brewery_name_jp": "うちゅうブルーイング×メッソーレム",
+            "beer_name_en": "GHOST IN THE NEBULA",
+            "beer_name_jp": "ゴーストインザネビュラ",
+            "beer_name_core": "GHOST IN THE NEBULA",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-daisy-glaze/2459386"
+            "untappd_url": "https://untappd.com/b/uchu-brewing-ghost-in-the-nebula/7648425"
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=8262",
-        "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-n-i-b/5487271",
+        "url": "https://beervolta.com/?pid=194229837",
+        "untappd_url": "https://untappd.com/b/uchu-brewing-orochi/7646855",
         "gemini_update": {
-            "brewery_name_en": "Heavy Riff Brewing Company",
-            "brewery_name_jp": "ヘヴィーリフ",
-            "beer_name_en": "N.I.B.",
-            "beer_name_jp": "N.I.B.",
-            "beer_name_core": "N.I.B.",
+            "brewery_name_en": "UCHU x Brujos",
+            "brewery_name_jp": "うちゅう x ブルホス",
+            "beer_name_en": "OROCHI",
+            "beer_name_jp": "おろち",
+            "beer_name_core": "OROCHI",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-n-i-b/5487271"
+            "untappd_url": "https://untappd.com/b/uchu-brewing-orochi/7646855"
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=8261",
-        "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-raglan-irish-red/608392",
+        "url": "https://beervolta.com/?pid=194229836",
+        "untappd_url": "https://untappd.com/b/uchu-brewing-vibe-uchu-vibe-abv-0-5ver/7648445",
         "gemini_update": {
-            "brewery_name_en": "Heavy Riff Brewing Company",
-            "brewery_name_jp": "ヘヴィーリフ",
-            "beer_name_en": "Raglan",
-            "beer_name_jp": "ラグラン",
-            "beer_name_core": "Raglan",
+            "brewery_name_en": "Uchu Brewing",
+            "brewery_name_jp": "うちゅうブルーイング",
+            "beer_name_en": "宇宙VIBE ABV 0.5ver",
+            "beer_name_jp": "宇宙VIBE ABV 0.5ver",
+            "beer_name_core": "宇宙VIBE",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-raglan-irish-red/608392"
+            "untappd_url": "https://untappd.com/b/uchu-brewing-vibe-uchu-vibe-abv-0-5ver/7648445"
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=4527",
-        "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-velvet-underbrown/358026",
+        "url": "https://beervolta.com/?pid=194229817",
+        "untappd_url": "https://untappd.com/b/black-tide-brewing-mallow-attack/7640057",
         "gemini_update": {
-            "brewery_name_en": "Heavy Riff Brewing Company",
-            "brewery_name_jp": "ヘヴィーリフ",
-            "beer_name_en": "Velvet Underbrown",
-            "beer_name_jp": "ヴェルヴェット・アンダーブラウン",
-            "beer_name_core": "Velvet Underbrown",
+            "brewery_name_en": "Black Tide Brewing",
+            "brewery_name_jp": "ブラックタイドブルーイング",
+            "beer_name_en": "#522 Mallow Attack",
+            "beer_name_jp": "#522 Mallow Attack",
+            "beer_name_core": "Mallow Attack",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-velvet-underbrown/358026"
+            "untappd_url": "https://untappd.com/b/black-tide-brewing-mallow-attack/7640057"
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=4524",
-        "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-disco-apocalypse/3522337",
+        "url": "https://beervolta.com/?pid=194229816",
+        "untappd_url": "https://untappd.com/b/black-tide-brewing-fruitstories-2-the-citrus-games/7650675",
         "gemini_update": {
-            "brewery_name_en": "Heavy Riff Brewing Company",
-            "brewery_name_jp": "ヘヴィーリフ",
-            "beer_name_en": "Disco Apocalypse",
-            "beer_name_jp": "ディスコ・アポカリプス",
-            "beer_name_core": "Disco Apocalypse",
+            "brewery_name_en": "Black Tide Brewing",
+            "brewery_name_jp": "ブラックタイドブルーイング",
+            "beer_name_en": "#521 #fruitstories2",
+            "beer_name_jp": "#521 #fruitstories2",
+            "beer_name_core": "fruitstories 2",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/heavy-riff-brewing-company-disco-apocalypse/3522337"
+            "untappd_url": "https://untappd.com/b/black-tide-brewing-fruitstories-2-the-citrus-games/7650675"
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=8258",
-        "untappd_url": "https://untappd.com/b/embolden-beer-company-dusk-in-kyoto/6026740",
+        "url": "https://beervolta.com/?pid=194229815",
+        "untappd_url": "https://untappd.com/b/be-easy-brewing-be-easy-dosa-yukkosa/7640062",
         "gemini_update": {
-            "brewery_name_en": "Embolden Beer Co.",
-            "brewery_name_jp": "エンボールデン",
-            "beer_name_en": "Shogun - Dusk in Kyoto",
-            "beer_name_jp": "ショーグン - ダスク・イン・キョウト",
-            "beer_name_core": "Shogun - Dusk in Kyoto",
+            "brewery_name_en": "Be Easy Brewing",
+            "brewery_name_jp": "ビーイージーブルーイング",
+            "beer_name_en": "Dosa?Yukkosa! - West Coast IPA",
+            "beer_name_jp": "どさ！ゆっこさ！",
+            "beer_name_core": "Dosa?Yukkosa!",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/embolden-beer-company-dusk-in-kyoto/6026740"
+            "untappd_url": "https://untappd.com/b/be-easy-brewing-be-easy-dosa-yukkosa/7640062"
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=4311",
-        "untappd_url": "https://untappd.com/b/embolden-beer-company-midnight-in-tokyo/5933123",
+        "url": "https://beervolta.com/?pid=194229814",
+        "untappd_url": "https://untappd.com/b/be-easy-brewing-lilikoi/7616706",
         "gemini_update": {
-            "brewery_name_en": "Embolden Beer Company",
-            "brewery_name_jp": "エンボールデン",
-            "beer_name_en": "Shogun - Midnight in Tokyo",
-            "beer_name_jp": "ショーグン - ミッドナイト・イン・トーキョー",
-            "beer_name_core": "Shogun - Midnight in Tokyo",
+            "brewery_name_en": "Be Easy Brewing",
+            "brewery_name_jp": "ビーイージーブルーイング",
+            "beer_name_en": "Lilikoi",
+            "beer_name_jp": "リリコイ",
+            "beer_name_core": "Lilikoi",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/embolden-beer-company-midnight-in-tokyo/5933123"
+            "untappd_url": "https://untappd.com/b/be-easy-brewing-lilikoi/7616706"
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=2693",
-        "untappd_url": "https://untappd.com/b/inkhorn-brewing-baby-ruptor-2026/7646903",
-        "gemini_update": {
-            "brewery_name_en": "Inkhorn Brewing",
-            "brewery_name_jp": "インクホーン",
-            "beer_name_en": "Baby Raptor 2026",
-            "beer_name_jp": "ベイビーラプター 2026",
-            "beer_name_core": "Baby Raptor 2026",
-            "product_type": "beer",
-            "is_set": False,
-            "untappd_url": "https://untappd.com/b/inkhorn-brewing-baby-ruptor-2026/7646903"
-        }
-    },
-    {
-        "url": "https://www.arome.jp/products/detail.php?product_id=8255",
-        "untappd_url": "https://untappd.com/b/vertere-vanitas/7648720",
-        "gemini_update": {
-            "brewery_name_en": "VERTERE x Kyoto Brewing Co.",
-            "brewery_name_jp": "バテレ x 京都醸造",
-            "beer_name_en": "Vanitas",
-            "beer_name_jp": "ヴァニタス",
-            "beer_name_core": "Vanitas",
-            "product_type": "beer",
-            "is_set": False,
-            "untappd_url": "https://untappd.com/b/vertere-vanitas/7648720"
-        }
-    },
-    {
-        "url": "https://www.arome.jp/products/detail.php?product_id=8254",
+        "url": "https://beervolta.com/?pid=194229812",
         "untappd_url": "https://untappd.com/b/west-coast-brewing-garston-motueka-south/7643829",
         "gemini_update": {
             "brewery_name_en": "West Coast Brewing",
             "brewery_name_jp": "ウエストコーストブルーイング",
             "beer_name_en": "Garston - Motueka South",
-            "beer_name_jp": "ガーストン・モチュエカ・サウス",
+            "beer_name_jp": "ガーストン モトゥエカ サウス",
             "beer_name_core": "Garston - Motueka South",
             "product_type": "beer",
             "is_set": False,
             "untappd_url": "https://untappd.com/b/west-coast-brewing-garston-motueka-south/7643829"
+        }
+    },
+    {
+        "url": "https://beervolta.com/?pid=194229811",
+        "untappd_url": "https://untappd.com/b/west-coast-brewing-garston-nelson-south/7643828",
+        "gemini_update": {
+            "brewery_name_en": "West Coast Brewing",
+            "brewery_name_jp": "ウエストコーストブルーイング",
+            "beer_name_en": "Garston - Nelson South",
+            "beer_name_jp": "ガーストン ネルソン サウス",
+            "beer_name_core": "Garston - Nelson South",
+            "product_type": "beer",
+            "is_set": False,
+            "untappd_url": "https://untappd.com/b/west-coast-brewing-garston-nelson-south/7643828"
+        }
+    },
+    {
+        "url": "https://beervolta.com/?pid=194229810",
+        "untappd_url": "https://untappd.com/b/west-coast-brewing-fruitstories-2-the-citrus-games/7643827",
+        "gemini_update": {
+            "brewery_name_en": "West Coast Brewing",
+            "brewery_name_jp": "ウエストコーストブルーイング",
+            "beer_name_en": "#fruitstories 2 - The Citrus Games -",
+            "beer_name_jp": "ザ・シトラスゲームズ",
+            "beer_name_core": "The Citrus Games",
+            "product_type": "beer",
+            "is_set": False,
+            "untappd_url": "https://untappd.com/b/west-coast-brewing-fruitstories-2-the-citrus-games/7643827"
+        }
+    },
+    {
+        "url": "https://beervolta.com/?pid=194188458",
+        "untappd_url": "https://untappd.com/b/uchu-brewing-relax-uchu-relax-2025/5974657",
+        "gemini_update": {
+            "brewery_name_en": "Uchu Brewing",
+            "brewery_name_jp": "うちゅうブルーイング",
+            "beer_name_en": "宇宙Relax (UCHU Relax)",
+            "beer_name_jp": "宇宙Relax",
+            "beer_name_core": "UCHU Relax",
+            "product_type": "beer",
+            "is_set": False,
+            "untappd_url": "https://untappd.com/b/uchu-brewing-relax-uchu-relax-2025/5974657"
         }
     },
     {
@@ -233,28 +237,14 @@ NEW_ENRICH_ITEMS = [
         }
     },
     {
-        "url": "https://www.arome.jp/products/detail.php?product_id=8252",
-        "untappd_url": "https://untappd.com/b/west-coast-brewing-fruitstories-2-the-citrus-games/7643827",
-        "gemini_update": {
-            "brewery_name_en": "West Coast x Be Easy x Black Tide",
-            "brewery_name_jp": "ウエストコースト x ビーイージー x ブラックタイド",
-            "beer_name_en": "fruitstories 2 - The Citrus Games -",
-            "beer_name_jp": "フルーツストーリーズ 2 - ザ・シトラスゲームズ -",
-            "beer_name_core": "fruitstories 2 - The Citrus Games -",
-            "product_type": "beer",
-            "is_set": False,
-            "untappd_url": "https://untappd.com/b/west-coast-brewing-fruitstories-2-the-citrus-games/7643827"
-        }
-    },
-    {
         "url": "https://www.arome.jp/products/detail.php?product_id=8223",
         "untappd_url": "https://untappd.com/b/black-tide-brewing-fruitstories-2-the-citrus-games/7650675",
         "gemini_update": {
-            "brewery_name_en": "Black Tide x Be Easy x West Coast",
-            "brewery_name_jp": "ブラックタイド x ビーイージー x ウエストコースト",
-            "beer_name_en": "#fruitstories 2",
+            "brewery_name_en": "Black Tide Brewing",
+            "brewery_name_jp": "ブラックタイドブルーイング",
+            "beer_name_en": "#FRUITSTORIES 2 = the Citrus Games =",
             "beer_name_jp": "フルーツストーリーズ2",
-            "beer_name_core": "#fruitstories 2",
+            "beer_name_core": "fruitstories 2",
             "product_type": "beer",
             "is_set": False,
             "untappd_url": "https://untappd.com/b/black-tide-brewing-fruitstories-2-the-citrus-games/7650675"
@@ -302,45 +292,104 @@ NEW_ENRICH_ITEMS = [
             "untappd_url": "https://untappd.com/b/finback-brewery-looks-good/6964936"
         }
     },
-    # --- 未紐付け在庫から特定したアイテム ---
+    # --- 未紐付け在庫ビール特定アイテム (5件) ---
     {
-        "url": "https://151l.shop/?pid=194188474",
-        "untappd_url": "https://untappd.com/b/kcbc-kings-county-brewers-collective-school-of-croc/5495176",
+        "url": "https://maruho.shop/products/paper-maker-473ml-grains-of-wrath",
+        "untappd_url": "https://untappd.com/b/grains-of-wrath-papermaker-pale/2527807",
         "gemini_update": {
-            "brewery_name_en": "Kings County Brewers Collective",
-            "brewery_name_jp": "キングスカウンティ ブルワーズ コレクティブ",
-            "beer_name_en": "School of Croc",
-            "beer_name_jp": "スクールオブクロック",
-            "beer_name_core": "School of Croc",
+            "brewery_name_en": "Grains Of Wrath",
+            "brewery_name_jp": "グレインズ オブ ラス",
+            "beer_name_en": "Papermaker Pale",
+            "beer_name_jp": "ペーパーメーカー",
+            "beer_name_core": "Papermaker",
             "product_type": "beer",
             "is_set": False,
-            "untappd_url": "https://untappd.com/b/kcbc-kings-county-brewers-collective-school-of-croc/5495176"
+            "untappd_url": "https://untappd.com/b/grains-of-wrath-papermaker-pale/2527807"
+        }
+    },
+    {
+        "url": "https://www.arome.jp/products/detail.php?product_id=8250",
+        "untappd_url": "https://untappd.com/b/nobody-brewing-rooftop-concert/7648628",
+        "gemini_update": {
+            "brewery_name_en": "Nobody Brewing",
+            "brewery_name_jp": "ノーバディー・ブルーイング",
+            "beer_name_en": "Rooftop Concert",
+            "beer_name_jp": "ルーフトップ・コンサート",
+            "beer_name_core": "Rooftop Concert",
+            "product_type": "beer",
+            "is_set": False,
+            "untappd_url": "https://untappd.com/b/nobody-brewing-rooftop-concert/7648628"
+        }
+    },
+    {
+        "url": "https://www.arome.jp/products/detail.php?product_id=8246",
+        "untappd_url": "https://untappd.com/b/blind-enthusiasm-brewing-biere-des-charentes/5400675",
+        "gemini_update": {
+            "brewery_name_en": "Blind Enthusiasm Brewing",
+            "brewery_name_jp": "ブラインドエンスージアズム",
+            "beer_name_en": "Bière des Charentes",
+            "beer_name_jp": "ビエール・デ・シャラント",
+            "beer_name_core": "Bière des Charentes",
+            "product_type": "beer",
+            "is_set": False,
+            "untappd_url": "https://untappd.com/b/blind-enthusiasm-brewing-biere-des-charentes/5400675"
+        }
+    },
+    {
+        "url": "https://www.arome.jp/products/detail.php?product_id=8243",
+        "untappd_url": "https://untappd.com/b/blind-enthusiasm-brewing-spontaneous-manifesto-2023/5979509",
+        "gemini_update": {
+            "brewery_name_en": "Blind Enthusiasm Brewing",
+            "brewery_name_jp": "ブラインドエンスージアズム",
+            "beer_name_en": "Spontaneous Manifesto 2023",
+            "beer_name_jp": "スポンテニアス・マニフェスト 2023",
+            "beer_name_core": "Spontaneous Manifesto",
+            "product_type": "beer",
+            "is_set": False,
+            "untappd_url": "https://untappd.com/b/blind-enthusiasm-brewing-spontaneous-manifesto-2023/5979509"
+        }
+    },
+    {
+        "url": "https://www.arome.jp/products/detail.php?product_id=8244",
+        "untappd_url": "https://untappd.com/b/blind-enthusiasm-brewing-fruitful-pursuits-cherry-2024/6775118",
+        "gemini_update": {
+            "brewery_name_en": "Blind Enthusiasm Brewing",
+            "brewery_name_jp": "ブラインドエンスージアズム",
+            "beer_name_en": "Fruitful Pursuits: Cherry 2024",
+            "beer_name_jp": "フルーツフル・パースーツ・チェリー 2024",
+            "beer_name_core": "Fruitful Pursuits: Cherry",
+            "product_type": "beer",
+            "is_set": False,
+            "untappd_url": "https://untappd.com/b/blind-enthusiasm-brewing-fruitful-pursuits-cherry-2024/6775118"
         }
     }
 ]
 
-# 2. 未登録確認済み・調査タイムスタンプ更新対象 (Untappd未登録のビール)
-UNREGISTERED_INSPECTED_URLS = [
-    "https://maruho.shop/products/アオイト-750ml-甘く浮く",              # 甘く浮く / アオイト
-    "https://151l.shop/?pid=192919839",                                 # ISEKADOYA / KADOLABO 039
-    "https://www.arome.jp/products/detail.php?product_id=8208",          # VERTERE / Cotinus #1
-    "https://151l.shop/?pid=193631430",                                 # FARMENTRY / OCHA! YAMATO
+# 2. 未登録確認済みアイテム（今回はなし）
+UNREGISTERED_INSPECTED_URLS = []
+
+# 3. ローリング巡回・Untappd データの最新化対象（3件のユニークURL）
+BEER_REFRESH_URLS = [
+    "https://untappd.com/b/moonraker-brewing-company-the-holy-hermit/1877806",
+    "https://untappd.com/b/kyoto-brewing-company-birds-of-fire/6905598",
+    "https://untappd.com/b/nobody-brewing-the-house/6681715"
 ]
 
-# 3. ローリング巡回・Untappd データの最新化対象 (5件)
-BEER_REFRESH_URLS = [
-    "https://untappd.com/b/vertere-achillea/6709616",
-    "https://untappd.com/b/embolden-beer-company-litehouse/4968769",
-    "https://untappd.com/b/embolden-beer-company-broken-record/4947284",
-    "https://untappd.com/b/mangosteen-brewing-lab-yaki-imo-ale/6648564",
-    "https://untappd.com/b/uchu-brewing-relax-uchu-relax-2025/5974657",
-]
+def run_db_op(op_func, max_retries=3, delay=1.0):
+    for attempt in range(max_retries):
+        try:
+            return op_func()
+        except Exception as e:
+            logger.warning(f"DB operation failed (attempt {attempt+1}/{max_retries}): {e}")
+            if attempt == max_retries - 1:
+                raise e
+            time.sleep(delay * (attempt + 1))
 
 async def main():
     sb = get_supabase_client()
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    # 1. 新規エンリッチ & 修正
+    # 1. 新規エンリッチ & 修正 (25件)
     logger.info(f"\n[1] Enriching {len(NEW_ENRICH_ITEMS)} target beers...")
     for item in NEW_ENRICH_ITEMS:
         url = item["url"]
@@ -352,13 +401,13 @@ async def main():
         # gemini_data upsert
         gem_update["url"] = url
         gem_update["updated_at"] = now_iso
-        safe_execute(sb.table("gemini_data").upsert(gem_update, on_conflict="url"))
+        run_db_op(lambda: sb.table("gemini_data").upsert(gem_update, on_conflict="url").execute())
 
         # scraped_beers update
-        safe_execute(sb.table("scraped_beers").update({
+        run_db_op(lambda: sb.table("scraped_beers").update({
             "untappd_url": untappd_url,
             "untappd_enriched_at": now_iso
-        }).eq("url", url))
+        }).eq("url", url).execute())
 
         # untappd_data scrape & upsert
         details = await scrape_beer_details(untappd_url)
@@ -366,19 +415,20 @@ async def main():
             payload = map_details_to_payload(details)
             payload["untappd_url"] = untappd_url
             payload["fetched_at"] = now_iso
-            safe_execute(sb.table("untappd_data").upsert(payload, on_conflict="untappd_url"))
+            run_db_op(lambda: sb.table("untappd_data").upsert(payload, on_conflict="untappd_url").execute())
             logger.info(f"  ✅ Enriched & Saved: [{details.get('untappd_brewery_name')}] {details.get('untappd_beer_name')} (Rating: {details.get('untappd_rating')})")
         else:
             logger.warning(f"  ⚠️ Could not scrape Untappd details for {untappd_url}")
         await asyncio.sleep(0.5)
 
-    # 2. 未登録確認済みアイテムの調査タイムスタンプ更新
-    logger.info(f"\n[2] Updating inspected timestamp for {len(UNREGISTERED_INSPECTED_URLS)} untappd-unregistered beers...")
-    for url in UNREGISTERED_INSPECTED_URLS:
-        safe_execute(sb.table("scraped_beers").update({
-            "untappd_enriched_at": now_iso
-        }).eq("url", url))
-        logger.info(f"  ✅ Timestamp updated for: {url}")
+    # 2. 未登録確認済みアイテムの調査タイムスタンプ更新（今回は0件）
+    if UNREGISTERED_INSPECTED_URLS:
+        logger.info(f"\n[2] Updating inspected timestamp for {len(UNREGISTERED_INSPECTED_URLS)} untappd-unregistered beers...")
+        for url in UNREGISTERED_INSPECTED_URLS:
+            run_db_op(lambda: sb.table("scraped_beers").update({
+                "untappd_enriched_at": now_iso
+            }).eq("url", url).execute())
+            logger.info(f"  ✅ Timestamp updated for: {url}")
 
     # 3. ローリング巡回・Untappd データの最新化
     logger.info(f"\n[3] Scraping & updating Untappd details for {len(BEER_REFRESH_URLS)} rolling audit beers...")
@@ -389,7 +439,7 @@ async def main():
             payload = map_details_to_payload(details)
             payload["untappd_url"] = untappd_url
             payload["fetched_at"] = now_iso
-            safe_execute(sb.table("untappd_data").upsert(payload, on_conflict="untappd_url"))
+            run_db_op(lambda: sb.table("untappd_data").upsert(payload, on_conflict="untappd_url").execute())
             logger.info(f"  ✅ Updated: [{details.get('untappd_brewery_name')}] {details.get('untappd_beer_name')} | Rating: {details.get('untappd_rating')} | Checkins: {details.get('untappd_rating_count')}")
         else:
             logger.warning(f"  ❌ Failed to scrape details for {untappd_url}")
@@ -397,7 +447,7 @@ async def main():
 
     # 4. マテリアライズドビューのリフレッシュ
     logger.info("\n[4] Refreshing Materialized View (beer_info_view)...")
-    refresh_materialized_view(sb, logger)
+    run_db_op(lambda: refresh_materialized_view(sb, logger))
     logger.info("✅ Materialized view refreshed successfully!")
 
 if __name__ == "__main__":
