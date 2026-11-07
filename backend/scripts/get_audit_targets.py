@@ -8,54 +8,58 @@ Outputs target candidates for:
 import json
 import argparse
 from datetime import datetime, timezone, timedelta
-from backend.src.core.db import get_supabase_client
+from backend.src.core.db import get_supabase_client, sync_execute
 
 def get_audit_targets(limit_unenriched: int = 20, limit_recent: int = 5, limit_rolling: int = 5):
     sb = get_supabase_client()
     now = datetime.now(timezone.utc)
 
     # 1. Unenriched in-stock items
-    unenriched_res = sb.table('scraped_beers') \
-        .select('url, name, shop, first_seen, stock_status') \
-        .eq('stock_status', 'In Stock') \
-        .is_('untappd_enriched_at', 'null') \
-        .order('first_seen', desc=True) \
-        .limit(limit_unenriched) \
-        .execute()
+    unenriched_res = sync_execute(
+        sb.table('scraped_beers')
+        .select('url, name, shop, first_seen, stock_status')
+        .eq('stock_status', 'In Stock')
+        .is_('untappd_enriched_at', 'null')
+        .order('first_seen', desc=True)
+        .limit(limit_unenriched)
+    )
     unenriched = unenriched_res.data or []
 
     # 2. Recently added/enriched in-stock items (past 48 hours)
     recent_cutoff = (now - timedelta(days=2)).isoformat()
-    recent_res = sb.table('beer_info_view') \
-        .select('url, name, shop, first_seen, untappd_enriched_at, untappd_url, untappd_beer_name, untappd_brewery_name, untappd_rating, product_type') \
-        .eq('stock_status', 'In Stock') \
-        .not_.is_('untappd_url', 'null') \
-        .gte('untappd_enriched_at', recent_cutoff) \
-        .order('untappd_enriched_at', desc=True) \
-        .limit(limit_recent) \
-        .execute()
+    recent_res = sync_execute(
+        sb.table('beer_info_view')
+        .select('url, name, shop, first_seen, untappd_enriched_at, untappd_url, untappd_beer_name, untappd_brewery_name, untappd_rating, product_type')
+        .eq('stock_status', 'In Stock')
+        .not_.is_('untappd_url', 'null')
+        .gte('untappd_enriched_at', recent_cutoff)
+        .order('untappd_enriched_at', desc=True)
+        .limit(limit_recent)
+    )
     recent_enriched = recent_res.data or []
 
     # 3. Rolling audit: in-stock beers with oldest untappd_fetched_at (refresh candidates)
-    rolling_res = sb.table('beer_info_view') \
-        .select('url, name, shop, first_seen, untappd_fetched_at, untappd_url, untappd_beer_name, untappd_brewery_name, untappd_rating, product_type') \
-        .eq('stock_status', 'In Stock') \
-        .not_.is_('untappd_url', 'null') \
-        .or_('product_type.eq.beer,product_type.is.null') \
-        .order('untappd_fetched_at', desc=False, nullsfirst=True) \
-        .limit(limit_rolling) \
-        .execute()
+    rolling_res = sync_execute(
+        sb.table('beer_info_view')
+        .select('url, name, shop, first_seen, untappd_fetched_at, untappd_url, untappd_beer_name, untappd_brewery_name, untappd_rating, product_type')
+        .eq('stock_status', 'In Stock')
+        .not_.is_('untappd_url', 'null')
+        .or_('product_type.eq.beer,product_type.is.null')
+        .order('untappd_fetched_at', desc=False, nullsfirst=True)
+        .limit(limit_rolling)
+    )
     rolling_candidates = rolling_res.data or []
 
     # 4. Unlinked beers needing Untappd investigation (uninspected first, then rolling oldest)
-    unlinked_res = sb.table('beer_info_view') \
-        .select('url, name, shop, first_seen, untappd_url, untappd_enriched_at, product_type') \
-        .eq('stock_status', 'In Stock') \
-        .is_('untappd_url', 'null') \
-        .or_('product_type.eq.beer,product_type.is.null') \
-        .order('untappd_enriched_at', desc=False, nullsfirst=True) \
-        .limit(5) \
-        .execute()
+    unlinked_res = sync_execute(
+        sb.table('beer_info_view')
+        .select('url, name, shop, first_seen, untappd_url, untappd_enriched_at, product_type')
+        .eq('stock_status', 'In Stock')
+        .is_('untappd_url', 'null')
+        .or_('product_type.eq.beer,product_type.is.null')
+        .order('untappd_enriched_at', desc=False, nullsfirst=True)
+        .limit(5)
+    )
     unlinked_candidates = unlinked_res.data or []
 
     return {
