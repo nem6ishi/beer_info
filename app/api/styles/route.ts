@@ -3,11 +3,24 @@ import { supabase } from '../../../lib/supabase'
 
 export async function GET(request: Request) {
     try {
+        // Try RPC first for fast, accurate full-table aggregation without 1,000 row limits
+        const { data: rpcData, error: rpcError } = await supabase.rpc('get_available_filters').single();
+        if (!rpcError && rpcData?.styles && Array.isArray(rpcData.styles) && rpcData.styles.length > 0) {
+            const rawStyles = rpcData.styles;
+            const styles = rawStyles.map((item: any) => {
+                if (typeof item === 'string') return { style: item, count: 0 };
+                return { style: item.style || '', count: Number(item.count) || 0 };
+            }).filter((s: { style: string }) => s.style);
+            return NextResponse.json({ styles });
+        }
+
+        // Fallback: direct view query
         const { data, error } = await supabase
             .from('beer_info_view')
             .select('untappd_style')
             .not('untappd_style', 'is', null)
             .neq('untappd_style', '')
+            .limit(10000)
 
         if (error) throw error
 

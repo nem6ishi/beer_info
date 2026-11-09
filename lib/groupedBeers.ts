@@ -19,7 +19,7 @@ export interface GetGroupedBeersOptions {
     only_sale?: string | null;
 }
 
-const GROUPED_BEERS_SELECT = 'untappd_url, beer_name, brewery_name, style, abv, ibu, rating, rating_count, beer_image, brewery_logo, brewery_location, brewery_type, untappd_updated_at, is_set, product_type, min_price, max_price, newest_seen, items';
+const GROUPED_BEERS_SELECT = 'untappd_url, beer_name, brewery_name, style, abv, ibu, rating, rating_count, beer_image, brewery_logo, brewery_location, brewery_type, untappd_updated_at, is_set, product_type, is_sale, sale_tag, expiry_notice, min_price, max_price, newest_seen, items';
 
 export async function getGroupedBeers(options: GetGroupedBeersOptions) {
     const {
@@ -163,6 +163,19 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
                     let q = supabase
                         .from('beer_groups_view')
                         .select(GROUPED_BEERS_SELECT);
+
+                    if (days) {
+                        const daysNum = parseInt(days, 10);
+                        if (!isNaN(daysNum) && daysNum > 0) {
+                            const thresholdDate = new Date();
+                            thresholdDate.setDate(thresholdDate.getDate() - daysNum);
+                            q = q.gte('newest_seen', thresholdDate.toISOString());
+                        }
+                    }
+
+                    if (only_sale === '1') {
+                        q = q.eq('is_sale', true);
+                    }
 
                     if (search) {
                         q = q.or(`beer_name.ilike.%${search}%,brewery_name.ilike.%${search}%`);
