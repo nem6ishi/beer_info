@@ -19,9 +19,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 # Non-beer indicators
-GLASS_INDICATORS = ["グラス", "glass", "タンブラー", "tumbler", "パイント"]
-GOODS_INDICATORS = ["tシャツ", "t-shirt", "ステッカー", "sticker", "キーホルダー", "コースター", "バッグ", "bag", "キャップ", "帽子"]
-SET_INDICATORS = ["ギフトボックス", "3本セット", "4本セット", "6本セット", "お任せセット", "飲み比べセット", "beer pass"]
+GLASS_INDICATORS = ["グラス", "glass", "タンブラー", "tumbler", "パイント", "pint"]
+GOODS_INDICATORS = [
+    "tシャツ", "t-shirt", "ステッカー", "sticker", "キーホルダー", "コースター", 
+    "バッグ", "bag", "キャップ", "帽子", "クージー", "koozie", "グラウラー", "growler",
+    "ポスター", "poster", "graphic art", "額入り", "缶バッジ"
+]
+SET_INDICATORS = [
+    "ギフトボックス", "3本セット", "4本セット", "6本セット", "8本セット", "12本セット", 
+    "お任せセット", "飲み比べセット", "beer pass", "mix pack", "mixpack", "variety pack"
+]
+CIDER_INDICATORS = ["サイダー", "cider", "シードル", "cidre"]
+MEAD_INDICATORS = ["ミード", "mead", "蜂蜜酒"]
 
 def parse_product_info(name: str, shop: str, brewery_manager: BreweryManager) -> Dict[str, Any]:
     """Rule-based extractor for product_type, brewery_name, and beer_name."""
@@ -32,50 +41,82 @@ def parse_product_info(name: str, shop: str, brewery_manager: BreweryManager) ->
         return {"product_type": "glass", "brewery_name_en": None, "beer_name_en": name}
     if any(k in name_lower for k in GOODS_INDICATORS):
         return {"product_type": "other", "brewery_name_en": None, "beer_name_en": name}
-    if any(k in name_lower for k in SET_INDICATORS) or "セット" in name:
+    if any(k in name_lower for k in SET_INDICATORS) or "セット" in name or "mixpack" in name_lower:
         return {"product_type": "set", "brewery_name_en": None, "beer_name_en": name}
+    if any(k in name_lower for k in CIDER_INDICATORS):
+        return {"product_type": "cider", "brewery_name_en": None, "beer_name_en": name}
+    if any(k in name_lower for k in MEAD_INDICATORS):
+        return {"product_type": "mead", "brewery_name_en": None, "beer_name_en": name}
 
     brewery_en: Optional[str] = None
     beer_en: Optional[str] = None
 
-    # Check known brewery hints first
-    brewery_obj = brewery_manager.find_brewery_in_text(name)
-    if brewery_obj and brewery_obj.get("name_en"):
-        brewery_en = brewery_obj["name_en"]
+    # Pattern 0: BEER VOLTA pipe pattern (JP : JP | EN_Brewery: EN_Beer)
+    if '|' in name:
+        parts = name.split('|')
+        en_part = parts[-1].strip()
+        if ':' in en_part or '：' in en_part:
+            b_cand, beer_cand = re.split(r'[:：]', en_part, 1)
+            b_cand = b_cand.strip()
+            beer_cand = beer_cand.strip()
+            b_match = brewery_manager.find_brewery_in_text(b_cand)
+            brewery_en = b_match.get('name_en') if b_match else b_cand
+            beer_en = re.sub(r'【.*?】|\[.*?\]|\(.*?\)|（.*?）|\d+ml', '', beer_cand).strip()
+            return {"product_type": "beer", "brewery_name_en": brewery_en, "beer_name_en": beer_en}
 
     # Pattern A: [Brewery] Beer / Japanese
     m_bracket = re.match(r'^\[(.*?)\]\s*(.*)$', name)
     if m_bracket:
         brewery_part = m_bracket.group(1).strip()
         rest = m_bracket.group(2).strip()
-        if not brewery_en:
-            brewery_en = brewery_part
-        # Remove japanese suffix after slash
+        b_match = brewery_manager.find_brewery_in_text(brewery_part)
+        brewery_en = b_match.get('name_en') if b_match else brewery_part
+        # Remove japanese suffix after slash if present
         beer_en = rest.split('/')[0].strip()
-        beer_en = re.sub(r'（.*?）|\(.*?\)', '', beer_en).strip()
+        beer_en = re.sub(r'（.*?）|\(.*?\)|【.*?】', '', beer_en).strip()
         return {"product_type": "beer", "brewery_name_en": brewery_en, "beer_name_en": beer_en}
 
-    # Pattern B: Japanese / English (BEER VOLTA / Arome style: '... / Brewery: Beer' or '... / Brewery Beer')
+    # Check known brewery hints first
+    brewery_obj = brewery_manager.find_brewery_in_text(name)
+    if brewery_obj and brewery_obj.get("name_en"):
+        brewery_en = brewery_obj["name_en"]
+
+    # Pattern B: Japanese / English (BEER VOLTA / Arome style: '... / Brewery Beer' or '... / Brewery: Beer')
     if '/' in name:
         parts = [p.strip() for p in name.split('/')]
         en_part = parts[-1]
-        # Clean dates, ml, brackets
         en_part = re.sub(r'【.*?】|\[.*?\]|\(.*?\)|（.*?）|\d+ml|\d+oz', '', en_part).strip()
 
-        # Check 'Brewery : Beer'
         if ':' in en_part or '：' in en_part:
             b_cand, beer_cand = re.split(r'[:：]', en_part, 1)
             if not brewery_en:
-                brewery_en = b_cand.strip()
+                b_match = brewery_manager.find_brewery_in_text(b_cand.strip())
+                brewery_en = b_match.get('name_en') if b_match else b_cand.strip()
             beer_en = beer_cand.strip()
-        elif brewery_en:
-            # Remove brewery name from en_part to get beer_en
-            beer_en = re.sub(re.escape(brewery_en), '', en_part, flags=re.IGNORECASE).strip()
         else:
-            tokens = en_part.split()
-            if len(tokens) >= 2:
-                # Guess first 1-2 words might be brewery
-                beer_en = en_part
+            # Check if en_part contains brewery
+            b_match = brewery_manager.find_brewery_in_text(en_part)
+            if b_match:
+                if not brewery_en:
+                    brewery_en = b_match.get('name_en')
+                beer_cand = en_part
+                for alias in [b_match.get('name_en'), b_match.get('name_jp')] + (b_match.get('aliases') or []):
+                    if alias and alias.lower() in beer_cand.lower():
+                        pattern = re.compile(re.escape(alias), re.IGNORECASE)
+                        beer_cand = pattern.sub('', beer_cand).strip()
+                beer_en = beer_cand.strip(' -:/')
+            elif brewery_en:
+                beer_en = re.sub(re.escape(brewery_en), '', en_part, flags=re.IGNORECASE).strip(' -:/')
+            else:
+                tokens = en_part.split()
+                if len(tokens) >= 2:
+                    cand_m = brewery_manager.find_brewery_in_text(' '.join(tokens[:2])) or brewery_manager.find_brewery_in_text(tokens[0])
+                    if cand_m:
+                        brewery_en = cand_m.get('name_en')
+                        beer_en = re.sub(re.escape(cand_m.get('name_en')), '', en_part, flags=re.IGNORECASE).strip(' -:/')
+                    else:
+                        brewery_en = tokens[0]
+                        beer_en = ' '.join(tokens[1:]).strip(' -:/')
 
     # Pattern C: Chouseiya style '【Beer/Brewery】'
     m_chouseiya = re.search(r'【(.*?)/(.*?)】', name)
@@ -83,15 +124,23 @@ def parse_product_info(name: str, shop: str, brewery_manager: BreweryManager) ->
         beer_cand = m_chouseiya.group(1).strip()
         brewery_cand = m_chouseiya.group(2).strip()
         if not brewery_en:
-            brewery_en = brewery_cand
+            b_match = brewery_manager.find_brewery_in_text(brewery_cand)
+            brewery_en = b_match.get('name_en') if b_match else brewery_cand
         beer_en = beer_cand
 
+    # Pattern D: Colon without pipe (Brewery : Beer)
+    if not beer_en and (':' in name or '：' in name):
+        b_cand, beer_cand = re.split(r'[:：]', name, 1)
+        b_match = brewery_manager.find_brewery_in_text(b_cand.strip())
+        if b_match:
+            brewery_en = b_match.get('name_en')
+            beer_en = beer_cand.strip()
+
     if not beer_en:
-        # Fallback: clean raw name
         cleaned = re.sub(r'【.*?】|\[.*?\]|\(.*?\)|（.*?）|\d+ml|\d+本', '', name).strip()
         if brewery_en:
             cleaned = re.sub(re.escape(brewery_en), '', cleaned, flags=re.IGNORECASE).strip()
-        beer_en = cleaned.split('/')[0].strip()
+        beer_en = cleaned.split('/')[0].strip(' -:/')
 
     return {
         "product_type": "beer",
@@ -190,31 +239,41 @@ async def main():
         for r in (g_res.data or []):
             gemini_map[r['url']] = r
 
-    # 3. Create missing gemini_data entries via rule-based parser
-    missing_gemini_items = [b for b in items if b['url'] not in gemini_map]
-    logger.info(f"Items needing gemini_data: {len(missing_gemini_items)}")
-
-    created_gemini_payloads = []
-    for b in missing_gemini_items:
+    # 3. Create or re-parse gemini_data entries via enhanced rule-based parser
+    updated_gemini_payloads = []
+    for b in items:
+        url = b['url']
+        existing = gemini_map.get(url)
         parsed = parse_product_info(b['name'], b.get('shop', ''), brewery_manager)
-        payload = {
-            "url": b['url'],
-            "brewery_name_en": parsed["brewery_name_en"],
-            "beer_name_en": parsed["beer_name_en"],
-            "product_type": parsed["product_type"],
-            "is_set": parsed["product_type"] == "set",
-            "created_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-        }
-        created_gemini_payloads.append(payload)
-        gemini_map[b['url']] = payload
+        needs_update = False
+        if not existing:
+            needs_update = True
+        elif parsed['product_type'] in ('glass', 'other', 'set', 'cider', 'mead') and existing.get('product_type') not in ('glass', 'other', 'set', 'cider', 'mead'):
+            needs_update = True
+        elif not existing.get('brewery_name_en') and parsed.get('brewery_name_en'):
+            needs_update = True
+        elif not existing.get('beer_name_en') and parsed.get('beer_name_en'):
+            needs_update = True
 
-    if created_gemini_payloads:
-        for batch in chunked(created_gemini_payloads, 50):
+        if needs_update:
+            payload = {
+                "url": url,
+                "brewery_name_en": parsed["brewery_name_en"] or (existing.get("brewery_name_en") if existing else None),
+                "beer_name_en": parsed["beer_name_en"] or (existing.get("beer_name_en") if existing else None),
+                "product_type": parsed["product_type"],
+                "is_set": parsed["product_type"] == "set",
+                "created_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+            }
+            updated_gemini_payloads.append(payload)
+            gemini_map[url] = {**(existing or {}), **payload}
+
+    if updated_gemini_payloads:
+        for batch in chunked(updated_gemini_payloads, 50):
             try:
                 supabase.table('gemini_data').upsert(batch, on_conflict='url').execute()
             except Exception as e:
                 logger.error(f"Error upserting rule-based gemini_data: {e}")
-        logger.info(f"Saved {len(created_gemini_payloads)} rule-based gemini_data records.")
+        logger.info(f"Saved {len(updated_gemini_payloads)} rule-based gemini_data records.")
 
     # 4. Filter beer items for Untappd search
     beer_items = []
@@ -222,7 +281,7 @@ async def main():
     for b in items:
         g = gemini_map.get(b['url'], {})
         p_type = g.get('product_type', 'beer')
-        if p_type in ('glass', 'other', 'set'):
+        if p_type in ('glass', 'other', 'set', 'cider', 'mead'):
             non_beer_count += 1
             # Mark enriched so it doesn't stay pending
             supabase.table('scraped_beers').update({

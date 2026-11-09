@@ -393,6 +393,43 @@ class TestSearchBreweryBeerScoring(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
 
 
+class TestHeuristicCandidateSelection(unittest.TestCase):
+    """Tests for heuristic selection of Untappd candidates without LLM."""
+
+    def test_prefers_base_beer_when_no_vintage_specified(self):
+        from backend.src.services.untappd.searcher import select_best_candidate_heuristically
+        candidates = [
+            {'url': 'https://untappd.com/b/luscious-2024/111', 'beer_name': 'Luscious (2024)', 'score': 90.0},
+            {'url': 'https://untappd.com/b/luscious/222', 'beer_name': 'Luscious', 'score': 100.0},
+            {'url': 'https://untappd.com/b/luscious-2023/333', 'beer_name': 'Luscious (2023)', 'score': 90.0},
+        ]
+        result = select_best_candidate_heuristically(candidates, "Luscious", "The Alchemist Luscious")
+        self.assertIsNotNone(result)
+        self.assertEqual(result['url'], 'https://untappd.com/b/luscious/222')
+
+    def test_selects_vintage_when_year_in_title(self):
+        from backend.src.services.untappd.searcher import select_best_candidate_heuristically
+        candidates = [
+            {'url': 'https://untappd.com/b/luscious-2024/111', 'beer_name': 'Luscious (2024)', 'score': 90.0},
+            {'url': 'https://untappd.com/b/luscious/222', 'beer_name': 'Luscious', 'score': 100.0},
+            {'url': 'https://untappd.com/b/luscious-2023/333', 'beer_name': 'Luscious (2023)', 'score': 90.0},
+        ]
+        result = select_best_candidate_heuristically(candidates, "Luscious 2024", "The Alchemist Luscious 2024")
+        self.assertIsNotNone(result)
+        self.assertEqual(result['url'], 'https://untappd.com/b/luscious-2024/111')
+
+    def test_selects_exact_match_over_variant(self):
+        from backend.src.services.untappd.searcher import select_best_candidate_heuristically
+        candidates = [
+            {'url': 'https://untappd.com/b/hophands-ddh/111', 'beer_name': 'HopHands (Double Dry-Hopped)', 'score': 90.0},
+            {'url': 'https://untappd.com/b/hophands/222', 'beer_name': 'HopHands', 'score': 100.0},
+        ]
+        result = select_best_candidate_heuristically(candidates, "Hop Hands", "Tired Hands Hop Hands")
+        self.assertIsNotNone(result)
+        self.assertEqual(result['url'], 'https://untappd.com/b/hophands/222')
+
+
 if __name__ == '__main__':
     unittest.main()
+
 

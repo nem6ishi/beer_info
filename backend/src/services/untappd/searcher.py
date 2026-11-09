@@ -26,6 +26,76 @@ from ...core.types import UntappdSearchResult, UntappdSearchCandidate
 logger = logging.getLogger(__name__)
 
 
+def select_best_candidate_heuristically(
+    candidates: List[Dict[str, Any]],
+    target_beer_name: str,
+    original_title: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Select the best Untappd candidate without relying on LLM.
+    Considers vintage years, exact normalized match, score 100, and base vs variant beer.
+    """
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    search_text = f"{original_title or ''} {target_beer_name or ''}"
+    year_match = re.search(r'\b(19\d\d|20\d\d)\b', search_text)
+    target_year = year_match.group(1) if year_match else None
+
+    # Step 1: Vintage / Year matching
+    cands_to_check = list(candidates)
+    if target_year:
+        year_cands = [
+            c for c in cands_to_check
+            if target_year in c.get('beer_name', '') or target_year in c.get('url', '')
+        ]
+        if year_cands:
+            cands_to_check = year_cands
+    else:
+        # If no vintage year in title, prefer base beer without vintage years
+        no_year_cands = [
+            c for c in cands_to_check
+            if not re.search(r'\b(19\d\d|20\d\d)\b', c.get('beer_name', ''))
+        ]
+        if no_year_cands:
+            cands_to_check = no_year_cands
+
+    # Step 2: Exact normalized match
+    norm_target = normalize_for_comparison(target_beer_name or '')
+    exact_matches = [
+        c for c in cands_to_check
+        if normalize_for_comparison(c.get('beer_name', '')) == norm_target
+    ]
+    if len(exact_matches) == 1:
+        return exact_matches[0]
+    elif len(exact_matches) > 1:
+        # Pick cleanest (shortest name or no parentheses)
+        cleanest = sorted(exact_matches, key=lambda c: (len(c.get('beer_name', '')), '(' in c.get('beer_name', '')))
+        return cleanest[0]
+
+    # Step 3: Check score 100.0
+    score_100s = [c for c in cands_to_check if c.get('score', 0) == 100.0]
+    if len(score_100s) == 1:
+        return score_100s[0]
+    elif len(score_100s) > 1:
+        cleanest = sorted(score_100s, key=lambda c: (len(c.get('beer_name', '')), '(' in c.get('beer_name', '')))
+        return cleanest[0]
+
+    # Step 4: Top scoring candidate evaluation
+    top_cand = cands_to_check[0]
+    top_score = top_cand.get('score', 0)
+    if top_score >= 90.0:
+        return top_cand
+    if len(cands_to_check) > 1 and top_score >= 80.0:
+        second_score = cands_to_check[1].get('score', 0)
+        if top_score - second_score >= 10.0:
+            return top_cand
+
+    return top_cand if top_score >= 85.0 else None
+
+
 # ── Brewery aliases ───────────────────────────────────────────────────────────
 
 def _load_brewery_aliases() -> Dict[str, List[str]]:
@@ -407,16 +477,23 @@ async def _get_untappd_url_single(
     # --- Stage 4: LLM Candidate Selection ---
     if all_candidates:
         if return_candidates or skip_llm:
-            logger.info(f"  ⏭️ [LLM Selection] Bypassing Cloud API and returning {len(all_candidates)} candidates.")
+            logger.info(f"  ⏭️ [LLM Selection] Bypassing Cloud API and evaluating {len(all_candidates)} candidates heuristically.")
+            selected_cand = select_best_candidate_heuristically(
+                all_candidates,
+                target_beer_name=target_beer_name,
+                original_title=original_title
+            )
+            selected_idx = all_candidates.index(selected_cand) if selected_cand in all_candidates else -1
+            selected_url = selected_cand['url'] if selected_cand else None
             return {
-                'url': all_candidates[0]['url'] if len(all_candidates) == 1 else None,
-                'success': True if len(all_candidates) == 1 else False,
-                'failure_reason': None,
+                'url': selected_url,
+                'success': bool(selected_url),
+                'failure_reason': None if selected_url else 'no_confident_match',
                 'error_message': None,
                 'candidates': all_candidates,
-                'selected_index': 0 if len(all_candidates) == 1 else -1,
-                'brewery_url': all_candidates[0].get('brewery_url') if all_candidates else None,
-                'selection_reason': 'Bypassed LLM selection'
+                'selected_index': selected_idx,
+                'brewery_url': selected_cand.get('brewery_url') if selected_cand else (all_candidates[0].get('brewery_url') if all_candidates else None),
+                'selection_reason': 'Heuristic selection (Bypassed LLM)' if selected_url else 'Bypassed LLM selection (no match)'
             }
 
         logger.info(f"  [LLM Selection] Evaluating {len(all_candidates)} collected candidates...")
