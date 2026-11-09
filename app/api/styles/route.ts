@@ -5,8 +5,9 @@ export async function GET(request: Request) {
     try {
         // Try RPC first for fast, accurate full-table aggregation without 1,000 row limits
         const { data: rpcData, error: rpcError } = await supabase.rpc('get_available_filters').single();
-        if (!rpcError && rpcData?.styles && Array.isArray(rpcData.styles) && rpcData.styles.length > 0) {
-            const rawStyles = rpcData.styles;
+        const typedRpcData = rpcData as { styles?: (string | { style: string; count: number })[] } | null;
+        if (!rpcError && typedRpcData?.styles && Array.isArray(typedRpcData.styles) && typedRpcData.styles.length > 0) {
+            const rawStyles = typedRpcData.styles;
             const styles = rawStyles.map((item: any) => {
                 if (typeof item === 'string') return { style: item, count: 0 };
                 return { style: item.style || '', count: Number(item.count) || 0 };
