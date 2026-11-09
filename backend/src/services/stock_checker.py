@@ -106,33 +106,107 @@ def check_stock_arome(soup: BeautifulSoup) -> str:
 
 def check_stock_beervolta(soup: BeautifulSoup) -> str:
     """Checks stock status for BeerVolta."""
-    text: str = soup.get_text()
-    if "SOLD OUT" in text or "売切" in text or "完売" in text:
+    # 1. Check primary product cart button
+    cart_btn = soup.select_one("button.c-product-button") or soup.select_one("form[action*='/cart/proxy/basket/items/add'] button")
+    if cart_btn:
+        classes = cart_btn.get("class", [])
+        if isinstance(classes, list):
+            class_str = " ".join(classes)
+        else:
+            class_str = str(classes)
+        btn_text = cart_btn.get_text(strip=True).upper()
+        if "ISDISABLED" in class_str.upper() or cart_btn.has_attr("disabled") or "SOLD OUT" in btn_text or "売り切れ" in btn_text:
+            return "Sold Out"
+        return "In Stock"
+
+    # 2. Check for explicit soldout badges/elements
+    if soup.select_one(".soldout, .c-product-soldout, [class*='soldout']") or soup.select_one("img[src*='soldout']"):
         return "Sold Out"
-    
-    if soup.select_one(".soldout") or soup.select_one("img[src*='soldout']"):
-        return "Sold Out"
-        
-    cart_btn = soup.select_one("input[name='submit']") or soup.select_one("button.cart")
-    if not cart_btn and ("SOLD OUT" in text.upper() or "売り切れ" in text):
-        return "Sold Out"
-    return "In Stock"
+
+    # 3. Check within product information section
+    info_section = soup.select_one(".l-product-information") or soup.select_one(".c-product-detail")
+    if info_section:
+        info_text = info_section.get_text().upper()
+        if "SOLD OUT" in info_text or "売り切れ" in info_text or "完売" in info_text:
+            return "Sold Out"
+
+    # 4. Fallback button checks
+    legacy_cart_btn = soup.select_one("input[name='submit']") or soup.select_one("button.cart")
+    if legacy_cart_btn:
+        return "In Stock"
+
+    return "Sold Out"
 
 def check_stock_chouseiya(soup: BeautifulSoup) -> str:
     """Checks stock status for Chouseiya (MakeShop)."""
-    text: str = soup.get_text()
-    if "売り切れ" in text or "SOLD OUT" in text or "品切れ" in text or "完売" in text:
+    # 1. Look for MakeShop order form (form1)
+    form = soup.find("form", attrs={"name": "form1"}) or soup.select_one("#detail_cart")
+    if form:
+        form_text = form.get_text()
+
+        # Check for explicit soldout/out-of-stock text inside form or quantity area
+        qty_el = form.select_one(".quantity, p.quantity")
+        qty_text = qty_el.get_text() if qty_el else ""
+        if "品切れ" in qty_text or "売り切れ" in qty_text or "0個" in qty_text:
+            return "Sold Out"
+
+        # Check for basket action link inside order form
+        has_basket_btn = False
+        for a in form.find_all("a"):
+            href = a.get("href", "")
+            if "send(" in href or "JavaScript:send" in href or "basket.html" in href:
+                has_basket_btn = True
+                break
+        if not has_basket_btn:
+            img = form.find("img", alt=re.compile(r"かごに入れる|カートに入れる"))
+            if img and img.find_parent("a"):
+                has_basket_btn = True
+            else:
+                btn_img = form.find("img", src=re.compile(r"r_basketBtn|basketBtn"))
+                if btn_img and btn_img.find_parent("a"):
+                    has_basket_btn = True
+
+        if has_basket_btn:
+            return "In Stock"
+
+        if "品切れ" in form_text or "売り切れ" in form_text or "SOLD OUT" in form_text.upper() or "完売" in form_text:
+            return "Sold Out"
         return "Sold Out"
-    
-    # MakeShop specific checks
+
+    # 2. Fallback check for basket button anywhere
+    basket_link = soup.find("a", href=re.compile(r"send\(")) or soup.find("img", alt=re.compile(r"かごに入れる"))
+    if basket_link:
+        return "In Stock"
+
     if soup.select_one("img[src*='soldout']") or soup.select_one(".soldout"):
         return "Sold Out"
-        
-    cart_btn = soup.select_one("a[href*='cart']") or soup.select_one("input[value*='カート']")
-    if not cart_btn:
+
+    return "Sold Out"
+
+def check_stock_witch_craft_market(soup: BeautifulSoup) -> str:
+    """Checks stock status for WITCH CRAFT MARKET (Shopify-based custom theme)."""
+    # 1. Product add to cart button
+    cart_btn = soup.select_one("button.--detail-checkout-button") or soup.select_one("form[action*='/cart/add'] button[name='add']") or soup.select_one("button[name='add']")
+    if cart_btn:
+        classes = cart_btn.get("class", [])
+        class_str = " ".join(classes) if isinstance(classes, list) else str(classes)
+        btn_text = cart_btn.get_text(strip=True).upper()
+        if "--sold-out" in class_str or "tw-hidden" in class_str or cart_btn.has_attr("disabled") or "SOLD OUT" in btn_text or "売り切れ" in btn_text:
+            return "Sold Out"
+        return "In Stock"
+
+    # 2. Detail section checks
+    detail_container = soup.select_one(".--detail-checkout-container") or soup.select_one(".product__info-container")
+    if detail_container:
+        container_text = detail_container.get_text().upper()
+        if "SOLD OUT" in container_text or "売り切れ" in container_text:
+            return "Sold Out"
+
+    # 3. Collection / general sold out indicators
+    if soup.select_one(".--detail-checkout-button.--sold-out") or soup.select_one(".price--sold-out"):
         return "Sold Out"
-        
-    return "In Stock"
+
+    return "Sold Out"
 
 def check_stock_ichigo_ichie(soup: BeautifulSoup) -> str:
     """Checks stock status for Ichigo Ichie (MakeShop)."""
@@ -195,6 +269,19 @@ def extract_price_arome(soup: BeautifulSoup) -> Optional[str]:
     return None
 
 def extract_price_beervolta(soup: BeautifulSoup) -> Optional[str]:
+    # 1. New theme price selector (.c-product-priceMain, .c-product-price)
+    price_main = soup.select_one(".c-product-priceMain, .c-product-price")
+    if price_main:
+        text = price_main.get_text(strip=True)
+        # Prefer tax-included price if present (e.g. 1,270円(税込1,397円))
+        tax_m = re.search(r'税込\s*([0-9,]+)円?', text)
+        if tax_m:
+            return f"{tax_m.group(1).replace(',', '')}円"
+        m = re.search(r'([1-9][0-9,]+)', text)
+        if m:
+            return f"{m.group(1).replace(',', '')}円"
+
+    # 2. Legacy selectors
     price_el: Optional[Tag] = soup.select_one(".price") or soup.select_one(".product_price")
     if price_el:
         text = price_el.get_text(strip=True)
@@ -205,13 +292,50 @@ def extract_price_beervolta(soup: BeautifulSoup) -> Optional[str]:
     return None
 
 def extract_price_chouseiya(soup: BeautifulSoup) -> Optional[str]:
-    price_el: Optional[Tag] = soup.select_one(".price") or soup.select_one("#price")
+    # 1. Look for MakeShop price row / table (M_usualValue, M_infoTable)
+    usual_row = soup.select_one(".M_usualValue") or soup.select_one(".M_infoTable")
+    if usual_row:
+        text = usual_row.get_text(strip=True)
+        m = re.search(r'([1-9][0-9,]*)\s*円', text)
+        if m:
+            return f"{m.group(1).replace(',', '')}円"
+
+    # 2. Form price or general price
+    price_el: Optional[Tag] = (
+        soup.select_one("form[name='form1'] .price")
+        or soup.select_one(".price")
+        or soup.select_one("#price")
+        or soup.select_one("span.price")
+    )
+    if price_el:
+        text = price_el.get_text(strip=True)
+        m = re.search(r'([1-9][0-9,]*)\s*円', text)
+        if m:
+            return f"{m.group(1).replace(',', '')}円"
+
+    # 3. Form text search for 価格 :1,280円
+    form = soup.find("form", attrs={"name": "form1"})
+    if form:
+        form_text = form.get_text()
+        m = re.search(r'価格\s*[:：]?\s*([1-9][0-9,]*)\s*円', form_text)
+        if m:
+            return f"{m.group(1).replace(',', '')}円"
+
+    return None
+
+def extract_price_witch_craft_market(soup: BeautifulSoup) -> Optional[str]:
+    price_el = (
+        soup.select_one("span.--detail-price-regular-text")
+        or soup.select_one("div.--detail-price-regular")
+        or soup.select_one(".--item-card-price-text")
+        or soup.select_one(".price-item--regular")
+        or soup.select_one(".price-item--sale")
+    )
     if price_el:
         text = price_el.get_text(strip=True)
         m = re.search(r'([1-9][0-9,]+)', text)
         if m:
             return f"{m.group(1).replace(',', '')}円"
-        return text
     return None
 
 def extract_price_ichigo_ichie(soup: BeautifulSoup) -> Optional[str]:
@@ -314,6 +438,9 @@ async def check_stock_for_url(client: httpx.AsyncClient, url: str, shop: str) ->
     elif shop == "一期一会～る":
         result["stock_status"] = check_stock_ichigo_ichie(soup)
         result["price"] = extract_price_ichigo_ichie(soup)
+    elif shop == "WITCH CRAFT MARKET":
+        result["stock_status"] = check_stock_witch_craft_market(soup)
+        result["price"] = extract_price_witch_craft_market(soup)
     else:
         # Default fallback
         if "SOLD OUT" in soup.get_text().upper() or "売り切れ" in soup.get_text() or "完売" in soup.get_text():
