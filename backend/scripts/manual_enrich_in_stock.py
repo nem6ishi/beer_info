@@ -123,7 +123,9 @@ def parse_product_info(name: str, shop: str, brewery_manager: BreweryManager) ->
     if m_chouseiya:
         beer_cand = m_chouseiya.group(1).strip()
         brewery_cand = m_chouseiya.group(2).strip()
-        if not brewery_en:
+        # Clean (賞味期限/...) or other metadata from brewery_cand
+        brewery_cand = re.sub(r'[\(（].*?[\)）]', '', brewery_cand).strip()
+        if not brewery_en or brewery_cand.lower() == 'うちゅう':
             b_match = brewery_manager.find_brewery_in_text(brewery_cand)
             brewery_en = b_match.get('name_en') if b_match else brewery_cand
         beer_en = beer_cand

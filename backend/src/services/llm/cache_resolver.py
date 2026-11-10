@@ -109,10 +109,12 @@ class LocalCacheResolver:
             # 各ショップ特有の切り出しパターン
             if shop == "ちょうせいや":
                 # STRICTフォーマット: 【Beer Name / Brewery Name】
-                match = re.search(r'【([^/]+)/([^】]+)】', product_name)
+                match = re.search(r'【(.*?)/(.*?)】', product_name)
                 if match:
                     beer_part = match.group(1).strip()
                     brewery_part = match.group(2).strip()
+                    # 賞味期限や付加情報の括弧を除去
+                    brewery_part = re.sub(r'[\(（].*?[\)）]', '', brewery_part).strip()
             elif shop == "アローム":
                 # 典型的なフォーマット: Jp Brewery / Jp Beer [En Brewery / En Beer]
                 match = re.search(r'\[([^/]+)/([^\]]+)\]', product_name)
