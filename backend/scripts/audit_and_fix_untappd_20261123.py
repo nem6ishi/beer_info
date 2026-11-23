@@ -156,6 +156,36 @@ CROSS_STORE_ENRICH_ITEMS = [
             "untappd_url": "https://untappd.com/b/lyric-brewing-company-death-greets-me-warm/7187555",
         },
     },
+    {
+        "url": "https://www.arome.jp/products/detail.php?product_id=8420",
+        "untappd_url": "https://untappd.com/b/off-script-brewing-yeah-science/7161772",
+        "gemini_update": {
+            "brewery_name_en": "Off Script Brewing",
+            "brewery_name_jp": "オフスクリプト",
+            "beer_name_en": "Yeah, Science!",
+            "beer_name_jp": "イェー、サイエンス！",
+            "beer_name_core": "Yeah, Science!",
+            "search_hint": "Yeah, Science! Off Script Brewing",
+            "product_type": "beer",
+            "is_set": False,
+            "untappd_url": "https://untappd.com/b/off-script-brewing-yeah-science/7161772",
+        },
+    },
+    {
+        "url": "https://beervolta.com/?pid=194573865",
+        "untappd_url": "https://untappd.com/b/off-script-brewing-yeah-science/7161772",
+        "gemini_update": {
+            "brewery_name_en": "Off Script Brewing",
+            "brewery_name_jp": "オフスクリプト",
+            "beer_name_en": "Yeah, Science!",
+            "beer_name_jp": "イェー サイエンス",
+            "beer_name_core": "Yeah, Science!",
+            "search_hint": "Yeah, Science! Off Script Brewing",
+            "product_type": "beer",
+            "is_set": False,
+            "untappd_url": "https://untappd.com/b/off-script-brewing-yeah-science/7161772",
+        },
+    },
 ]
 
 UNTAPPD_SCRAPE_URLS = [
