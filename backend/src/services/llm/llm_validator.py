@@ -115,8 +115,8 @@ class LLMValidator:
             # Fallback when API key is missing: return None so rule-based validator can take over
             return None, 0.0, "No Gemini API client (fallback to rule-based)"
 
-        prompt = f"""You are an expert craft beer validator.
-Determine if the scraped online shop product title and the Untappd search result refer to the SAME craft beer (or cider/perry/mead) product.
+        prompt = f"""You are an expert craft beer & craft beverage validator.
+Determine if the scraped online shop product title and the Untappd search result refer to the SAME craft beverage (beer, cider, perry, mead, hard seltzer, hard tea, hard kombucha, or craft RTD) product.
 
 Input Data:
 - Original Shop Product Title: "{original_title}"
@@ -127,13 +127,15 @@ Input Data:
 Validation Rules:
 1. BREWERY CHECK: Does the brewery in the original title match the Untappd brewery?
    - Japanese/English variants match (e.g. '伊勢角屋麦酒' and 'ISEKADO', 'うちゅうブルーイング' and 'Uchu Brewing').
+   - Minor corporate suffix differences match (e.g. 'New Motion' and 'New Motion Beverages', 'Upslope' and 'Upslope Brewing Company').
    - For COLLABORATIONS (e.g. 'Brewery A x Brewery B' or 'Collab with B'), if Untappd lists either Brewery A or Brewery B, IT IS A MATCH.
-   - Distinct, unrelated breweries (e.g. 'Uchu Brewing' vs 'West Coast Brewing') MUST be marked is_match = false.
-2. BEER NAME CHECK: Does the beer name match core identity?
+   - Distinct, unrelated breweries (e.g. 'Uchu Brewing' vs 'West Coast Brewing', 'RIO BREWING' vs 'Rio Cocktail') MUST be marked is_match = false.
+2. BEER NAME CHECK: Does the product name match core identity?
    - Ignore volume (350ml, 473ml, 16oz), packaging (can, bottle, 缶), shop notes/shipping dates (【10/22出荷】, [予約], etc.).
-   - Minor subtitles, series variants, year markers (e.g. '(2024-)', '(2021)'), or edition numbers (e.g. 'Art & Blood 2' vs 'Art & Blood', 'Daily Forecast' vs 'Daily Forecast: Mimosa') are ACCEPTABLE MATCHES if they are essentially the same beer or release.
+   - Ignore descriptive beverage-type prefixes/suffixes that differ between shop title and Untappd (e.g. 'Hard Tea Mango Palmer' vs 'Mango Palmer Hard Sparkling Tea', 'Cantina Getaway Margarita Hard Seltzer' vs 'Cantina Getaway', 'Hard Tea Yuzu Haru' vs 'Yuzu Haru').
+   - Minor subtitles, series variants, year markers (e.g. '(2024-)', '(2021)'), or edition numbers (e.g. 'Art & Blood 2' vs 'Art & Blood', 'Daily Forecast' vs 'Daily Forecast: Mimosa') are ACCEPTABLE MATCHES if they are essentially the same product or release.
 3. PRODUCT TYPE CHECK:
-   - Beer, Cider, Perry, and Mead products sold in craft beer bottle shops ARE VALID.
+   - Beer, Cider, Perry, Mead, Hard Seltzer, Hard Tea, Hard Kombucha, and craft RTD/cocktail beverages sold in craft beer bottle shops ARE VALID.
    - Glassware, apparel/t-shirts, magazines/books, or non-beverage merchandise MUST BE MARKED is_match = false.
 
 Evaluate carefully and return JSON with is_match, confidence, and reason.

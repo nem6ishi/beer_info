@@ -28,8 +28,10 @@ export async function GET(request: Request) {
         const days = searchParams.get('days')
         const only_sale = searchParams.get('only_sale')
 
-        const pageNum = parseInt(page, 10)
-        const limitNum = parseInt(limit, 10)
+        const parsedPage = parseInt(page, 10)
+        const parsedLimit = parseInt(limit, 10)
+        const pageNum = Number.isNaN(parsedPage) ? 1 : Math.max(1, parsedPage)
+        const limitNum = Number.isNaN(parsedLimit) ? 20 : Math.min(100, Math.max(1, parsedLimit))
         const offset = (pageNum - 1) * limitNum
 
         // Build main query
@@ -52,7 +54,11 @@ export async function GET(request: Request) {
             }
 
             if (search) {
-                q = q.or(`name.ilike.%${search}%,beer_name_en.ilike.%${search}%,beer_name_jp.ilike.%${search}%,brewery_name_en.ilike.%${search}%,brewery_name_jp.ilike.%${search}%,untappd_brewery_name.ilike.%${search}%`)
+                // Strip PostgREST .or() syntax delimiters (commas, parentheses) to avoid query errors
+                const safeSearch = search.replace(/[,()]/g, ' ').replace(/\s+/g, ' ').trim()
+                if (safeSearch) {
+                    q = q.or(`name.ilike.%${safeSearch}%,beer_name_en.ilike.%${safeSearch}%,beer_name_jp.ilike.%${safeSearch}%,untappd_beer_name.ilike.%${safeSearch}%,brewery_name_en.ilike.%${safeSearch}%,brewery_name_jp.ilike.%${safeSearch}%,untappd_brewery_name.ilike.%${safeSearch}%`)
+                }
             }
 
             if (min_abv) q = q.gte('untappd_abv', min_abv)

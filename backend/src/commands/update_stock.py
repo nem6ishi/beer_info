@@ -78,13 +78,24 @@ async def update_stock_status(limit: Optional[int] = None, shop_filter: Optional
         query = supabase.table('scraped_beers').select('name, url, shop, stock_status').order('last_seen', desc=False, nullsfirst=True)
     
     if in_stock_only:
-        query = query.neq('stock_status', 'Sold Out')
+        query = query.eq('stock_status', 'In Stock')
         
     if shop_filter:
         query = query.eq('shop', shop_filter)
     
-    res: Any = query.limit(limit or 5000).execute()
-    beers: List[Dict[str, Any]] = res.data or []
+    # Paginate to handle >1,000 rows safely (PostgREST max rows per request is 1,000)
+    target_limit: int = limit or 5000
+    beers: List[Dict[str, Any]] = []
+    page_size: int = 1000
+    offset: int = 0
+    while len(beers) < target_limit:
+        chunk_limit: int = min(page_size, target_limit - len(beers))
+        res: Any = query.range(offset, offset + chunk_limit - 1).execute()
+        rows: List[Dict[str, Any]] = res.data or []
+        beers.extend(rows)
+        if len(rows) < chunk_limit:
+            break
+        offset += chunk_limit
         
     logger.info(f"Checking stock for {len(beers)} items...")
     

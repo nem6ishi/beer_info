@@ -246,7 +246,10 @@ class GeminiExtractor(BaseExtractor):
             return self.prompt_builder.apply_set_override(tier2_res, product_name)
 
         if not self.client or self.daily_request_count >= self.global_daily_limit:
-            return self.prompt_builder.apply_set_override(self.prompt_builder.empty_result(), product_name)
+            res_empty = self.prompt_builder.apply_set_override(self.prompt_builder.empty_result(), product_name)
+            res_empty["_api_error"] = True
+            res_empty["_error_message"] = "LLM client unavailable or daily limit reached"
+            return res_empty
 
         clean_name = self.prompt_builder.clean_product_title(product_name, shop)
         logger.info(f"[Gemini] Extracting: {clean_name} (Original: {product_name}, Known: {known_brewery}, Shop: {shop})")
@@ -295,8 +298,15 @@ class GeminiExtractor(BaseExtractor):
                 return self.prompt_builder.apply_set_override(res, product_name)
         except Exception as e:
             logger.error(f"[Gemini] Extraction failed: {e}")
+            res_err = self.prompt_builder.apply_set_override(self.prompt_builder.empty_result(), product_name)
+            res_err["_api_error"] = True
+            res_err["_error_message"] = str(e)
+            return res_err
 
-        return self.prompt_builder.apply_set_override(self.prompt_builder.empty_result(), product_name)
+        res_none = self.prompt_builder.apply_set_override(self.prompt_builder.empty_result(), product_name)
+        res_none["_api_error"] = True
+        res_none["_error_message"] = "LLM returned empty response"
+        return res_none
 
     async def suggest_search_queries(self, product_name: str, brewery: str, beer_name: str) -> List[str]:
         """

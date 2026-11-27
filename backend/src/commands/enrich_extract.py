@@ -15,8 +15,8 @@ The extracted results are saved to the `gemini_data` table for the next phase.
 """
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List, cast, Tuple
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Any, Optional, List, cast, Tuple, Set
 
 from ..core.db import get_supabase_client, refresh_materialized_view, sync_execute
 from ..core.types import GeminiExtraction
@@ -49,8 +49,49 @@ class LLMEnricher:
         self.extractor: BaseExtractor = get_llm_extractor(provider=llm_provider, model_id=llm_model_id)
         self.brewery_manager: BreweryManager = BreweryManager()
 
-        self.stats: Dict[str, int] = {"processed": 0, "enriched": 0, "errors": 0}
+        self.stats: Dict[str, int] = {"processed": 0, "enriched": 0, "errors": 0, "api_errors": 0}
         self.pending_payloads: List[Dict[str, Any]] = []
+        self.skip_urls_for_backoff: Set[str] = set()
+        self.consecutive_api_errors: int = 0
+        self.max_consecutive_api_errors: int = 5
+        self._fresh_exhausted: bool = False
+
+    def _preload_failure_history(self) -> None:
+        """Pre-loads failure records so backoff-eligible URLs are skipped during LLM extraction."""
+        if self.force_reprocess or self.keyword_filter or self.offline:
+            return
+        try:
+            from dateutil import parser as dateutil_parser
+            cutoff: datetime = datetime.now(timezone.utc) - timedelta(days=3)
+            page_size: int = 1000
+            page_offset: int = 0
+            while True:
+                res: Any = self.supabase.table('untappd_search_failures') \
+                    .select('product_url, search_attempts, last_failed_at') \
+                    .eq('resolved', False) \
+                    .order('id') \
+                    .range(page_offset, page_offset + page_size - 1) \
+                    .execute()
+                rows = res.data or []
+                for f in rows:
+                    p_url = f.get('product_url', '')
+                    if not p_url:
+                        continue
+                    if f.get('search_attempts', 0) >= 3:
+                        self.skip_urls_for_backoff.add(p_url)
+                    elif f.get('last_failed_at'):
+                        try:
+                            if dateutil_parser.parse(f['last_failed_at']) > cutoff:
+                                self.skip_urls_for_backoff.add(p_url)
+                        except Exception:
+                            pass
+                if len(rows) < page_size:
+                    break
+                page_offset += page_size
+            if self.skip_urls_for_backoff:
+                logger.info(f"  ⏭️ Loaded {len(self.skip_urls_for_backoff)} backoff URLs to skip in LLM extraction.")
+        except Exception as e:
+            logger.warning(f"  ⚠️ Failed to preload failure history: {e}")
 
     async def run(self, limit: int = 50) -> None:
         """Runs the enrichment pipeline up to the specified limit."""
@@ -64,6 +105,7 @@ class LLMEnricher:
             logger.warning("\n⚠️ Warning: No valid LLM client found, might fail depending on provider")
         
         logger.info(f"📚 Loaded {len(self.brewery_manager.breweries)} known breweries as hints")
+        self._preload_failure_history()
         
         total_remaining: int = self._get_count()
         logger.info(f"📊 Total items needing enrichment: {total_remaining}")
@@ -72,16 +114,36 @@ class LLMEnricher:
             logger.info("✨ No items need enrichment. Exiting.")
             return
 
-        while self.stats["processed"] < limit:
+        fresh_offset: int = 0
+        view_offset: int = 0
+        self._fresh_exhausted = False
+        circuit_broken: bool = False
+        while self.stats["processed"] < limit and not circuit_broken:
             remaining: int = limit - self.stats["processed"]
             batch_size: int = min(100, remaining)
 
-            logger.info(f"\n📂 Loading candidates (Batch Target: {batch_size})...")
-            beers: List[Dict[str, Any]] = self._fetch_candidates(self.stats["processed"], batch_size)
-            
+            if not self._fresh_exhausted:
+                logger.info(f"\n📂 Loading fresh candidates (Batch Target: {batch_size}, Offset: {fresh_offset})...")
+                raw_beers: List[Dict[str, Any]] = self._fetch_candidates(fresh_offset, batch_size, source='fresh')
+                if raw_beers:
+                    fresh_offset += len(raw_beers)
+                else:
+                    self._fresh_exhausted = True
+                    continue
+            else:
+                logger.info(f"\n📂 Loading view candidates (Batch Target: {batch_size}, Offset: {view_offset})...")
+                raw_beers = self._fetch_candidates(view_offset, batch_size, source='view')
+                if not raw_beers:
+                    logger.info("\n✨ No more beers found matching criteria!")
+                    break
+                view_offset += len(raw_beers)
+
+            beers: List[Dict[str, Any]] = [
+                b for b in raw_beers if b.get('url') not in self.skip_urls_for_backoff
+            ]
             if not beers:
-                logger.info("\n✨ No more beers found matching criteria!")
-                break
+                logger.info(f"  ⏭️ All {len(raw_beers)} fetched candidates are in backoff. Continuing to next page...")
+                continue
                 
             for beer in beers:
                 if self.stats["processed"] >= limit:
@@ -91,14 +153,27 @@ class LLMEnricher:
                 
                 self.stats["processed"] += 1
                 if status == 'enriched' and payload:
+                    self.consecutive_api_errors = 0
                     self.stats["enriched"] += 1
                     self.pending_payloads.append(payload)
                     if len(self.pending_payloads) >= 10:
                         self._save_gemini_data_batch(self.pending_payloads)
                         self.pending_payloads.clear()
                 elif status == 'already_exists':
+                    self.consecutive_api_errors = 0
                     self.stats["enriched"] += 1
+                elif status == 'api_error':
+                    self.stats["api_errors"] += 1
+                    self.consecutive_api_errors += 1
+                    if self.consecutive_api_errors >= self.max_consecutive_api_errors:
+                        logger.warning(
+                            f"  🛑 Circuit breaker triggered: {self.consecutive_api_errors} consecutive LLM API errors. "
+                            f"Aborting remaining batch to avoid polluting failure logs."
+                        )
+                        circuit_broken = True
+                        break
                 elif status == 'error':
+                    self.consecutive_api_errors = 0
                     self.stats["errors"] += 1
 
             if self.pending_payloads:
@@ -135,43 +210,50 @@ class LLMEnricher:
         res: Any = sync_execute(query)
         return cast(int, res.count or 0)
 
-    def _fetch_candidates(self, offset: int, limit: int) -> List[Dict[str, Any]]:
+    def _fetch_candidates(self, offset: int, limit: int, source: str = 'auto') -> List[Dict[str, Any]]:
         """Fetches a batch of candidate beers."""
-        # Check if there are fresh items directly from scraped_beers
-        sb_query: Any = self.supabase.table('scraped_beers') \
-            .select('url, name, shop, untappd_url, first_seen') \
-            .neq('stock_status', 'Dead Link') \
-            .is_('untappd_enriched_at', 'null')
-        if self.shop_filter:
-            sb_query = sb_query.eq('shop', self.shop_filter)
-        if self.keyword_filter:
-            sb_query = sb_query.ilike('name', f'%{self.keyword_filter}%')
-        sb_res: Any = sync_execute(sb_query.order('first_seen', desc=True).limit(limit).offset(offset))
-        fresh_items: List[Dict[str, Any]] = cast(List[Dict[str, Any]], sb_res.data or [])
+        if source in ('auto', 'fresh'):
+            # Check if there are fresh items directly from scraped_beers (In Stock first)
+            sb_query: Any = self.supabase.table('scraped_beers') \
+                .select('url, name, shop, untappd_url, first_seen, stock_status') \
+                .neq('stock_status', 'Dead Link') \
+                .is_('untappd_enriched_at', 'null')
+            if self.shop_filter:
+                sb_query = sb_query.eq('shop', self.shop_filter)
+            if self.keyword_filter:
+                sb_query = sb_query.ilike('name', f'%{self.keyword_filter}%')
+            sb_res: Any = sync_execute(
+                sb_query.order('stock_status', desc=False).order('first_seen', desc=True).limit(limit).offset(offset)
+            )
+            fresh_items: List[Dict[str, Any]] = cast(List[Dict[str, Any]], sb_res.data or [])
 
-        if fresh_items:
-            fresh_urls = [b['url'] for b in fresh_items if b.get('url')]
-            g_map: Dict[str, Any] = {}
-            if fresh_urls:
-                try:
-                    g_res = self.supabase.table('gemini_data') \
-                        .select('url, brewery_name_en, beer_name_en') \
-                        .in_('url', fresh_urls).execute()
-                    g_map = {r['url']: r for r in (g_res.data or [])}
-                except Exception as e:
-                    logger.warning(f"  ⚠️ Error fetching gemini_data: {e}")
-            for b in fresh_items:
-                g_info = g_map.get(b['url'], {})
-                b['brewery_name_en'] = g_info.get('brewery_name_en')
-                b['beer_name_en'] = g_info.get('beer_name_en')
-            return fresh_items
+            if fresh_items:
+                fresh_urls = [b['url'] for b in fresh_items if b.get('url')]
+                g_map: Dict[str, Any] = {}
+                if fresh_urls:
+                    try:
+                        g_res = self.supabase.table('gemini_data') \
+                            .select('url, brewery_name_en, beer_name_en') \
+                            .in_('url', fresh_urls).execute()
+                        g_map = {r['url']: r for r in (g_res.data or [])}
+                    except Exception as e:
+                        logger.warning(f"  ⚠️ Error fetching gemini_data: {e}")
+                for b in fresh_items:
+                    g_info = g_map.get(b['url'], {})
+                    b['brewery_name_en'] = g_info.get('brewery_name_en')
+                    b['beer_name_en'] = g_info.get('beer_name_en')
+                return fresh_items
+            if source == 'fresh':
+                return []
 
-        # Otherwise query existing view
+        # Otherwise query existing view (prioritize 'In Stock' before 'Sold Out' via alphabetical order)
         query: Any = self.supabase.table('beer_info_view').select(
-            'url, name, shop, brewery_name_en, beer_name_en, untappd_url'
+            'url, name, shop, brewery_name_en, beer_name_en, untappd_url, stock_status'
         )
         query = self._apply_filters(query)
-        response: Any = sync_execute(query.order('first_seen', desc=True).limit(limit).offset(offset))
+        response: Any = sync_execute(
+            query.order('stock_status', desc=False).order('first_seen', desc=True).limit(limit).offset(offset)
+        )
         return cast(List[Dict[str, Any]], response.data or [])
 
     def _apply_filters(self, query: Any) -> Any:
@@ -210,6 +292,11 @@ class LLMEnricher:
                 
                 # Extract
                 enriched_info: Optional[GeminiExtraction] = await self._extract_llm(beer)
+                if enriched_info and enriched_info.get('_api_error'):
+                    err_msg = enriched_info.get('_error_message', 'Transient LLM API error')
+                    logger.warning(f"  ⚠️ Transient LLM API error (skipping failure record so item can retry): {err_msg}")
+                    return 'api_error', None
+
                 has_extracted_content = bool(
                     enriched_info and (
                         enriched_info.get('brewery_name_en') or

@@ -96,3 +96,58 @@ def test_validate_final_match_with_llm_validator():
         assert res is False
         mock_validator.validate_pair.assert_called_once()
 
+
+def test_validate_final_match_hard_seltzer_and_rtd():
+    # English "Hard Seltzer" in title should be accepted for Hard Seltzer Untappd style
+    passed_seltzer = validate_final_match(
+        original_title="New Motion Cantina Picante Spicy Margarita Hard Seltzer (355ml)",
+        untappd_beer_name="Cantina Picante",
+        untappd_brewery_name="New Motion Beverages",
+        untappd_style="Hard Seltzer",
+        expected_brewery="New Motion"
+    )
+    assert passed_seltzer is True, "English Hard Seltzer title should match Hard Seltzer style"
+
+    # Mojito / Punch RTD should also be accepted when title mentions mojito/punch
+    passed_mojito = validate_final_match(
+        original_title="Denver Watermelon Yuzu Mojito (355ml)",
+        untappd_beer_name="Watermelon Yuzu Mojito",
+        untappd_brewery_name="Denver Beer Co.",
+        untappd_style="RTD - Cocktail",
+        expected_brewery="Denver Beer Co."
+    )
+    assert passed_mojito is True, "Mojito title should match RTD - Cocktail style"
+
+    # Spiked Seltzer (Upslope Spiked Snow Melt) should be accepted
+    passed_spiked = validate_final_match(
+        original_title="Upslope Spiked Snow Melt Juniper & Lime (355ml) / スパイクド スノーメルト",
+        untappd_beer_name="Spiked Snow Melt Juniper And Lime",
+        untappd_brewery_name="Upslope Brewing Company",
+        untappd_style="Hard Seltzer",
+        expected_brewery="Upslope Brewing Company"
+    )
+    assert passed_spiked is True, "Spiked Snow Melt should match Hard Seltzer style"
+
+    # Hard Tea / Sparkling Tea (New Motion) should be accepted
+    passed_hard_tea = validate_final_match(
+        original_title="New Motion Hard Tea Mango Palmer (355ml)",
+        untappd_beer_name="Mango Palmer Hard Sparkling Tea",
+        untappd_brewery_name="New Motion Beverages",
+        untappd_style="RTD - Hard Tea",
+        expected_brewery="New Motion"
+    )
+    assert passed_hard_tea is True, "Hard Tea Mango Palmer should match RTD - Hard Tea style"
+
+
+def test_validate_final_match_short_year_notation():
+    # Short year '24 in title should match (2024) in Untappd beer name
+    passed = validate_final_match(
+        original_title="Himitsu Beer Pepper's Delight '24 350ml",
+        untappd_beer_name="Pepper's Delight (2024)",
+        untappd_brewery_name="Himitsu Beer",
+        untappd_style="Farmhouse Ale - Saison",
+        expected_brewery="Himitsu Beer"
+    )
+    assert passed is True, "Short year '24 should match (2024) in Untappd beer name"
+
+

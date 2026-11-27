@@ -15,7 +15,8 @@ def record_enrichment_failure(
     brewery_name: Optional[str] = None,
     beer_name: Optional[str] = None,
     beer_name_jp: Optional[str] = None,
-    error_message: Optional[str] = None
+    error_message: Optional[str] = None,
+    mark_enriched: bool = True,
 ):
     """
     Records or updates an enrichment failure in the database.
@@ -76,13 +77,14 @@ def record_enrichment_failure(
             logger.info(f"  📝 Recorded new enrichment failure: {failure_reason}")
             
         # Also mark untappd_enriched_at on scraped_beers so it is registered as enriched (failed attempt)
-        try:
-            supabase.table('scraped_beers') \
-                .update({'untappd_enriched_at': now}) \
-                .eq('url', product_url) \
-                .execute()
-        except Exception as e_scraped:
-            logger.debug(f"  ⚠️ Could not update scraped_beers untappd_enriched_at: {e_scraped}")
+        if mark_enriched:
+            try:
+                supabase.table('scraped_beers') \
+                    .update({'untappd_enriched_at': now}) \
+                    .eq('url', product_url) \
+                    .execute()
+            except Exception as e_scraped:
+                logger.debug(f"  ⚠️ Could not update scraped_beers untappd_enriched_at: {e_scraped}")
             
     except Exception as e:
         logger.error(f"  ⚠️  Error recording failure: {e}")

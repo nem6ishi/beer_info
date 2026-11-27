@@ -16,10 +16,25 @@ class BreweryManager:
         self.load_breweries()
     
     def load_breweries(self) -> None:
-        """Load brewery database from Supabase."""
+        """Load brewery database from Supabase using 1,000-row pagination."""
         try:
-            response = self.supabase.table('breweries').select('id, name_en, name_jp, aliases, untappd_url').limit(2000).execute()
-            self.breweries = response.data
+            all_rows: List[Dict] = []
+            page_size = 1000
+            offset = 0
+            while True:
+                response = (
+                    self.supabase.table('breweries')
+                    .select('id, name_en, name_jp, aliases, untappd_url')
+                    .order('id')
+                    .range(offset, offset + page_size - 1)
+                    .execute()
+                )
+                batch = response.data or []
+                all_rows.extend(batch)
+                if len(batch) < page_size:
+                    break
+                offset += page_size
+            self.breweries = all_rows
             self._build_index()
             print(f"[BreweryManager] Loaded {len(self.breweries)} breweries from Supabase")
         except Exception as e:

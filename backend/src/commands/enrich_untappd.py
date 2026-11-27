@@ -32,6 +32,7 @@ from backend.src.core.utils import map_details_to_payload
 from backend.src.services.untappd.db_queries import (
     fetch_beers,
     prefetch_gemini_untappd_urls,
+    resolve_canonical_untappd_urls,
     upsert_untappd_data,
     update_gemini_data_untappd_urls,
     update_scraped_beers_untappd_urls
@@ -100,22 +101,37 @@ class UntappdEnricher:
             self._preload_failure_history()
 
         offset: int = 0
+        fresh_exhausted: bool = (self.mode != 'missing')
         db_fetch_limit: int = 200
 
         while True:
-            beers: List[Dict[str, Any]] = self._fetch_beers(offset, db_fetch_limit)
-            offset += db_fetch_limit
-            
-            # Remove already processed
-            beers = [b for b in beers if b.get('url') not in self.processed_this_run]
+            if not fresh_exhausted:
+                raw_beers: List[Dict[str, Any]] = self._fetch_beers(offset, db_fetch_limit, source='fresh')
+                if not raw_beers:
+                    fresh_exhausted = True
+                    offset = 0
+                    continue
+            else:
+                raw_beers = self._fetch_beers(offset, db_fetch_limit, source='view' if self.mode == 'missing' else 'auto')
+                if not raw_beers:
+                    logger.info("\n✨ No more beers to process!")
+                    break
+            offset += len(raw_beers)
+
+            # Filter out backoff URLs and already processed URLs without terminating prematurely
+            beers = [
+                b for b in raw_beers
+                if b.get('url') not in self.processed_this_run
+                and b.get('url') not in self.skip_urls_for_backoff
+            ]
 
             remaining_capacity: int = limit - self.total_processed
             beers_to_process: List[Dict[str, Any]] = beers[:remaining_capacity]
 
-            logger.info(f"  Valid {len(beers_to_process)} beers to process in this batch")
+            logger.info(f"  Valid {len(beers_to_process)} beers to process in this batch (from {len(raw_beers)} fetched)")
             if not beers_to_process:
-                logger.info("\n✨ No more beers to process!")
-                break
+                logger.info("  ⏭️ All fetched beers in this page are in backoff or already processed. Advancing to next page...")
+                continue
 
             self._prefetch_caches(beers_to_process)
 
@@ -196,7 +212,31 @@ class UntappdEnricher:
             return
         logger.info("  🔍 Pre-loading failure history for backoff filtering...")
         from dateutil import parser as dateutil_parser
-        cutoff: datetime = datetime.now(timezone.utc) - timedelta(days=3)
+        cutoff_short: datetime = datetime.now(timezone.utc) - timedelta(days=3)
+        cutoff_in_stock_retry: datetime = datetime.now(timezone.utc) - timedelta(days=7)
+
+        # Fetch currently In Stock URLs so in-stock beers can retry weekly even after 3+ attempts
+        # (catches newly released beers that get registered on Untappd a few days after release)
+        in_stock_urls: Set[str] = set()
+        try:
+            st_offset = 0
+            while True:
+                st_res: Any = self.supabase.table('beer_info_view') \
+                    .select('url') \
+                    .eq('stock_status', 'In Stock') \
+                    .order('url') \
+                    .range(st_offset, st_offset + 999) \
+                    .execute()
+                st_rows = st_res.data or []
+                for r in st_rows:
+                    if r.get('url'):
+                        in_stock_urls.add(r['url'])
+                if len(st_rows) < 1000:
+                    break
+                st_offset += 1000
+        except Exception as e:
+            logger.warning(f"  ⚠️ Failed to preload In Stock URLs for backoff policy: {e}")
+
         # Supabase は1回のレスポンスが最大1000行のため、ページングで全件取得する
         failure_rows: List[Dict[str, Any]] = []
         page_size: int = 1000
@@ -218,20 +258,29 @@ class UntappdEnricher:
             attempts: int = f.get('search_attempts', 0)
             last_failed_str: Optional[str] = f.get('last_failed_at')
             p_url: str = f.get('product_url', '')
-            if attempts >= 3:
-                self.skip_urls_for_backoff.add(p_url)
-            elif last_failed_str:
+            if not p_url:
+                continue
+            last_failed: Optional[datetime] = None
+            if last_failed_str:
                 try:
-                    last_failed: datetime = dateutil_parser.parse(last_failed_str)
-                    if last_failed > cutoff:
-                        self.skip_urls_for_backoff.add(p_url)
+                    last_failed = dateutil_parser.parse(last_failed_str)
                 except Exception:
-                    pass
+                    last_failed = None
+
+            if attempts >= 3:
+                if p_url in in_stock_urls:
+                    # In-stock beers retry once every 7 days instead of permanent backoff
+                    if last_failed and last_failed > cutoff_in_stock_retry:
+                        self.skip_urls_for_backoff.add(p_url)
+                else:
+                    self.skip_urls_for_backoff.add(p_url)
+            elif last_failed and last_failed > cutoff_short:
+                self.skip_urls_for_backoff.add(p_url)
         if self.skip_urls_for_backoff:
             logger.info(f"  ⏭️ {len(self.skip_urls_for_backoff)} URLs will be skipped due to backoff policy.")
 
-    def _fetch_beers(self, offset: int, db_fetch_limit: int) -> List[Dict[str, Any]]:
-        """Fetches candidates based on current mode."""
+    def _fetch_beers(self, offset: int, db_fetch_limit: int, source: str = 'auto') -> List[Dict[str, Any]]:
+        """Fetches raw candidates based on current mode (backoff filtering is applied in run() to preserve pagination)."""
         return fetch_beers(
             self.supabase,
             self.mode,
@@ -239,8 +288,9 @@ class UntappdEnricher:
             db_fetch_limit,
             self.shop_filter,
             self.name_filter,
-            self.skip_urls_for_backoff,
+            None,
             self.force,
+            source=source,
         )
 
     def _prefetch_caches(self, beers_to_process: List[Dict[str, Any]]) -> None:
@@ -275,10 +325,35 @@ class UntappdEnricher:
             except Exception as e:
                 logger.warning(f"  ⚠️ Failed to prefetch untappd_data cache: {e}")
 
+    @staticmethod
+    def _clean_raw_title_for_search(raw_title: str, brewery: Optional[str] = None) -> str:
+        """Cleans a raw shop product title for safer Untappd fallback search."""
+        cleaned = raw_title.strip()
+        # Remove leading/trailing shop notes like 【11/20出荷】 or 【SALE】
+        cleaned = re.sub(r'【[^】]*】', ' ', cleaned)
+        # Remove volume/container notations like (473ml), 350ml缶, 330ml瓶, 16oz
+        cleaned = re.sub(r'[\(\（]?\b\d{3,4}\s*ml(?:缶|瓶|ボトル)?[\)\）]?', ' ', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'[\(\（]?\b\d+(?:\.\d+)?\s*oz[\)\）]?', ' ', cleaned, flags=re.IGNORECASE)
+        # If formatted as "English Name / Japanese Katakana" or "Beer / Brewery", keep the left side
+        if ' / ' in cleaned:
+            cleaned = cleaned.split(' / ', 1)[0].strip()
+        elif '/' in cleaned:
+            left, right = cleaned.split('/', 1)
+            if left.strip():
+                cleaned = left.strip()
+        # Strip leading brewery prefix if duplicated (e.g. "903 Brewers Cookie Dough Stout")
+        if brewery:
+            b_clean = brewery.strip()
+            if b_clean and cleaned.lower().startswith(b_clean.lower() + ' '):
+                cleaned = cleaned[len(b_clean):].strip()
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip(' -–—:：/')
+        return cleaned
+
     async def _process_beer_missing(self, beer: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Process a beer in 'missing' mode."""
         brewery: Optional[str] = beer.get('brewery_name_en') or beer.get('brewery_name_jp')
         beer_name: Optional[str] = beer.get('beer_name_en') or beer.get('beer_name_jp')
+        has_extracted_beer_name: bool = bool(beer_name)
         product_type: Optional[str] = beer.get('product_type')
         url: Optional[str] = beer.get('url')
 
@@ -290,6 +365,7 @@ class UntappdEnricher:
                     self.supabase.table('scraped_beers').update({'untappd_enriched_at': now_iso}).eq('url', url).execute()
                 except Exception as e:
                     logger.debug(f"  ⚠️ Could not update non-beer untappd_enriched_at: {e}")
+                resolve_search_failure(self.supabase, url)
             return None
 
         # Check if brewery was mistakenly identified as the bottle shop name
@@ -300,6 +376,7 @@ class UntappdEnricher:
 
         # Check title formatted like "[Brewery Name] Product Title / Katakana"
         raw_title = beer.get('name', '')
+        parsed_from_title: bool = False
         if raw_title.startswith('['):
             match_bracket = re.search(r'^\[(.*?)\]\s*(.*)$', raw_title)
             if match_bracket:
@@ -310,10 +387,33 @@ class UntappdEnricher:
                         beer_name = title_rest.split('/')[0].strip()
                     else:
                         beer_name = title_rest
+                    parsed_from_title = True
                     logger.info(f"  🔧 Parsed from bracketed title: Brewery='{brewery}', Beer='{beer_name}'")
 
-        if (not brewery or not beer_name) and ("【" in beer.get('name', '') and "】" in beer.get('name', '')):
-            match: Optional[re.Match] = re.search(r'【(.*?)[/／](.*?)】', beer.get('name', ''))
+        # Check Maruho format: "Beer Name 355ml/Brewery" or "Beer Name 473ml / Brewery"
+        # 意図: LLM がスラッシュ右側のブルワリーを抽出漏れしたり (例: block 15)、
+        # ブルワリー名にビール名と同じ値を入れてしまった場合 (例: Deep Seek 473ml/block 15 -> B=Deep Seek) も確実に補正する。
+        if raw_title:
+            match_maruho = re.match(r'^(.+?)\s+\d{3,4}\s*ml\s*[/／]\s*(.+)$', raw_title.strip(), flags=re.IGNORECASE)
+            if match_maruho:
+                m_beer, m_brewery = match_maruho.group(1).strip(), match_maruho.group(2).strip()
+                is_dup_brewery = bool(brewery and beer_name and brewery.strip().lower() == beer_name.strip().lower())
+                if m_beer and m_brewery and (not brewery or not beer_name or is_dup_brewery):
+                    if not beer_name:
+                        beer_name = m_beer
+                    if not brewery or is_dup_brewery:
+                        brewery = m_brewery
+                    parsed_from_title = True
+                    logger.info(f"  🔧 Parsed from Maruho title format: Brewery='{brewery}', Beer='{beer_name}'")
+
+        # Strip leftover volume suffix from extracted beer_name (e.g. "Brew 8000 650ml" -> "Brew 8000")
+        if beer_name:
+            cleaned_vol_beer = re.sub(r'\s*\b\d{3,4}\s*ml\b\s*', ' ', beer_name, flags=re.IGNORECASE).strip()
+            if cleaned_vol_beer:
+                beer_name = cleaned_vol_beer
+
+        if (not brewery or not beer_name) and ("【" in raw_title and "】" in raw_title):
+            match: Optional[re.Match] = re.search(r'【(.*?)[/／](.*?)】', raw_title)
             if match:
                 p1, p2 = match.group(1).strip(), match.group(2).strip()
                 if self.brewery_manager and self.brewery_manager.find_breweries_in_text(p2):
@@ -322,19 +422,30 @@ class UntappdEnricher:
                     brewery, beer_name = p1, p2
                 elif not brewery:
                     beer_name, brewery = p1, p2
+                parsed_from_title = True
                 logger.info(f"  🔧 Parsed from title: {brewery} - {beer_name}")
 
         if not brewery and self.brewery_manager:
-            found_list = self.brewery_manager.find_breweries_in_text(beer.get('name', ''))
+            found_list = self.brewery_manager.find_breweries_in_text(raw_title)
             if found_list:
                 brewery = found_list[0].get('name_en') or found_list[0].get('name_jp')
                 logger.info(f"  🔧 Inferred brewery from product text: {brewery}")
 
-        if not beer_name and beer.get('name'):
-            beer_name = beer.get('name')
-            logger.info(f"  🔧 Fallback beer_name to shop title: {beer_name}")
+        if not beer_name and raw_title:
+            cleaned_fallback = self._clean_raw_title_for_search(raw_title, brewery)
+            # Only use cleaned raw title fallback if it contains ASCII letters (avoid searching raw Japanese-only shop titles)
+            if cleaned_fallback and re.search(r'[A-Za-z]{2,}', cleaned_fallback):
+                beer_name = cleaned_fallback
+                logger.info(f"  🔧 Fallback beer_name to cleaned shop title: {beer_name}")
+            elif not has_extracted_beer_name and not parsed_from_title:
+                logger.info(f"  ⏭️ Skipping Untappd search: LLM extraction not yet completed for '{raw_title[:60]}'")
+                return None
 
         if not brewery or not beer_name:
+            # If LLM extraction has never succeeded for this item, defer to Phase 1 rather than polluting failure table
+            if not has_extracted_beer_name and not parsed_from_title:
+                logger.info(f"  ⏭️ Deferring Untappd search until LLM extraction completes for '{raw_title[:60]}'")
+                return None
             logger.warning(f"  ⚠️  Missing brewery or beer name - skipping")
             # 失敗として記録し、バックオフ対象にする（記録しないと毎回同じ商品がバッチ枠を占有する）
             if url and not self.offline and self.supabase:
@@ -743,6 +854,23 @@ class UntappdEnricher:
         scraped_updates: List[Dict[str, Any]],
     ) -> None:
         """Commits all accumulated updates to the database in batch."""
+        # Unify Untappd URLs sharing the same numeric beer ID to prevent slug-split grouping
+        all_urls = [
+            item['untappd_url']
+            for group in (untappd_payloads, gemini_updates, scraped_updates)
+            for item in group
+            if item.get('untappd_url')
+        ]
+        url_remap = resolve_canonical_untappd_urls(self.supabase, all_urls)
+        if url_remap:
+            for old_u, new_u in url_remap.items():
+                logger.info(f"  🔗 Canonicalizing Untappd URL slug: {old_u} -> {new_u}")
+            for group in (untappd_payloads, gemini_updates, scraped_updates):
+                for item in group:
+                    u = item.get('untappd_url')
+                    if u in url_remap:
+                        item['untappd_url'] = url_remap[u]
+
         upsert_untappd_data(self.supabase, untappd_payloads)
         update_gemini_data_untappd_urls(self.supabase, gemini_updates)
         update_scraped_beers_untappd_urls(self.supabase, scraped_updates)

@@ -50,7 +50,10 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
         }
 
         if (search) {
-            q = q.or(`beer_name.ilike.%${search}%,brewery_name.ilike.%${search}%`);
+            const safeSearch = search.replace(/[,()]/g, ' ').replace(/\s+/g, ' ').trim();
+            if (safeSearch) {
+                q = q.or(`beer_name.ilike.%${safeSearch}%,brewery_name.ilike.%${safeSearch}%`);
+            }
         }
 
         if (min_abv) q = q.gte('abv', min_abv);
@@ -178,7 +181,10 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
                     }
 
                     if (search) {
-                        q = q.or(`beer_name.ilike.%${search}%,brewery_name.ilike.%${search}%`);
+                        const safeSearch = search.replace(/[,()]/g, ' ').replace(/\s+/g, ' ').trim();
+                        if (safeSearch) {
+                            q = q.or(`beer_name.ilike.%${safeSearch}%,brewery_name.ilike.%${safeSearch}%`);
+                        }
                     }
                     if (min_abv) q = q.gte('abv', min_abv);
                     if (max_abv) q = q.lte('abv', max_abv);

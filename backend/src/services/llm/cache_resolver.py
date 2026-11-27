@@ -95,8 +95,43 @@ class LocalCacheResolver:
             logger.warning(f"Error in Tier 1 cache resolution: {e}")
         return None
 
+    def _match_leading_brewery(self, text: str) -> Optional[tuple[str, str]]:
+        """
+        テキスト先頭から既知ブルワリー辞書に最長一致するブルワリー名を切り出す。
+        誤分割防止のため、キー長3文字以上かつ直後が空白/区切り文字で、残りのビール名が空でない場合のみマッチさせる。
+        """
+        if not text or not self.brewery_dict:
+            return None
+        text_stripped = text.strip()
+        text_lower = text_stripped.lower()
+        # 最長一致を優先（例: "Other Half Brewing" を "Other" より先に評価）
+        sorted_keys = sorted(
+            (k for k in self.brewery_dict.keys() if len(k) >= 3),
+            key=len,
+            reverse=True,
+        )
+        for key in sorted_keys:
+            if text_lower.startswith(key) and len(text_lower) > len(key):
+                next_char = text_lower[len(key)]
+                if next_char in (' ', '\t', '\u3000', ':', '-', '/'):
+                    remainder = text_stripped[len(key):].lstrip(' \t\u3000:-/')
+                    if remainder:
+                        return key, remainder
+        return None
+
     async def resolve_tier2_dictionary_match(self, product_name: str, shop: Optional[str]) -> Optional[GeminiExtraction]:
-        """Tier 2: ショップ特有のルール分割 ＋ ブルワリー辞書マッチ"""
+        """
+        Tier 2: ショップ特有のルール分割 ＋ ブルワリー辞書マッチ。
+        LLM API 呼び出しを回避しつつ、構造化されたショップタイトルから高精度にブルワリー・ビール名を抽出する。
+        対応ショップ:
+          - ちょうせいや / Chouseiya: 【Beer Name / Brewery Name】
+          - アローム / Arôme: ... [En Brewery / En Beer]
+          - BEER VOLTA / BeerVolta: Jp Brewery : Jp Beer | En Brewery: En Beer
+          - マルホ酒店 / Maruho: En Beer [(collab ...)] 473ml/En Brewery（スラッシュ右側が本家ブルワリー）
+          - Antenna America / アンテナアメリカ: En Brewery En Beer (473ml) / Katakana（先頭最長一致）
+          - 一期一会～る / Ichigo Ichie: 日本語（En Brewery En Beer）（括弧内英語の先頭最長一致）
+          - WITCH CRAFT MARKET: [Brewery Name] En Beer / Katakana
+        """
         if not product_name or not product_name.strip():
             return None
         if not shop or not self.brewery_dict:
@@ -104,10 +139,12 @@ class LocalCacheResolver:
 
         brewery_part = ""
         beer_part = ""
+        shop_norm = shop.strip()
+        shop_lower = shop_norm.lower()
 
         try:
             # 各ショップ特有の切り出しパターン
-            if shop == "ちょうせいや":
+            if shop_norm in ("ちょうせいや",) or shop_lower == "chouseiya":
                 # STRICTフォーマット: 【Beer Name / Brewery Name】
                 match = re.search(r'【(.*?)/(.*?)】', product_name)
                 if match:
@@ -115,13 +152,13 @@ class LocalCacheResolver:
                     brewery_part = match.group(2).strip()
                     # 賞味期限や付加情報の括弧を除去
                     brewery_part = re.sub(r'[\(（].*?[\)）]', '', brewery_part).strip()
-            elif shop == "アローム":
+            elif shop_norm in ("アローム", "Arôme") or shop_lower == "arome":
                 # 典型的なフォーマット: Jp Brewery / Jp Beer [En Brewery / En Beer]
                 match = re.search(r'\[([^/]+)/([^\]]+)\]', product_name)
                 if match:
                     brewery_part = match.group(1).strip()
                     beer_part = match.group(2).strip()
-            elif shop == "BEER VOLTA":
+            elif shop_lower in ("beer volta", "beervolta"):
                 # NEW format: Jp Brewery : Jp Beer | En Brewery: En Beer
                 if "|" in product_name:
                     parts = product_name.split("|")
@@ -130,6 +167,41 @@ class LocalCacheResolver:
                         b, b_name = english_part.split(":", 1)
                         brewery_part = b.strip()
                         beer_part = b_name.strip()
+            elif shop_norm in ("マルホ酒店",) or shop_lower == "maruho":
+                # Format: English Beer Name [(collab w/...)] 473ml/Brewery Name
+                # 意図: スラッシュ右側が必ず本家ブルワリーのため、コラボ表記があっても本家ブルワリーを正しく保持する
+                match = re.match(r'^(.+?)\s+\d{3,4}\s*ml\s*[/／]\s*(.+)$', product_name.strip(), flags=re.IGNORECASE)
+                if match:
+                    beer_part = match.group(1).strip()
+                    brewery_part = match.group(2).strip()
+            elif shop_lower in ("antenna america", "アンテナアメリカ"):
+                # Format: English Brewery English Beer (473ml) / Japanese Katakana 【出荷日】
+                left_side = product_name.split('/', 1)[0].strip()
+                left_side = re.sub(r'【[^】]*】', ' ', left_side)
+                left_side = re.sub(r'[\(（]\s*\d{3,4}\s*ml\s*[\)）]', ' ', left_side, flags=re.IGNORECASE)
+                left_side = re.sub(r'[\(（]\s*\d+(?:\.\d+)?\s*oz\s*[\)）]', ' ', left_side, flags=re.IGNORECASE)
+                left_side = re.sub(r'\s+', ' ', left_side).strip()
+                matched = self._match_leading_brewery(left_side)
+                if matched:
+                    brewery_part, beer_part = matched
+            elif shop_norm in ("一期一会～る",) or shop_lower in ("ichigo ichie", "151l"):
+                # Format: 【入荷予定】日本語ブルワリー 日本語ビール名（English Brewery English Beer）
+                paren_matches = re.findall(r'[（(]([^）)]+)[）)]', product_name)
+                for p_text in reversed(paren_matches):
+                    if re.search(r'[A-Za-z]{2,}', p_text):
+                        matched = self._match_leading_brewery(p_text)
+                        if matched:
+                            brewery_part, beer_part = matched
+                            break
+            elif shop_lower == "witch craft market":
+                # Format: [Brewery Name] English Beer Name / Japanese Katakana
+                match = re.match(r'^\[([^\]]+)\]\s*(.+)$', product_name.strip())
+                if match:
+                    b_cand = match.group(1).strip()
+                    rest = match.group(2).strip()
+                    if b_cand.lower() != "witch craft market":
+                        brewery_part = b_cand
+                        beer_part = rest.split('/', 1)[0].strip() if '/' in rest else rest
             
             # 分割できた場合、ブルワリーが既知かチェック
             if brewery_part and beer_part:
@@ -149,16 +221,20 @@ class LocalCacheResolver:
                     beer_part = re.sub(pat, '', beer_part, flags=re.IGNORECASE).strip()
                 for ind in ['≪入荷予定≫', '《入荷予定》', '≪予約≫', '《予約》', '売切', 'SOLD OUT', 'SALE!!', 'SALE!']:
                     beer_part = re.sub(re.escape(ind), '', beer_part, flags=re.IGNORECASE).strip()
+                # 容量・コラボ注記を beer_part / beer_core から整理
+                beer_part = re.sub(r'\b\d{3,4}\s*ml\b', '', beer_part, flags=re.IGNORECASE).strip()
                 beer_part = re.sub(r'\s+', ' ', beer_part).strip()
 
                 brewery_key = brewery_part.lower()
                 if brewery_key in self.brewery_dict:
                     brewery_info = self.brewery_dict[brewery_key]
                     
-                    # コア名の簡易処理（容量やスタイル表示の削除）
+                    # コア名の簡易処理（コラボ注記・容量・スタイル表示の削除）
+                    beer_core = re.sub(r'[\(（]\s*collabo?\b[^\)）]*[\)）]', '', beer_part, flags=re.IGNORECASE).strip()
+                    beer_core = re.sub(r'\bw/\s*[^/\(\)]+$', '', beer_core, flags=re.IGNORECASE).strip()
                     beer_core = re.sub(
-                        r'\b(330ml|350ml|355ml|440ml|500ml|缶|瓶|can|bottle|ipa|stout|pale ale|neipa|dipa)\b', 
-                        '', beer_part, flags=re.IGNORECASE
+                        r'\b(330ml|350ml|355ml|375ml|440ml|473ml|500ml|568ml|650ml|750ml|缶|瓶|can|bottle|wc\s*ipa|ne\s*dipa|ne\s*ipa|hazy\s*ipa|ipa|dipa|tipa|neipa|stout|pale ale)\b', 
+                        '', beer_core, flags=re.IGNORECASE
                     ).strip()
                     beer_core = ' '.join(beer_core.split())
                     

@@ -29,7 +29,7 @@ def is_beer_product(title: str, brand: str) -> bool:
     """Check if the product is actually a beer product or relevant shop item."""
     title_lower = title.lower()
 
-    if "グラス" in title_lower or "glass" in title_lower or "ステッカー" in title_lower or "tシャツ" in title_lower:
+    if re.search(r'(?<!レモン)グラス(?![ァ-ヶー])|\bglass(?:es)?\b', title_lower) or "ステッカー" in title_lower or "tシャツ" in title_lower:
         if "コラボグラス" in title_lower and "ビール" not in title_lower and "セット" not in title_lower:
             return False
 

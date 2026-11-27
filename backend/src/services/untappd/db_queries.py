@@ -1,8 +1,57 @@
 import logging
+import re
 from typing import List, Dict, Any, Optional, Set
 from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
+
+
+def extract_untappd_beer_id(untappd_url: Optional[str]) -> Optional[str]:
+    """Extract numeric Untappd beer ID from the end of a beer URL."""
+    if not untappd_url:
+        return None
+    m = re.search(r'/(\d+)/?$', untappd_url.strip())
+    return m.group(1) if m else None
+
+
+def resolve_canonical_untappd_urls(supabase: Any, untappd_urls: List[str]) -> Dict[str, str]:
+    """
+    Resolve incoming Untappd beer URLs to existing canonical URLs in `untappd_data`
+    sharing the same numeric beer ID (e.g. unifying slug variants like
+    `/b/monkish-brewing-co-shinjuku/7695580` -> `/b/monkish-brewing-co-monkish-shinjuku/7695580`).
+    Returns a mapping `{original_url: canonical_url}` for URLs that differ.
+    """
+    if not supabase or not untappd_urls:
+        return {}
+
+    id_to_inputs: Dict[str, Set[str]] = {}
+    for u in untappd_urls:
+        bid = extract_untappd_beer_id(u)
+        if bid:
+            id_to_inputs.setdefault(bid, set()).add(u)
+
+    if not id_to_inputs:
+        return {}
+
+    remap: Dict[str, str] = {}
+    for bid, input_urls in id_to_inputs.items():
+        try:
+            res = supabase.table('untappd_data').select('untappd_url').ilike('untappd_url', f'%/{bid}').limit(5).execute()
+            existing = [r['untappd_url'] for r in (res.data or []) if extract_untappd_beer_id(r.get('untappd_url')) == bid]
+            if existing:
+                # Prefer an already-stored URL (stable canonical URL)
+                canonical = sorted(existing)[0]
+            else:
+                # Multiple slug variants within the same batch: pick deterministic canonical
+                canonical = sorted(input_urls)[0]
+
+            for u in input_urls:
+                if u != canonical:
+                    remap[u] = canonical
+        except Exception as e:
+            logger.warning(f"  ⚠️ Failed to resolve canonical Untappd URL for ID {bid}: {e}")
+
+    return remap
 
 def fetch_beers(
     supabase: Any,
@@ -13,44 +62,48 @@ def fetch_beers(
     name_filter: Optional[str] = None,
     skip_urls_for_backoff: Optional[Set[str]] = None,
     force: bool = False,
+    source: str = 'auto',
 ) -> List[Dict[str, Any]]:
     """Fetches candidates based on current mode."""
     if mode == 'missing':
-        # 1. Prioritize fresh un-enriched items directly from scraped_beers (so items not yet in beer_info_view are processed)
-        sb_query = supabase.table('scraped_beers') \
-            .select('url, name, shop, untappd_url, first_seen') \
-            .neq('stock_status', 'Dead Link') \
-            .is_('untappd_enriched_at', 'null')
-        if shop_filter:
-            sb_query = sb_query.eq('shop', shop_filter)
-        if name_filter:
-            sb_query = sb_query.ilike('name', f'%{name_filter}%')
-        sb_res = sb_query.order('first_seen', desc=True).limit(db_fetch_limit).offset(offset).execute()
-        fresh_beers = sb_res.data or []
+        if source in ('auto', 'fresh'):
+            # 1. Prioritize fresh un-enriched items directly from scraped_beers (so items not yet in beer_info_view are processed)
+            sb_query = supabase.table('scraped_beers') \
+                .select('url, name, shop, untappd_url, first_seen, stock_status') \
+                .neq('stock_status', 'Dead Link') \
+                .is_('untappd_enriched_at', 'null')
+            if shop_filter:
+                sb_query = sb_query.eq('shop', shop_filter)
+            if name_filter:
+                sb_query = sb_query.ilike('name', f'%{name_filter}%')
+            sb_res = sb_query.order('stock_status', desc=False).order('first_seen', desc=True).limit(db_fetch_limit).offset(offset).execute()
+            fresh_beers = sb_res.data or []
 
-        if fresh_beers:
-            fresh_urls = [b['url'] for b in fresh_beers if b.get('url')]
-            g_map: Dict[str, Any] = {}
-            if fresh_urls:
-                try:
-                    g_res = supabase.table('gemini_data') \
-                        .select('url, beer_name_en, beer_name_jp, brewery_name_en, brewery_name_jp, product_type') \
-                        .in_('url', fresh_urls).execute()
-                    g_map = {r['url']: r for r in (g_res.data or [])}
-                except Exception as e:
-                    logger.warning(f"  ⚠️ Error fetching gemini_data for fresh beers: {e}")
-            for b in fresh_beers:
-                g_info = g_map.get(b['url'], {})
-                b.update({
-                    'beer_name_en': g_info.get('beer_name_en'),
-                    'beer_name_jp': g_info.get('beer_name_jp'),
-                    'brewery_name_en': g_info.get('brewery_name_en'),
-                    'brewery_name_jp': g_info.get('brewery_name_jp'),
-                    'product_type': g_info.get('product_type', 'beer'),
-                })
-            if skip_urls_for_backoff:
-                fresh_beers = [b for b in fresh_beers if b.get('url') not in skip_urls_for_backoff]
-            return fresh_beers
+            if fresh_beers:
+                fresh_urls = [b['url'] for b in fresh_beers if b.get('url')]
+                g_map: Dict[str, Any] = {}
+                if fresh_urls:
+                    try:
+                        g_res = supabase.table('gemini_data') \
+                            .select('url, beer_name_en, beer_name_jp, brewery_name_en, brewery_name_jp, product_type') \
+                            .in_('url', fresh_urls).execute()
+                        g_map = {r['url']: r for r in (g_res.data or [])}
+                    except Exception as e:
+                        logger.warning(f"  ⚠️ Error fetching gemini_data for fresh beers: {e}")
+                for b in fresh_beers:
+                    g_info = g_map.get(b['url'], {})
+                    b.update({
+                        'beer_name_en': g_info.get('beer_name_en'),
+                        'beer_name_jp': g_info.get('beer_name_jp'),
+                        'brewery_name_en': g_info.get('brewery_name_en'),
+                        'brewery_name_jp': g_info.get('brewery_name_jp'),
+                        'product_type': g_info.get('product_type', 'beer'),
+                    })
+                if skip_urls_for_backoff:
+                    fresh_beers = [b for b in fresh_beers if b.get('url') not in skip_urls_for_backoff]
+                return fresh_beers
+            if source == 'fresh':
+                return []
 
         # 2. Second priority: Items in view that still lack untappd_url or details
         query: Any = supabase.table('beer_info_view') \
@@ -61,7 +114,7 @@ def fetch_beers(
             query = query.eq('shop', shop_filter)
         if name_filter:
             query = query.ilike('name', f'%{name_filter}%')
-        res: Any = query.order('first_seen', desc=True).limit(db_fetch_limit).offset(offset).execute()
+        res: Any = query.order('stock_status', desc=False).order('first_seen', desc=True).limit(db_fetch_limit).offset(offset).execute()
         beers = res.data or []
         
         if skip_urls_for_backoff:

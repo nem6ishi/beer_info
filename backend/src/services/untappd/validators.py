@@ -452,11 +452,20 @@ def validate_final_match(
         return False
 
     # 3. Check Style Mismatch (e.g. Cocktail / RTD vs Beer)
+    # 意図: RIO BREWING のビールに Rio Cocktail (RTD) が誤紐づけされるような別ジャンル事故を防ぎつつ、
+    # クラフトビール専門店が扱う正当な Hard Seltzer / Hard Tea / Spiked Seltzer / Craft RTD は許可する。
     if untappd_style:
         style_lower = untappd_style.lower()
         if any(bad_style in style_lower for bad_style in ["rtd", "cocktail", "hard seltzer"]):
             orig_lower = original_title.lower()
-            if not any(w in orig_lower for w in ["cocktail", "rtd", "ハードセイツァー", "カクテル", "チューハイ"]):
+            allowed_rtd_keywords = [
+                "cocktail", "rtd", "hard seltzer", "seltzer", "hard tea",
+                "sparkling tea", "spiked", "hard kombucha", "kombucha",
+                "margarita", "mojito", "punch", "spritzer", "palmer",
+                "ハードセルツァー", "ハードセイツァー", "セルツァー", "ハードティー",
+                "スパイクド", "コンブチャ", "カクテル", "チューハイ",
+            ]
+            if not any(w in orig_lower for w in allowed_rtd_keywords):
                 logger.warning(f"  [Final Validation] BLOCKED: Untappd style '{untappd_style}' conflicts with beer product '{original_title}'")
                 return False
 
@@ -468,7 +477,10 @@ def validate_final_match(
         year_match = re.search(r'\b(20\d{2}(?:by)?)\b', u_beer_lower)
         if year_match:
             year_str = year_match.group(1)
-            if year_str not in orig_lower and year_str.replace("by", "") not in orig_lower:
+            year_digits = year_str.replace("by", "")
+            short_year = year_digits[2:]  # e.g. "2024" -> "24"
+            has_short_year = bool(re.search(rf"['’`]{short_year}(?!\d)", orig_lower))
+            if year_str not in orig_lower and year_digits not in orig_lower and not has_short_year:
                 logger.warning(f"  [Final Validation] BLOCKED: Untappd beer '{untappd_beer_name}' specifies vintage '{year_str}' but original title '{original_title}' has no vintage.")
                 return False
 

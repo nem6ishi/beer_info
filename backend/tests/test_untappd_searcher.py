@@ -325,6 +325,25 @@ class TestGetUntappdUrl(unittest.IsolatedAsyncioTestCase):
         # Should fall through to DDG (mocked empty) and fail
         self.assertFalse(result['success'])
 
+    @patch('ddgs.DDGS')
+    async def test_token_fallback_strips_colon_collab_and_style(self, mock_ddgs_cls, mock_search_brewery, mock_search_candidates, mock_select_best):
+        """Token-fallback should query cleaned core phrases without colon subtitles, w/ collab, or trailing style."""
+        mock_search_brewery.return_value = "https://untappd.com/TheVeilBrewing"
+        queried_tokens = []
+
+        async def _fake_candidates(brewery_url, query, **kwargs):
+            queried_tokens.append(query)
+            if query == "Run to You":
+                return [{'url': "https://untappd.com/b/the-veil-run-to-you/999", 'beer_name': "Run to You", 'score': 95}]
+            return []
+
+        mock_search_candidates.side_effect = _fake_candidates
+        mock_select_best.side_effect = lambda product_name, brewery, beer_name, candidates: candidates[0] if candidates else None
+
+        result = await get_untappd_url("The Veil Brewing Co.", "Run to You: Cherry/Cranberry")
+        self.assertTrue(result['success'])
+        self.assertIn("Run to You", queried_tokens)
+
 
 class TestSearchBreweryBeerScoring(unittest.IsolatedAsyncioTestCase):
     """Tests for search_brewery_beer with scoring integration."""

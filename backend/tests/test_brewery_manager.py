@@ -20,7 +20,7 @@ def test_load_breweries(mock_supabase):
             "untappd_url": "https://untappd.com/WestCoastBrewing"
         }
     ]
-    mock_supabase.table.return_value.select.return_value.limit.return_value.execute.return_value = mock_response
+    mock_supabase.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value = mock_response
 
     manager = BreweryManager()
     assert len(manager.breweries) == 1
@@ -38,7 +38,7 @@ def test_learn_brewery_alias_new_jp(mock_supabase):
             "untappd_url": "https://untappd.com/WestCoastBrewing"
         }
     ]
-    mock_supabase.table.return_value.select.return_value.limit.return_value.execute.return_value = mock_response
+    mock_supabase.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value = mock_response
 
     manager = BreweryManager()
     
@@ -66,7 +66,7 @@ def test_learn_brewery_alias_already_known(mock_supabase):
             "untappd_url": "https://untappd.com/WestCoastBrewing"
         }
     ]
-    mock_supabase.table.return_value.select.return_value.limit.return_value.execute.return_value = mock_response
+    mock_supabase.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value = mock_response
 
     manager = BreweryManager()
     
@@ -89,7 +89,7 @@ def test_learn_brewery_alias_ignore_stopwords(mock_supabase):
             "untappd_url": "https://untappd.com/WestCoastBrewing"
         }
     ]
-    mock_supabase.table.return_value.select.return_value.limit.return_value.execute.return_value = mock_response
+    mock_supabase.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value = mock_response
 
     manager = BreweryManager()
     
@@ -117,7 +117,7 @@ def test_learn_brewery_alias_reject_conflict(mock_supabase):
             "untappd_url": "https://untappd.com/UchuBrewing"
         }
     ]
-    mock_supabase.table.return_value.select.return_value.limit.return_value.execute.return_value = mock_response
+    mock_supabase.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value = mock_response
 
     manager = BreweryManager()
     
@@ -138,7 +138,7 @@ def test_learn_brewery_alias_reject_collab(mock_supabase):
             "untappd_url": "https://untappd.com/WestCoastBrewing"
         }
     ]
-    mock_supabase.table.return_value.select.return_value.limit.return_value.execute.return_value = mock_response
+    mock_supabase.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value = mock_response
 
     manager = BreweryManager()
     

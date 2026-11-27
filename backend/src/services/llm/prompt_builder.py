@@ -136,9 +136,11 @@ class PromptBuilder:
         return self.apply_product_type_override(res, original_title)
 
     def apply_product_type_override(self, res: GeminiExtraction, original_title: str) -> GeminiExtraction:
-        """Corrects false 'other' classifications when valid brewery/beer info or beverage indicators exist."""
+        """Corrects false 'other'/'glass' classifications when valid brewery/beer info or beverage indicators exist."""
+        # Use negative lookbehind/lookahead on グラス so words like グラスプ (Grasp), レモングラス (Lemongrass),
+        # グラスホッパー (Grasshopper) are not misclassified as glassware.
         non_beverage_pattern = re.compile(
-            r'(書籍|単行本|新書|文庫|著者|出版|雑誌|ZINE|ガイドライン|テイスティングノート|解体新書|Tシャツ|トートバッグ|グラス|ステッカー|コースター|キーホルダー|服飾|冊子|Zine|論考集|業界俯瞰図|二日酔い|防ぎ方|治し方|教本|カタログ)',
+            r'(書籍|単行本|新書|文庫|著者|出版|雑誌|ZINE|ガイドライン|テイスティングノート|解体新書|Tシャツ|トートバッグ|(?<!レモン)グラス(?![ァ-ヶー])|ステッカー|コースター|キーホルダー|服飾|冊子|Zine|論考集|業界俯瞰図|二日酔い|防ぎ方|治し方|教本|カタログ)',
             re.IGNORECASE
         )
         # If title clearly indicates a non-beverage item, preserve "other" or "glass"
@@ -146,6 +148,19 @@ class PromptBuilder:
             return res
 
         curr_type = res.get("product_type", "beer")
+
+        # Correct false 'glass' classification (e.g., "Even More Grasp" / "イーブン モア グラスプ")
+        if curr_type == "glass":
+            explicit_glass_pattern = re.compile(
+                r'((?<!レモン)グラス(?![ァ-ヶー])|\bglass(?:es)?\b|ジョッキ|タンブラー|ゴブレット|goblet|チャリス|chalice|マグ|\bmug\b|glazen)',
+                re.IGNORECASE
+            )
+            if not explicit_glass_pattern.search(original_title):
+                corrected_type = "set" if res.get("is_set") else "beer"
+                logger.info(f"  🔧 Correcting false 'glass' product_type to '{corrected_type}' for item: '{original_title}'")
+                res["product_type"] = corrected_type
+                return res
+
         if curr_type in ("other", "cider", "mead"):
             # Craft beverages like Hop Soda, Cider, Mead, Hard Seltzer should be treated as 'beer' for Untappd enrichment
             beverage_keywords = ["soda", "ソーダ", "mead", "ミード", "cider", "サイダー", "シードル", "seltzer", "セルツァー", "hop water", "ホップウォーター"]

@@ -69,3 +69,55 @@ def test_apply_product_type_override():
     }
     corrected2 = pb.apply_product_type_override(res2, "(著者サイン入り) ベルギービール解体新書 / 山本高之 (著)")
     assert corrected2["product_type"] == "other"
+
+    # 3. False 'glass' classification for "グラスプ" (Grasp)
+    res3 = {
+        "brewery_name_jp": "イーヴルツイン", "brewery_name_en": "Evil Twin Brewing NYC",
+        "beer_name_jp": "イーブン モア グラスプ", "beer_name_en": "Even More Grasp",
+        "product_type": "glass", "is_set": False
+    }
+    corrected3 = pb.apply_product_type_override(
+        res3,
+        "イーヴルツイン x ホルス : イーブン モア グラスプ | Evil Twin x Horus Aged Ales: Even More Grasp"
+    )
+    assert corrected3["product_type"] == "beer"
+
+    # 4. False 'other' classification for "レモングラス" (Lemongrass)
+    res4 = {
+        "brewery_name_jp": "ブルワリー", "brewery_name_en": "Test Brewery",
+        "beer_name_jp": "レモングラスセゾン", "beer_name_en": "Lemongrass Saison",
+        "product_type": "other", "is_set": False
+    }
+    corrected4 = pb.apply_product_type_override(res4, "Test Brewery / レモングラスセゾン")
+    assert corrected4["product_type"] == "beer"
+
+    # 5. Truly glassware item should remain 'glass'
+    res5 = {
+        "brewery_name_jp": "ひみつビール", "brewery_name_en": "Himitsu Beer",
+        "beer_name_jp": "", "beer_name_en": "",
+        "product_type": "glass", "is_set": False
+    }
+    corrected5 = pb.apply_product_type_override(res5, "ひみつビール ラッコちゃんノニックパイントグラス / Himitsu Pint Glass 473ml")
+    assert corrected5["product_type"] == "glass"
+
+
+def test_resolve_canonical_untappd_urls():
+    from unittest.mock import MagicMock
+    from backend.src.services.untappd.db_queries import extract_untappd_beer_id, resolve_canonical_untappd_urls
+
+    assert extract_untappd_beer_id("https://untappd.com/b/monkish-brewing-co-shinjuku/7695580") == "7695580"
+    assert extract_untappd_beer_id("https://untappd.com/b/monkish-brewing-co-shinjuku/7695580/") == "7695580"
+    assert extract_untappd_beer_id(None) is None
+
+    mock_sb = MagicMock()
+    mock_sb.table.return_value.select.return_value.ilike.return_value.limit.return_value.execute.return_value.data = [
+        {"untappd_url": "https://untappd.com/b/monkish-brewing-co-monkish-shinjuku/7695580"}
+    ]
+    remap = resolve_canonical_untappd_urls(
+        mock_sb,
+        ["https://untappd.com/b/monkish-brewing-co-shinjuku/7695580"]
+    )
+    assert remap == {
+        "https://untappd.com/b/monkish-brewing-co-shinjuku/7695580":
+        "https://untappd.com/b/monkish-brewing-co-monkish-shinjuku/7695580"
+    }

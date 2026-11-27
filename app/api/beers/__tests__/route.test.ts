@@ -100,4 +100,15 @@ describe('GET /api/beers (Individual Display API Route Tests)', () => {
         const json = await res.json();
         expect(json).toEqual({ error: 'Internal server error' });
     });
+
+    it('should sanitize commas/parentheses in search query and clamp page/limit bounds', async () => {
+        const req = new Request('http://localhost:3000/api/beers?page=0&limit=500&search=Red%20Grape,%20(2026)');
+        const res = await GET(req);
+
+        expect(res.status).toBe(200);
+        const json = await res.json();
+        expect(json.pagination.page).toBe(1);
+        expect(json.pagination.limit).toBe(100);
+        expect(orMock).toHaveBeenCalledWith(expect.stringContaining('untappd_beer_name.ilike.%Red Grape 2026%'));
+    });
 });

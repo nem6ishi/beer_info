@@ -127,8 +127,10 @@ def main() -> None:
                 logger.info(f"\n--- Step 3: Brewery Enrichment (Targeting {len(found_brewery_urls)} breweries) ---")
                 await enrich_breweries(limit=args.limit, target_urls=list(found_brewery_urls))
             else:
-                logger.info("\n--- Step 3: Brewery Enrichment (Skipped) ---")
-                logger.info("ℹ️  No new brewery URLs found to enrich.")
+                # Even if no new beers were linked in Step 2, still backfill unregistered/stale breweries in DB
+                backfill_limit = min(args.limit, 20)
+                logger.info(f"\n--- Step 3: Brewery Enrichment (DB Backfill up to {backfill_limit}) ---")
+                await enrich_breweries(limit=backfill_limit, target_urls=[])
 
         asyncio.run(run_pipeline())
         

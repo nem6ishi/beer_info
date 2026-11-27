@@ -302,16 +302,37 @@ async def _get_untappd_url_single(
         if len(all_candidates) < 5:
             tokens = []
             
-            # 1. Cleaned core title (strip parenthesized notes like collab w/..., volume e.g. 375ml)
+            # 1. Cleaned core title (strip parenthesized notes, collab w/..., volume, colon flavor subtitles, and trailing style suffixes)
+            # 意図: Untappd のサイト内検索は完全一致寄りで厳格なため、
+            # "Run to You: Cherry/Cranberry" -> "Run to You"、
+            # "BGM24 NE DIPA w/Third Moon" -> "BGM24"、
+            # "Big Trouble in Sexy Town DIPA" -> "Big Trouble in Sexy Town"
+            # のようにノイズを段階的に落としたフレーズを優先トークンとして検索する。
             if target_beer_name:
                 clean_phrase = re.sub(r'[\(\[（].*?[\)\]）]', '', target_beer_name)
+                clean_phrase = re.sub(r'\bw/\s*[^/\(\)]+$', '', clean_phrase, flags=re.IGNORECASE)
                 clean_phrase = re.sub(r'\b\d{3,4}\s*ml\b', '', clean_phrase, flags=re.IGNORECASE)
                 clean_phrase = re.sub(r'\s+', ' ', clean_phrase).strip()
-                if clean_phrase and clean_phrase != target_beer_name and len(clean_phrase) >= 4:
+                if clean_phrase and clean_phrase != target_beer_name and len(clean_phrase) >= 3:
                     tokens.append(clean_phrase)
-                
+
+                # 1b. Strip colon subtitle (e.g. "Run to You: Cherry/Cranberry" -> "Run to You")
+                if ':' in clean_phrase:
+                    before_colon = clean_phrase.split(':', 1)[0].strip()
+                    if before_colon and len(before_colon) >= 3 and before_colon not in tokens:
+                        tokens.append(before_colon)
+
+                # 1c. Strip trailing beer style suffixes (e.g. "Big Trouble in Sexy Town DIPA" -> "Big Trouble in Sexy Town")
+                core_stripped = strip_for_core_comparison(clean_phrase)
+                core_stripped = re.sub(
+                    r'\s+(?:NE\s*DIPA|NE\s*IPA|WC\s*IPA|West\s*Coast\s*IPA|Hazy\s*DIPA|Double\s*IPA|Triple\s*IPA|DIPA|TIPA|NEIPA|WCIPA|IPA)\s*$',
+                    '', core_stripped, flags=re.IGNORECASE
+                ).strip()
+                if core_stripped and core_stripped != target_beer_name and len(core_stripped) >= 3 and core_stripped not in tokens:
+                    tokens.append(core_stripped)
+
                 # 2. Add first two distinctive words (bigram like "Angry Angel", "Angry Trail")
-                phrase_words = [w for w in re.split(r'[\s/—–\-]+', clean_phrase) if len(w) >= 3 and w.lower() not in {'ipa', 'dipa', 'tipa', 'neipa', 'ale', 'stout', 'lager', 'pilsner', 'sour', 'porter', 'saison', 'gose', 'hazy', 'double', 'triple', 'single', 'imperial', 'session', 'fruited', 'wild', 'beer', 'cider', 'mead', 'ba'}]
+                phrase_words = [w for w in re.split(r'[\s/—–\-:]+', core_stripped or clean_phrase) if len(w) >= 3 and w.lower() not in {'ipa', 'dipa', 'tipa', 'neipa', 'ale', 'stout', 'lager', 'pilsner', 'sour', 'porter', 'saison', 'gose', 'hazy', 'double', 'triple', 'single', 'imperial', 'session', 'fruited', 'wild', 'beer', 'cider', 'mead', 'ba'}]
                 if len(phrase_words) >= 2:
                     bigram = f"{phrase_words[0]} {phrase_words[1]}"
                     if bigram not in tokens:
@@ -374,11 +395,18 @@ async def _get_untappd_url_single(
     # 用いて Untappd のビールページを直接探しに行く
     has_high_confidence_candidate = any(c.get('score', 0) >= 90 for c in all_candidates)
     if not all_candidates or (len(all_candidates) < 3 and not has_high_confidence_candidate):
+        def _clean_ddg_beer(text: str) -> str:
+            t = re.sub(r'[\(（]\s*collabo?\b[^\)）]*[\)）]', '', text, flags=re.IGNORECASE)
+            t = re.sub(r'\bw/\s*[^/\(\)]+$', '', t, flags=re.IGNORECASE)
+            t = re.sub(r'\b\d{3,4}\s*ml\b', '', t, flags=re.IGNORECASE)
+            return re.sub(r'\s+', ' ', t).strip()
+
+        clean_ddg_target = _clean_ddg_beer(target_beer_name)
         query: str
         if search_hint:
-            query = f"untappd {search_hint}"
+            query = f"untappd {_clean_ddg_beer(search_hint)}"
         else:
-            query = f"untappd {primary_brewery_search} {target_beer_name}".strip()
+            query = f"untappd {primary_brewery_search} {clean_ddg_target}".strip()
 
         logger.info(f"Searching DuckDuckGo for: '{query}'")
 
@@ -410,16 +438,17 @@ async def _get_untappd_url_single(
                         
                 # Check beer
                 if exp_beer:
-                    beer_core: str = normalize_for_comparison(strip_for_core_comparison(exp_beer))
-                    beer_core_pl: str = normalize_for_comparison(strip_for_core_comparison(normalize_singular_plural(exp_beer)))
+                    exp_beer_clean = _clean_ddg_beer(exp_beer)
+                    beer_core: str = normalize_for_comparison(strip_for_core_comparison(exp_beer_clean))
+                    beer_core_pl: str = normalize_for_comparison(strip_for_core_comparison(normalize_singular_plural(exp_beer_clean)))
                     t_norm_pl: str = normalize_for_comparison(normalize_singular_plural(title))
                     if beer_core and beer_core not in t_norm and beer_core_pl not in t_norm_pl:
                         if beer_name_jp and normalize_for_comparison(beer_name_jp) in t_norm:
                             pass
                         else:
                             return False
-                    if has_variant_mismatch(title, exp_beer):
-                        logger.debug(f"  [DDG] Variant mismatch in title: '{title}' vs '{exp_beer}'")
+                    if has_variant_mismatch(title, exp_beer_clean):
+                        logger.debug(f"  [DDG] Variant mismatch in title: '{title}' vs '{exp_beer_clean}'")
                         return False
                 return True
 
