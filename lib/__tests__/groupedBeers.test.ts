@@ -189,11 +189,11 @@ describe('getGroupedBeers filter behavior', () => {
             brewery_filter: null
         });
 
-        expect(containsMock).toHaveBeenCalledWith('items', '[{"shop":"arome"}]');
+        expect(containsMock).toHaveBeenCalledWith('items', '[{"shop":"arome","stock_status":"Sold Out"}]');
         expect(notMock).toHaveBeenCalledWith('items', 'cs', '[{"shop":"arome","stock_status":"In Stock"}]');
     });
 
-    it('should use or filtering and post-fetch filtering when multiple shops are specified', async () => {
+    it('should push shop+stock_status into DB query when multiple shops are specified with in_stock', async () => {
         await getGroupedBeers({
             page: 1,
             limit: 20,
@@ -211,6 +211,32 @@ describe('getGroupedBeers filter behavior', () => {
             brewery_filter: null
         });
 
-        expect(orMock).toHaveBeenCalledWith('items.cs.[{"shop":"arome"}],items.cs.[{"shop":"beervolta"}]');
+        expect(orMock).toHaveBeenCalledWith(
+            'items.cs."[{\\"shop\\":\\"arome\\",\\"stock_status\\":\\"In Stock\\"}]",items.cs."[{\\"shop\\":\\"beervolta\\",\\"stock_status\\":\\"In Stock\\"}]"'
+        );
+    });
+
+    it('should return empty groups immediately when untappd_status is missing', async () => {
+        const res = await getGroupedBeers({
+            page: 1,
+            limit: 20,
+            sort: 'newest',
+            search: '',
+            shop: '',
+            min_abv: null,
+            max_abv: null,
+            min_ibu: null,
+            max_ibu: null,
+            min_rating: null,
+            style_filter: null,
+            stock_filter: 'in_stock',
+            product_type: null,
+            brewery_filter: null,
+            untappd_status: 'missing'
+        });
+
+        expect(res.groupsData).toEqual([]);
+        expect(res.totalCount).toBe(0);
+        expect(fromMock).not.toHaveBeenCalled();
     });
 });

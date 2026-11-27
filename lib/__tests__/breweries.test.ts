@@ -134,5 +134,33 @@ describe('lib/breweries', () => {
             expect(result.breweries[0].name).toBe('Brewery A');
             expect(result.breweries[0].flag).toBe('🇯🇵');
         });
+
+        it('preserves RPC styles even when falling back to beer_info_view for breweries', async () => {
+            singleMock.mockResolvedValue({
+                data: {
+                    styles: [{ style: 'IPA - American', count: 100 }],
+                    breweries: [{ name_en: 'Old Brewery', name_jp: null }]
+                },
+                error: null
+            });
+
+            rangeMock.mockResolvedValueOnce({
+                data: [
+                    {
+                        untappd_brewery_name: 'Brewery A',
+                        brewery_location: 'Japan',
+                        brewery_name_jp: 'ブルワリーA',
+                        brewery_name_en: 'Brewery A'
+                    }
+                ],
+                error: null
+            });
+
+            const result = await fetchAvailableFilters(true);
+
+            expect(result.styles).toEqual([{ style: 'IPA - American', count: 100 }]);
+            expect(result.breweries).toHaveLength(1);
+            expect(result.breweries[0].name).toBe('Brewery A');
+        });
     });
 });

@@ -15,17 +15,21 @@ export interface GetGroupedBeersOptions {
     stock_filter: string | null;
     product_type: string | null;
     brewery_filter: string | null;
+    untappd_status?: string | null;
     days?: string | null;
     only_sale?: string | null;
 }
 
 const GROUPED_BEERS_SELECT = 'untappd_url, beer_name, brewery_name, style, abv, ibu, rating, rating_count, beer_image, brewery_logo, brewery_location, brewery_type, untappd_updated_at, is_set, product_type, is_sale, sale_tag, expiry_notice, min_price, max_price, newest_seen, items';
 
+const quotePostgrestValue = (value: string): string =>
+    `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
 export async function getGroupedBeers(options: GetGroupedBeersOptions) {
     const {
         search, sort, page, limit, shop,
         min_abv, max_abv, min_ibu, max_ibu, min_rating,
-        style_filter, stock_filter, product_type, brewery_filter, days, only_sale
+        style_filter, stock_filter, product_type, brewery_filter, untappd_status, days, only_sale
     } = options;
 
     const offset = (page - 1) * limit;
@@ -80,20 +84,38 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
                     if (effectiveStockFilter === 'in_stock') {
                         q = q.contains('items', `[{"shop":"${s}","stock_status":"In Stock"}]`);
                     } else if (effectiveStockFilter === 'sold_out') {
-                        q = q.contains('items', `[{"shop":"${s}"}]`);
+                        q = q.contains('items', `[{"shop":"${s}","stock_status":"Sold Out"}]`);
                         q = q.not('items', 'cs', `[{"shop":"${s}","stock_status":"In Stock"}]`);
                     } else {
                         q = q.contains('items', `[{"shop":"${s}"}]`);
                     }
                 } else {
-                    const orFilters = shops.map(s => `items.cs.[{"shop":"${s}"}]`).join(',');
-                    q = q.or(orFilters);
+                    if (effectiveStockFilter === 'in_stock') {
+                        const orFilters = shops
+                            .map(s => `items.cs.${quotePostgrestValue(JSON.stringify([{ shop: s, stock_status: 'In Stock' }]))}`)
+                            .join(',');
+                        q = q.or(orFilters);
+                    } else if (effectiveStockFilter === 'sold_out') {
+                        const orFilters = shops
+                            .map(s => `items.cs.${quotePostgrestValue(JSON.stringify([{ shop: s, stock_status: 'Sold Out' }]))}`)
+                            .join(',');
+                        q = q.or(orFilters);
+                        for (const s of shops) {
+                            q = q.not('items', 'cs', JSON.stringify([{ shop: s, stock_status: 'In Stock' }]));
+                        }
+                    } else {
+                        const orFilters = shops
+                            .map(s => `items.cs.${quotePostgrestValue(JSON.stringify([{ shop: s }]))}`)
+                            .join(',');
+                        q = q.or(orFilters);
+                    }
                 }
             }
         } else {
             if (effectiveStockFilter === 'in_stock') {
                 q = q.contains('items', '[{"stock_status":"In Stock"}]');
             } else if (effectiveStockFilter === 'sold_out') {
+                q = q.contains('items', '[{"stock_status":"Sold Out"}]');
                 q = q.not('items', 'cs', '[{"stock_status":"In Stock"}]');
             }
         }
@@ -142,13 +164,31 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
             p_stock_filter: effectiveStockFilter === 'all' ? null : effectiveStockFilter,
             p_style_filter: styles && styles.length > 0 ? styles : null,
             p_brewery_filter: breweries && breweries.length > 0 ? breweries : null,
-            p_product_type: product_type || null
+            p_product_type: product_type || null,
+            p_untappd_status: untappd_status || null
         });
     };
 
     let groupsData: any[] = [];
     let totalCount = 0;
     let countRes: any = { data: [] };
+
+    // beer_groups_view only contains beers with a valid untappd_url;
+    // when filtering for missing Untappd links, return empty immediately without hitting the view.
+    if (untappd_status === 'missing') {
+        countRes = await fetchShopCounts();
+        const shopCounts: Record<string, number> = {};
+        if (countRes.data) {
+            countRes.data.forEach((item: any) => {
+                shopCounts[item.shop] = Number(item.shop_count);
+            });
+        }
+        return {
+            groupsData: [],
+            shopCounts,
+            totalCount: 0
+        };
+    }
 
     try {
         const [dataRes, fetchedCounts] = await Promise.all([
@@ -262,28 +302,12 @@ export async function getGroupedBeers(options: GetGroupedBeersOptions) {
                 }
 
                 totalCount = allGroups.length;
-                groupsData = allGroups.slice(offset, offset + limit - 1);
+                groupsData = allGroups.slice(offset, offset + limit);
             } else {
                 throw dataRes.error;
             }
         } else {
-            let fetchedGroups = dataRes.data || [];
-            if (shop) {
-                const shops = shop.normalize('NFC').split('|').map(s => s.trim()).filter(Boolean);
-                if (shops.length > 1) {
-                    fetchedGroups = fetchedGroups.filter(g => {
-                        const items = (g.items as any[]) || [];
-                        if (effectiveStockFilter === 'in_stock') {
-                            return items.some(item => shops.includes(item.shop) && item.stock_status === 'In Stock');
-                        } else if (effectiveStockFilter === 'sold_out') {
-                            return items.some(item => shops.includes(item.shop) && item.stock_status !== 'In Stock');
-                        } else {
-                            return items.some(item => shops.includes(item.shop));
-                        }
-                    });
-                }
-            }
-            groupsData = fetchedGroups;
+            groupsData = dataRes.data || [];
             totalCount = dataRes.count || 0;
         }
     } catch (dbError) {

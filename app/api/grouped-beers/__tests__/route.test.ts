@@ -65,6 +65,7 @@ describe('GET /api/grouped-beers (API Route Handler Tests)', () => {
             stock_filter: 'in_stock',
             product_type: null,
             brewery_filter: null,
+            untappd_status: null,
             days: null,
             only_sale: '1'
         });

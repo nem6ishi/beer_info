@@ -34,6 +34,7 @@ export default async function GroupedPage({
             stock_filter: (searchParams.stock_filter as string) || null,
             product_type: (searchParams.product_type as string) || null,
             brewery_filter: (searchParams.brewery_filter as string) || null,
+            untappd_status: (searchParams.untappd_status as string) || null,
             days: (searchParams.days as string) || null,
             only_sale: (searchParams.only_sale as string) || null
         }),
